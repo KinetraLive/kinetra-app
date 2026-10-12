@@ -34,7 +34,7 @@ export async function openFolder(path: string): Promise<OpenOutcome> {
   }
 }
 
-/** Shows `path` in Explorer. Rejects with whatever the opener plugin throws. */
+/** Shows `path` in Explorer (Finder on macOS). Rejects with whatever the opener plugin throws. */
 export async function revealInExplorer(path: string): Promise<void> {
   const { revealItemInDir } = await import("@tauri-apps/plugin-opener");
   await revealItemInDir(path);

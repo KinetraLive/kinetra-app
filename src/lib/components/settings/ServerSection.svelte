@@ -11,6 +11,7 @@
   import SettingsRow from "$lib/components/SettingsRow.svelte";
   import SettingsSection from "$lib/components/SettingsSection.svelte";
   import Switch from "$lib/components/Switch.svelte";
+  import { lanAccessNote } from "$lib/platform";
   import TallyDot from "$lib/components/TallyDot.svelte";
   import { isAdvanced } from "$lib/stores/mode.svelte";
   import { project } from "$lib/stores/project.svelte";
@@ -66,7 +67,7 @@
   </SettingsRow>
   <SettingsRow
     label="Allow access from other devices on the network"
-    description="Other devices can view outputs. Windows may ask once."
+    description={lanAccessNote()}
     for="pref-lan"
   >
     <Switch

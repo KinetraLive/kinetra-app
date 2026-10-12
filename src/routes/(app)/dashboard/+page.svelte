@@ -28,6 +28,7 @@
   import { NewScreenLauncher } from "$lib/components/screens/new/launcher.svelte";
   import { GalleryLauncher } from "$lib/components/templates/gallery/launcher.svelte";
   import { revealInExplorer } from "$lib/projectFlow";
+  import { revealLabel } from "$lib/platform";
   import { project } from "$lib/stores/project.svelte";
   import { server } from "$lib/stores/server.svelte";
   import { toasts } from "$lib/stores/toasts.svelte";
@@ -106,7 +107,7 @@
           <h1>{current.name}</h1>
           <div class="meta">
             <span class="path mono" title={current.path}>{current.path}</span>
-            <IconButton label="Show in Explorer" size="sm" onclick={reveal}>
+            <IconButton label={revealLabel()} size="sm" onclick={reveal}>
               <FolderOpen size={14} />
             </IconButton>
           </div>

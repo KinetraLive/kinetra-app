@@ -1,5 +1,5 @@
 <!--
-  Preferences > Project location: where the project lives (mono path), Show in Explorer, and
+  Preferences > Project location: where the project lives (mono path), Show in Explorer / Finder, and
   Move project… (the move panel loads lazily after a destination folder is picked). No props.
 -->
 <script lang="ts">
@@ -10,6 +10,7 @@
   import SettingsRow from "$lib/components/SettingsRow.svelte";
   import SettingsSection from "$lib/components/SettingsSection.svelte";
   import { pickFolder, revealInExplorer } from "$lib/projectFlow";
+  import { revealLabel } from "$lib/platform";
   import { project } from "$lib/stores/project.svelte";
   import { toasts } from "$lib/stores/toasts.svelte";
   import { settingsBusy } from "./state.svelte";
@@ -61,7 +62,7 @@
       <span class="path mono" title={path}>{path}</span>
       <Button size="sm" variant="ghost" onclick={reveal}>
         {#snippet icon()}<FolderOpen size={14} />{/snippet}
-        Show in Explorer
+        {revealLabel()}
       </Button>
     </span>
   </SettingsRow>
