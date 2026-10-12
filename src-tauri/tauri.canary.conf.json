@@ -1,0 +1,28 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Kinetra Canary",
+  "identifier": "no.rorvikmedieteknikk.kinetra.canary",
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Kinetra Canary",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 1024,
+        "minHeight": 680,
+        "center": true,
+        "visible": false
+      }
+    ]
+  },
+  "bundle": {
+    "icon": [
+      "icons/canary/32x32.png",
+      "icons/canary/128x128.png",
+      "icons/canary/128x128@2x.png",
+      "icons/canary/icon.icns",
+      "icons/canary/icon.ico"
+    ]
+  }
+}

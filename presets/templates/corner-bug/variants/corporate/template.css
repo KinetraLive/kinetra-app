@@ -1,0 +1,242 @@
+/* Corner bug, Corporate style: a logo block in the accent and a light plate with a short tag in
+   capitals (IBM Plex Sans), one unit with an 8px radius. Without a logo the block narrows to a
+   brand-colour edge; without text the logo block stands alone.
+   Sizing: one unit --u, 1px at 1080p; a smaller layer box scales the bug to fill it.
+   The renderer sets data-state="in" | "out" on the root (.bug). Only transform and opacity
+   animate (the plate wipes open with scaleX on its background); durations × --speed.
+   Variables: --position (top-left | top-right | bottom-left | bottom-right), --accent, --ink (text
+   on the plate), --plate, --font-heading, --radius (px), --speed. */
+
+:host {
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --wipe: cubic-bezier(0.65, 0, 0.15, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+}
+
+.bug {
+  position: absolute;
+  inset: 0;
+  container-type: size;
+}
+
+/* Inside the safe area, four corner cells named after the --position values. */
+.bug__stage {
+  --u: 1px;
+  position: absolute;
+  inset: 6cqh 5cqw;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  grid-template-rows: auto 1fr auto;
+  grid-template-areas:
+    "top-left . top-right"
+    ". . ."
+    "bottom-left . bottom-right";
+}
+
+@supports (width: 1cqmin) {
+  .bug__stage {
+    --u: max(100cqmin / 1080, 100cqw / 1920);
+  }
+}
+
+/* A layer box smaller than a frame: the bug fills the box. */
+@container ((max-width: 999px) and (max-height: 999px)) or (min-aspect-ratio: 2/1) {
+  /* The bug fills the largest box of the design's aspect (240:75) in its corner: the plate takes
+     that box and the content scales contain-wise with the look's own extent (225×72 at 1080p). */
+  .bug__stage {
+    --fw: min(100cqw, 320cqh);
+    --fh: min(100cqh, 100cqw / 3.2);
+    --u: min(var(--fw) / 225, var(--fh) / 72);
+    inset: 0;
+  }
+
+  .bug__stage > .bug__group {
+    width: var(--fw);
+    height: var(--fh);
+    max-width: none;
+  }
+
+  .bug__group > .bug__plate {
+    flex: 1;
+    padding-right: calc(12 * var(--u));
+  }
+}
+
+.bug__group {
+  grid-area: var(--position);
+  display: flex;
+  align-items: stretch;
+  max-width: calc(560 * var(--u));
+  min-width: 0;
+  overflow: hidden;
+  border-radius: var(--radius);
+  line-height: normal;
+  -webkit-font-smoothing: antialiased;
+}
+
+.bug__brand {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  padding: calc(14 * var(--u)) calc(20 * var(--u));
+  background: var(--accent);
+}
+
+.bug__logo {
+  display: block;
+  width: auto;
+  max-width: calc(220 * var(--u));
+  height: calc(44 * var(--u));
+  object-fit: contain;
+}
+
+.bug__brand:has(> .bug__logo[data-empty]),
+.bug__brand:has(> .bug__logo[src=""]) {
+  width: calc(10 * var(--u));
+  padding: 0;
+}
+
+.bug__plate {
+  position: relative;
+  isolation: isolate;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 calc(24 * var(--u)) 0 calc(20 * var(--u));
+  color: var(--ink);
+}
+
+.bug__plate::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  background: var(--plate);
+  transform-origin: left center;
+}
+
+.bug__text {
+  min-width: 0;
+  padding: calc(14 * var(--u)) 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-family: var(--font-heading);
+  font-size: calc(24 * var(--u));
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.bug__text:empty,
+.bug__text[data-empty],
+.bug__logo[src=""],
+.bug__logo[data-empty],
+.bug__plate:has(> .bug__text:empty),
+.bug__plate:has(> .bug__text[data-empty]) {
+  display: none;
+}
+
+/* In: the logo block slides in, the plate wipes open, then the text. */
+.bug[data-state="in"] .bug__brand {
+  animation: bug-slide calc(400ms * var(--speed)) var(--ease) both;
+}
+
+.bug[data-state="in"] .bug__logo {
+  animation: bug-fade calc(340ms * var(--speed)) var(--ease) calc(160ms * var(--speed)) both;
+}
+
+.bug[data-state="in"] .bug__plate::before {
+  animation: bug-wipe calc(420ms * var(--speed)) var(--wipe) calc(120ms * var(--speed)) both;
+}
+
+.bug[data-state="in"] .bug__text {
+  animation: bug-text calc(380ms * var(--speed)) var(--ease) calc(300ms * var(--speed)) both;
+}
+
+/* Out: text, plate wipe, logo block; the root animation's end is the layer's end. */
+.bug[data-state="out"] {
+  animation: bug-out calc(360ms * var(--speed)) var(--ease-in) forwards;
+}
+
+.bug[data-state="out"] .bug__text,
+.bug[data-state="out"] .bug__logo {
+  animation: bug-fade-out calc(130ms * var(--speed)) var(--ease-in) forwards;
+}
+
+.bug[data-state="out"] .bug__plate::before {
+  animation: bug-unwipe calc(220ms * var(--speed)) var(--ease-in) calc(60ms * var(--speed)) forwards;
+}
+
+.bug[data-state="out"] .bug__brand {
+  animation: bug-slide-out calc(200ms * var(--speed)) var(--ease-in) calc(140ms * var(--speed)) forwards;
+}
+
+@keyframes bug-slide {
+  from {
+    transform: translateX(-101%);
+  }
+  to {
+    transform: none;
+  }
+}
+
+@keyframes bug-slide-out {
+  to {
+    transform: translateX(-101%);
+  }
+}
+
+@keyframes bug-wipe {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: none;
+  }
+}
+
+@keyframes bug-unwipe {
+  to {
+    transform: scaleX(0);
+  }
+}
+
+@keyframes bug-text {
+  from {
+    opacity: 0;
+    transform: translateX(calc(-10 * var(--u)));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes bug-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes bug-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes bug-out {
+  0%,
+  60% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}

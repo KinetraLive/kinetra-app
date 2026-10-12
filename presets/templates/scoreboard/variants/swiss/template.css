@@ -1,0 +1,208 @@
+/* Scoreboard, Swiss style: a compact white strap on the grid: each team led by a square in its
+   colour, the name flush left and the score on a black field in tabular figures; then the period
+   in grey and the game clock, after a 1px rule.
+   Sizing: one unit --u, 1px at 1080p; a smaller layer box scales the bug to fill it.
+   Motion: a hard mask wipe, then the teams and the clock step in. Transform and opacity only;
+   durations × --speed.
+   Variables: --position (top-left | top-center | top-right), --home_color, --away_color, --accent,
+   --secondary (period), --text, --plate, --font-heading, --font-body, --radius (px),
+   --speed (duration factor). */
+
+:host {
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --wipe: cubic-bezier(0.7, 0, 0.2, 1);
+}
+
+.sb {
+  position: absolute;
+  inset: 0;
+  container-type: size;
+}
+
+.sb__stage {
+  --u: 1px;
+  position: absolute;
+  inset: 6cqh 5cqw auto;
+  display: grid;
+  grid-template-columns: auto 1fr auto 1fr auto;
+  grid-template-areas: "top-left . top-center . top-right";
+  align-items: start;
+}
+
+@supports (width: 1cqmin) {
+  .sb__stage {
+    --u: max(100cqmin / 1080, 100cqw / 1920);
+  }
+}
+
+@container ((max-width: 999px) and (max-height: 999px)) or (min-aspect-ratio: 2/1) {
+  /* The bug fills the largest box of the design's aspect (700:68) in its place: the plate takes
+     that box and the content scales contain-wise with the look's own extent (865×68 at 1080p). */
+  .sb__stage {
+    --fw: min(100cqw, 100cqh * 700 / 68);
+    --fh: min(100cqh, 100cqw * 68 / 700);
+    --u: min(var(--fw) / 865, var(--fh) / 68);
+    inset: 0;
+  }
+
+  .sb__stage > .sb__wipe {
+    width: var(--fw);
+    height: var(--fh);
+  }
+
+  .sb__wipe > .sb__box {
+    height: 100%;
+  }
+}
+
+.sb__wipe {
+  grid-area: var(--position);
+  min-width: 0;
+  overflow: hidden;
+  border-radius: var(--radius);
+}
+
+.sb__box {
+  display: flex;
+  align-items: stretch;
+  height: calc(68 * var(--u));
+  background: var(--plate);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 10%, transparent);
+  border-radius: var(--radius);
+  color: var(--text);
+  line-height: normal;
+  -webkit-font-smoothing: antialiased;
+}
+
+.sb__team {
+  --team: var(--home_color);
+  display: flex;
+  align-items: center;
+  column-gap: calc(16 * var(--u));
+  padding-left: calc(22 * var(--u));
+}
+
+.sb__team--away {
+  --team: var(--away_color);
+}
+
+.sb__team::before {
+  content: "";
+  flex: none;
+  width: calc(14 * var(--u));
+  height: calc(14 * var(--u));
+  background: var(--team);
+}
+
+.sb__name {
+  width: calc(180 * var(--u));
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-family: var(--font-heading);
+  font-size: calc(28 * var(--u));
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+}
+
+.sb__score {
+  align-self: stretch;
+  display: grid;
+  place-items: center;
+  min-width: calc(72 * var(--u));
+  box-sizing: border-box;
+  padding: 0 calc(14 * var(--u));
+  background: var(--text);
+  color: var(--plate);
+  font-family: var(--font-heading);
+  font-size: calc(38 * var(--u));
+  font-weight: 600;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.sb__game {
+  display: flex;
+  align-items: center;
+  column-gap: calc(16 * var(--u));
+  padding: 0 calc(26 * var(--u)) 0 calc(24 * var(--u));
+  white-space: nowrap;
+  font-family: var(--font-body);
+  font-variant-numeric: tabular-nums;
+}
+
+.sb__period {
+  display: flex;
+  align-items: center;
+  column-gap: calc(16 * var(--u));
+  color: var(--secondary);
+  font-size: calc(22 * var(--u));
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+.sb__period::after {
+  content: "";
+  width: max(1px, calc(1.2 * var(--u)));
+  height: calc(28 * var(--u));
+  background: var(--text);
+}
+
+.sb__time {
+  min-width: 5ch;
+  font-size: calc(30 * var(--u));
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.sb__period:empty,
+.sb__period[data-empty] {
+  display: none;
+}
+
+/* In: the wipe, then the teams and the clock. */
+.sb[data-state="in"] .sb__wipe {
+  animation: sb-mask calc(520ms * var(--speed)) var(--wipe) both;
+}
+
+.sb[data-state="in"] .sb__box {
+  animation: sb-unmask calc(520ms * var(--speed)) var(--wipe) both;
+}
+
+.sb[data-state="in"] .sb__team--home > * {
+  animation: sb-in calc(340ms * var(--speed)) var(--ease) calc(300ms * var(--speed)) both;
+}
+
+.sb[data-state="in"] .sb__team--away > * {
+  animation: sb-in calc(340ms * var(--speed)) var(--ease) calc(360ms * var(--speed)) both;
+}
+
+.sb[data-state="in"] .sb__game {
+  animation: sb-in calc(340ms * var(--speed)) var(--ease) calc(420ms * var(--speed)) both;
+}
+
+/* Out: the strap wipes off; the root animation's end is the layer's end. */
+.sb[data-state="out"] {
+  animation: sb-out calc(360ms * var(--speed)) linear forwards;
+}
+
+.sb[data-state="out"] .sb__wipe {
+  animation: sb-mask-out calc(340ms * var(--speed)) var(--wipe) forwards;
+}
+
+.sb[data-state="out"] .sb__box {
+  animation: sb-unmask-out calc(340ms * var(--speed)) var(--wipe) forwards;
+}
+
+@keyframes sb-mask { from { transform: translateX(-101%); } to { transform: none; } }
+
+@keyframes sb-unmask { from { transform: translateX(101%); } to { transform: none; } }
+
+@keyframes sb-mask-out { to { transform: translateX(101%); } }
+
+@keyframes sb-unmask-out { to { transform: translateX(-101%); } }
+
+@keyframes sb-in { from { opacity: 0; transform: translateX(calc(-12 * var(--u))); } to { opacity: 1; transform: none; } }
+
+@keyframes sb-out { 0%, 90% { opacity: 1; } 100% { opacity: 0; } }

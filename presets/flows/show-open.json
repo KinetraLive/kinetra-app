@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "id": "show-open",
+  "name": "Show open",
+  "description": "Plays the opener, then puts up the logo bug and starts the show clock.",
+  "category": "show",
+  "slots": [
+    {"key":"opener","label":"Opener layer","kind":"layer","prefer":{"template":"fullscreen-title"}},
+    {"key":"bug","label":"Logo bug layer","kind":"layer","prefer":{"template":"corner-bug"}},
+    {"key":"clock","label":"Show clock timer","kind":"timer","prefer":{"template":"scoreboard"}}
+  ],
+  "flows": [
+    {
+      "armed": "cue",
+      "nodes": [
+        {"id":"cue","position":{"x":0,"y":0},"type":"trigger.cue","config":{"label":"Show open"}},
+        {"id":"take1","position":{"x":260,"y":0},"type":"action.take","config":{"screenId":"{{opener.screenId}}","layerId":"{{opener.layerId}}"}},
+        {"id":"wait","position":{"x":520,"y":0},"type":"logic.delay","config":{"ms":6000}},
+        {"id":"clear1","position":{"x":780,"y":0},"type":"action.clear","config":{"screenId":"{{opener.screenId}}","layerId":"{{opener.layerId}}"}},
+        {"id":"take2","position":{"x":1040,"y":0},"type":"action.take","config":{"screenId":"{{bug.screenId}}","layerId":"{{bug.layerId}}"}},
+        {"id":"timer","position":{"x":1300,"y":0},"type":"action.setTimer","config":{"screenId":"{{clock.screenId}}","layerId":"{{clock.layerId}}","key":"{{clock.key}}","action":{"action":"start"}}}
+      ],
+      "edges": [
+        {"id":"e1","from":{"node":"cue","port":"fired"},"to":{"node":"take1","port":"in"},"kind":"event"},
+        {"id":"e2","from":{"node":"take1","port":"done"},"to":{"node":"wait","port":"in"},"kind":"event"},
+        {"id":"e3","from":{"node":"wait","port":"out"},"to":{"node":"clear1","port":"in"},"kind":"event"},
+        {"id":"e4","from":{"node":"clear1","port":"done"},"to":{"node":"take2","port":"in"},"kind":"event"},
+        {"id":"e5","from":{"node":"take2","port":"done"},"to":{"node":"timer","port":"in"},"kind":"event"}
+      ]
+    }
+  ]
+}

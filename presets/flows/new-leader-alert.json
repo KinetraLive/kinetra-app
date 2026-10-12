@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "id": "new-leader-alert",
+  "name": "New leader alert",
+  "description": "When the standings' current row changes and settles for 3 s, writes \"New leader: <name>\" and takes it for 8 s.",
+  "category": "sports",
+  "slots": [
+    {"key":"standings","label":"Standings source","kind":"textSource"},
+    {"key":"alert","label":"Alert text field","kind":"field","prefer":{"template":"news-strap"}}
+  ],
+  "flows": [
+    {
+      "armed": false,
+      "nodes": [
+        {"id":"row","position":{"x":0,"y":0},"type":"trigger.sourceRow","config":{"sourceId":"{{standings}}"}},
+        {"id":"debounce","position":{"x":260,"y":0},"type":"logic.debounce","config":{"ms":3000}},
+        {"id":"set","position":{"x":520,"y":0},"type":"action.setFields","config":{"screenId":"{{alert.screenId}}","layerId":"{{alert.layerId}}","fields":{"{{alert.key}}":""}}},
+        {"id":"take","position":{"x":780,"y":0},"type":"action.take","config":{"screenId":"{{alert.screenId}}","layerId":"{{alert.layerId}}","forMs":8000}},
+        {"id":"format","position":{"x":520,"y":160},"type":"data.format","config":{"pattern":"New leader: {a}"}},
+        {"id":"leader","position":{"x":260,"y":160},"type":"data.sourceRow","config":{"sourceId":"{{standings}}","row":{"pick":"current"}}}
+      ],
+      "edges": [
+        {"id":"e1","from":{"node":"row","port":"fired"},"to":{"node":"debounce","port":"in"},"kind":"event"},
+        {"id":"e2","from":{"node":"debounce","port":"out"},"to":{"node":"set","port":"in"},"kind":"event"},
+        {"id":"e3","from":{"node":"set","port":"done"},"to":{"node":"take","port":"in"},"kind":"event"},
+        {"id":"d1","from":{"node":"leader","port":"name"},"to":{"node":"format","port":"a"},"kind":"data"},
+        {"id":"d2","from":{"node":"format","port":"text"},"to":{"node":"set","port":"{{alert.key}}"},"kind":"data"}
+      ]
+    }
+  ]
+}

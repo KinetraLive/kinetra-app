@@ -1,0 +1,210 @@
+/* Corner bug, Minimal style: no plate. A 3px accent bar, then a logo and/or a short tag in spaced
+   capitals, with a soft halo (blurred shadows and a feathered shade in the plate colour) so it
+   reads on light pictures too.
+   Sizing: one unit --u, 1px at 1080p; a smaller layer box scales the bug to fill it.
+   The renderer sets data-state="in" | "out" on the root (.bug). Only transform and opacity
+   animate; every duration is multiplied by --speed.
+   Variables: --position (top-left | top-right | bottom-left | bottom-right), --accent (bar),
+   --ink (text), --plate (halo colour), --font-heading, --radius (unused), --speed. */
+
+:host {
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --halo: 0 0 0.04em color-mix(in srgb, var(--plate) 90%, transparent),
+    0 0 0.1em color-mix(in srgb, var(--plate) 75%, transparent),
+    0 0.02em 0.22em color-mix(in srgb, var(--plate) 55%, transparent);
+  --shade: drop-shadow(0 0 2px color-mix(in srgb, var(--plate) 70%, transparent))
+    drop-shadow(0 0 12px color-mix(in srgb, var(--plate) 45%, transparent));
+}
+
+.bug {
+  position: absolute;
+  inset: 0;
+  container-type: size;
+}
+
+/* Inside the safe area, four corner cells named after the --position values. */
+.bug__stage {
+  --u: 1px;
+  position: absolute;
+  inset: 6cqh 5cqw;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  grid-template-rows: auto 1fr auto;
+  grid-template-areas:
+    "top-left . top-right"
+    ". . ."
+    "bottom-left . bottom-right";
+}
+
+@supports (width: 1cqmin) {
+  .bug__stage {
+    --u: max(100cqmin / 1080, 100cqw / 1920);
+  }
+}
+
+/* A layer box smaller than a frame: the bug fills the box. */
+@container ((max-width: 999px) and (max-height: 999px)) or (min-aspect-ratio: 2/1) {
+  /* The bug fills the largest box of the design's aspect (240:75) in its corner: the plate takes
+     that box and the content scales contain-wise with the look's own extent (222×48 at 1080p). */
+  .bug__stage {
+    --fw: min(100cqw, 320cqh);
+    --fh: min(100cqh, 100cqw / 3.2);
+    --u: min(var(--fw) / 222, var(--fh) / 48);
+    inset: 0;
+  }
+
+  .bug__stage > .bug__box {
+    width: var(--fw);
+    height: var(--fh);
+    max-width: none;
+  }
+}
+
+.bug__box {
+  grid-area: var(--position);
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  align-items: stretch;
+  column-gap: calc(18 * var(--u));
+  max-width: calc(560 * var(--u));
+  min-width: 0;
+  color: var(--ink);
+  line-height: normal;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* The halo: a feathered shade behind the bug. */
+.bug__box::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 0 calc(-10 * var(--u));
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--plate) 30%, transparent);
+  filter: blur(calc(22 * var(--u)));
+}
+
+.bug__bar {
+  flex: none;
+  width: max(2px, calc(3 * var(--u)));
+  background: var(--accent);
+  filter: var(--shade);
+  transform-origin: 50% 100%;
+}
+
+.bug__logo {
+  flex: none;
+  align-self: center;
+  display: block;
+  width: auto;
+  max-width: calc(240 * var(--u));
+  height: calc(48 * var(--u));
+  object-fit: contain;
+  filter: var(--shade);
+}
+
+.bug__text {
+  align-self: center;
+  min-width: 0;
+  padding: calc(6 * var(--u)) 0;
+  overflow: clip;
+  overflow-clip-margin: 0.6em;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-family: var(--font-heading);
+  font-size: calc(24 * var(--u));
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  text-shadow: var(--halo);
+}
+
+.bug__text:empty,
+.bug__text[data-empty],
+.bug__logo[src=""],
+.bug__logo[data-empty] {
+  display: none;
+}
+
+/* In: the bar grows first, then logo and text fade up. */
+.bug[data-state="in"] .bug__bar {
+  animation: bug-grow calc(320ms * var(--speed)) var(--ease) both;
+}
+
+.bug[data-state="in"] .bug__box::before {
+  animation: bug-fade calc(420ms * var(--speed)) var(--ease) both;
+}
+
+.bug[data-state="in"] .bug__logo,
+.bug[data-state="in"] .bug__text {
+  animation: bug-rise calc(420ms * var(--speed)) var(--ease) calc(140ms * var(--speed)) both;
+}
+
+/* Out: content first, the bar retracts; the root animation's end is the layer's end. */
+.bug[data-state="out"] {
+  animation: bug-out calc(300ms * var(--speed)) var(--ease-in) forwards;
+}
+
+.bug[data-state="out"] .bug__logo,
+.bug[data-state="out"] .bug__text {
+  animation: bug-fade-out calc(150ms * var(--speed)) var(--ease-in) forwards;
+}
+
+.bug[data-state="out"] .bug__bar {
+  transform-origin: 50% 0;
+  animation: bug-shrink calc(200ms * var(--speed)) var(--ease-in) calc(70ms * var(--speed)) forwards;
+}
+
+@keyframes bug-grow {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: none;
+  }
+}
+
+@keyframes bug-shrink {
+  to {
+    transform: scaleY(0);
+  }
+}
+
+@keyframes bug-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes bug-rise {
+  from {
+    opacity: 0;
+    transform: translateY(calc(12 * var(--u)));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes bug-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes bug-out {
+  0%,
+  50% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}

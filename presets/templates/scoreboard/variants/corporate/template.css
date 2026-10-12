@@ -1,0 +1,282 @@
+/* Scoreboard, Corporate style: one rounded score bug: a block in the accent with the period and
+   the game clock, then each team on a light plate (an edge in its colour, the name in capitals)
+   with its score on a dark --secondary cell. IBM Plex Sans with tabular figures.
+   Sizing: one unit --u, 1px at 1080p; a smaller layer box scales the bug to fill it.
+   The renderer sets data-state="in" | "out" on the root (.sb). Only transform and opacity
+   animate (plates wipe open with scaleX on their backgrounds); durations × --speed.
+   Variables: --position (top-left | top-center | top-right), --home_color, --away_color, --accent,
+   --secondary, --text, --plate, --font-heading, --font-body, --radius (px), --speed. */
+
+:host {
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --wipe: cubic-bezier(0.65, 0, 0.15, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+}
+
+.sb {
+  position: absolute;
+  inset: 0;
+  container-type: size;
+}
+
+/* Along the top of the safe area; empty auto columns collapse, so the three positions are the
+   left edge, the centre and the right edge. */
+.sb__stage {
+  --u: 1px;
+  position: absolute;
+  inset: 6cqh 5cqw auto;
+  display: grid;
+  grid-template-columns: auto 1fr auto 1fr auto;
+  grid-template-areas: "top-left . top-center . top-right";
+  align-items: start;
+}
+
+@supports (width: 1cqmin) {
+  .sb__stage {
+    --u: max(100cqmin / 1080, 100cqw / 1920);
+  }
+}
+
+@container (orientation: portrait) {
+  .sb__stage {
+    --u: calc(110cqw / 1080);
+  }
+}
+
+/* A layer box smaller than a frame: the bug fills the box. */
+@container ((max-width: 999px) and (max-height: 999px)) or (min-aspect-ratio: 2/1) {
+  /* The bug fills the largest box of the design's aspect (700:68) in its place: the plate takes
+     that box and the content scales contain-wise with the look's own extent (597×64 at 1080p). */
+  .sb__stage {
+    --fw: min(100cqw, 100cqh * 700 / 68);
+    --fh: min(100cqh, 100cqw * 68 / 700);
+    --u: min(var(--fw) / 597, var(--fh) / 64);
+    inset: 0;
+  }
+
+  .sb__stage > .sb__group {
+    width: var(--fw);
+    height: var(--fh);
+  }
+
+  .sb__group > .sb__team,
+  .sb__team > .sb__name {
+    flex-grow: 1;
+  }
+}
+
+.sb__group {
+  grid-area: var(--position);
+  display: flex;
+  align-items: stretch;
+  height: calc(64 * var(--u));
+  min-width: 0;
+  overflow: hidden;
+  border-radius: var(--radius);
+  line-height: normal;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Period and clock on the accent block. */
+.sb__game {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: calc(108 * var(--u));
+  box-sizing: border-box;
+  padding: 0 calc(18 * var(--u));
+  background: var(--accent);
+  color: var(--plate);
+  font-family: var(--font-body);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.sb__period {
+  font-size: calc(14 * var(--u));
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  opacity: 0.85;
+}
+
+.sb__time {
+  font-size: calc(26 * var(--u));
+  font-weight: 600;
+  line-height: 1.15;
+}
+
+.sb__period:empty,
+.sb__period[data-empty] {
+  display: none;
+}
+
+/* A team: light plate with its colour edge, the name, the score on a dark cell. */
+.sb__team {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  align-items: stretch;
+  color: var(--text);
+}
+
+.sb__team::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  background: var(--plate);
+  box-shadow: inset calc(6 * var(--u)) 0 0 var(--home_color);
+  transform-origin: left center;
+}
+
+.sb__team--away::before {
+  box-shadow: inset calc(6 * var(--u)) 0 0 var(--away_color);
+}
+
+.sb__team--away {
+  border-left: 1px solid color-mix(in srgb, var(--secondary) 30%, transparent);
+}
+
+.sb__name {
+  align-self: center;
+  width: calc(180 * var(--u));
+  box-sizing: border-box;
+  padding: 0 calc(16 * var(--u)) 0 calc(24 * var(--u));
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-family: var(--font-heading);
+  font-size: calc(25 * var(--u));
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.sb__score {
+  display: grid;
+  place-items: center;
+  min-width: calc(64 * var(--u));
+  box-sizing: border-box;
+  padding: 0 calc(12 * var(--u));
+  background: var(--secondary);
+  color: var(--plate);
+  font-family: var(--font-heading);
+  font-size: calc(34 * var(--u));
+  font-weight: 600;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+/* In: the clock block slides in, the team plates wipe open, then names and scores. */
+.sb[data-state="in"] .sb__game {
+  animation: sb-slide calc(400ms * var(--speed)) var(--ease) both;
+}
+
+.sb[data-state="in"] .sb__game > * {
+  animation: sb-fade calc(320ms * var(--speed)) var(--ease) calc(180ms * var(--speed)) both;
+}
+
+.sb[data-state="in"] .sb__team::before {
+  animation: sb-wipe calc(440ms * var(--speed)) var(--wipe) calc(110ms * var(--speed)) both;
+}
+
+.sb[data-state="in"] .sb__team--away::before {
+  animation-delay: calc(190ms * var(--speed));
+}
+
+.sb[data-state="in"] .sb__team--home > * {
+  animation: sb-text calc(380ms * var(--speed)) var(--ease) calc(300ms * var(--speed)) both;
+}
+
+.sb[data-state="in"] .sb__team--away > * {
+  animation: sb-text calc(380ms * var(--speed)) var(--ease) calc(370ms * var(--speed)) both;
+}
+
+/* Out: content, plate wipes, clock block; the root animation's end is the layer's end. */
+.sb[data-state="out"] {
+  animation: sb-out calc(360ms * var(--speed)) var(--ease-in) forwards;
+}
+
+.sb[data-state="out"] .sb__team > *,
+.sb[data-state="out"] .sb__game > * {
+  animation: sb-fade-out calc(130ms * var(--speed)) var(--ease-in) forwards;
+}
+
+.sb[data-state="out"] .sb__team::before {
+  animation: sb-unwipe calc(220ms * var(--speed)) var(--ease-in) calc(60ms * var(--speed)) forwards;
+}
+
+.sb[data-state="out"] .sb__game {
+  animation: sb-slide-out calc(200ms * var(--speed)) var(--ease-in) calc(140ms * var(--speed)) forwards;
+}
+
+@keyframes sb-slide {
+  from {
+    transform: translateX(-101%);
+  }
+  to {
+    transform: none;
+  }
+}
+
+@keyframes sb-slide-out {
+  to {
+    transform: translateX(-101%);
+  }
+}
+
+@keyframes sb-wipe {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: none;
+  }
+}
+
+@keyframes sb-unwipe {
+  to {
+    transform: scaleX(0);
+  }
+}
+
+@keyframes sb-text {
+  from {
+    opacity: 0;
+    transform: translateX(calc(-10 * var(--u)));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes sb-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes sb-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes sb-out {
+  0%,
+  60% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}

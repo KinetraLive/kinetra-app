@@ -1,0 +1,135 @@
+/* Minimal line: name and title with no panel, divided by a thin accent line.
+   The renderer sets data-state="in" | "out" on the root (.ml). Only transform and opacity animate.
+   Variables: --accent, --text, --font, --scale (unitless), --weight (px), --shadow (0..1 alpha),
+   --align (left | center | right). */
+
+:host {
+  /* One scaled pixel; --scale resizes the graphic while it stays anchored to the safe area. */
+  --u: calc(1px * var(--scale));
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+}
+
+/* The root fills the layer box and is its size container; .ml__safe holds the layout. */
+.ml {
+  position: absolute;
+  inset: 0;
+  container-type: size;
+}
+
+/* Safe area: 8% of 1920 left/right, 8% of 1080 from the bottom. text-align places the block. */
+.ml__safe {
+  position: absolute;
+  left: 154px;
+  right: 154px;
+  bottom: 86px;
+  text-align: var(--align);
+  line-height: 0;
+}
+
+/* A layer box smaller than a frame (or a wide bar): the graphic scales to fill it. */
+@container ((max-width: 999px) and (max-height: 999px)) or (min-aspect-ratio: 2/1) {
+  .ml__safe {
+    /* The graphic fills the box: its extent at 1080p with the sample (name, line and title),
+       glyph boxes included (IBM Plex Sans sets its glyphs taller than the line box). */
+    --u: calc(min(100cqw / 596, 100cqh / 140) * var(--scale));
+    left: 0;
+    right: 0;
+    bottom: calc(2 * var(--u));
+  }
+}
+
+.ml__box {
+  display: inline-flex;
+  flex-direction: column;
+  row-gap: calc(16 * var(--u));
+  vertical-align: bottom;
+  min-width: calc(240 * var(--u));
+  max-width: min(100%, calc(1280 * var(--u)));
+  font-family: var(--font);
+  color: var(--text);
+  line-height: normal;
+  /* Without a panel the text needs a soft shadow to read over busy video. */
+  text-shadow: 0 calc(2 * var(--u)) calc(14 * var(--u)) rgba(0, 0, 0, var(--shadow));
+  -webkit-font-smoothing: antialiased;
+}
+
+.ml__name,
+.ml__title {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  /* Room for descenders and accented capitals inside the clip; the margin cancels it. */
+  padding-block: 0.2em;
+  margin-block: -0.2em;
+}
+
+.ml__name {
+  font-size: calc(60 * var(--u));
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: -0.015em;
+}
+
+.ml__line {
+  height: calc(var(--weight) * var(--scale));
+  background: var(--accent);
+  /* Draws in from the side the block is anchored to (from the middle when centred). */
+  transform-origin: var(--align) center;
+}
+
+.ml__title {
+  font-size: calc(24 * var(--u));
+  font-weight: 400;
+  line-height: 1.2;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  opacity: 0.85;
+}
+
+.ml__name:empty,
+.ml__title:empty {
+  display: none;
+}
+
+/* In: the line draws, then name and title rise into place. */
+.ml[data-state="in"] .ml__line {
+  animation: ml-draw 520ms var(--ease) both;
+}
+
+.ml[data-state="in"] .ml__name {
+  animation: ml-rise 450ms var(--ease) 160ms both;
+}
+
+.ml[data-state="in"] .ml__title {
+  animation: ml-rise 450ms var(--ease) 250ms both;
+}
+
+/* Out: one animation on the root, so its animationend marks the end of the layer. */
+.ml[data-state="out"] {
+  animation: ml-out 300ms var(--ease-in) forwards;
+}
+
+@keyframes ml-draw {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+/* No `to` frame: the title ends at its own (dimmed) opacity. */
+@keyframes ml-rise {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+}
+
+@keyframes ml-out {
+  to {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}

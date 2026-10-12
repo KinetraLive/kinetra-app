@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Kinetra test pattern</title>
+    <link rel="icon" href="data:," />
+    <!--
+      Test pattern for a display output, served at /pattern (static; no WebSocket):
+      ?kind=bars|grid|safe|name &w=&h= (the screen size, the pattern's coordinates)
+      &name= (output) &display= &res=WxH &hz= &mode=fill|key [&dual=h|v|hr|vr] [&bg=rrggbb]
+      The pattern is drawn in w×h and scaled to fit (SVG meet: centered, letterboxed). Key shows
+      its alpha (white on black); dual splits the window: fill in the first half, key in the second
+      (r: key first, i.e. the key's display is left of / above the fill's).
+    -->
+    <style>
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #000; cursor: none; }
+      body { display: flex; }
+      body.v { flex-direction: column; }
+      body.hr { flex-direction: row-reverse; }
+      body.vr { flex-direction: column-reverse; }
+      body > div { flex: 1 1 0; min-width: 0; min-height: 0; position: relative; }
+      svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+      .key { background: #000 !important; }
+      .key svg { filter: brightness(0) invert(1); }
+      text { font-family: system-ui, "Segoe UI", sans-serif; text-anchor: middle; dominant-baseline: middle; }
+    </style>
+  </head>
+  <body>
+    <script>
+      (function () {
+        var q = new URLSearchParams(location.search);
+        var num = function (k, d) {
+          var n = Math.round(+q.get(k));
+          return n >= 16 && n <= 8192 ? n : d;
+        };
+        var W = num("w", 1920), H = num("h", 1080), u = H / 540;
+        var kind = q.get("kind") || "bars", mode = q.get("mode") === "key" ? "key" : "fill";
+        var dual = q.get("dual"), bg = q.get("bg") || "";
+        bg = /^[0-9a-f]{6}$/i.test(bg) ? "#" + bg : "#000";
+        var NS = "http://www.w3.org/2000/svg";
+        var svg = document.createElementNS(NS, "svg");
+        svg.setAttribute("viewBox", "0 0 " + W + " " + H);
+        var el = function (tag, a, text) {
+          var e = document.createElementNS(NS, tag);
+          if (tag === "text") e.setAttribute("fill", "#fff");
+          for (var k in a) e.setAttribute(k, a[k]);
+          if (text != null) e.textContent = text;
+          svg.appendChild(e);
+          return e;
+        };
+        var rect = function (x, y, w, h, fill) {
+          return el("rect", { x: x, y: y, width: w, height: h, fill: fill });
+        };
+        var line = function (x1, y1, x2, y2, c, sw) {
+          el("line", { x1: x1, y1: y1, x2: x2, y2: y2, stroke: c || "#fff", "stroke-width": sw || u });
+        };
+        var box = function (f, c, label, low) {
+          var x = (W * (1 - f)) / 2, y = (H * (1 - f)) / 2;
+          el("rect", { x: x, y: y, width: W * f, height: H * f, fill: "none", stroke: c, "stroke-width": 2 * u });
+          var t = el("text", { x: x + 8 * u, y: low ? H - y / 2 : y + 12 * u, "font-size": 12 * u, fill: c }, label);
+          t.style.textAnchor = "start";
+        };
+        var frame = function () {
+          el("rect", { x: u, y: u, width: W - 2 * u, height: H - 2 * u, fill: "none", stroke: "#fff", "stroke-width": 2 * u });
+        };
+        var cross = function (s) {
+          line(W / 2 - s, H / 2, W / 2 + s, H / 2);
+          line(W / 2, H / 2 - s, W / 2, H / 2 + s);
+        };
+        if (kind === "grid") {
+          for (var i = 1; i < 10; i++) {
+            line((W * i) / 10, 0, (W * i) / 10, H, "#888");
+            line(0, (H * i) / 10, W, (H * i) / 10, "#888");
+          }
+          frame();
+          cross(H / 10);
+          el("circle", { cx: W / 2, cy: H / 2, r: Math.min(W, H) * 0.45, fill: "none", stroke: "#fff", "stroke-width": 2 * u });
+        } else if (kind === "safe") {
+          frame();
+          box(0.93, "#fff", "Action safe 93 %", 1);
+          box(0.9, "#ffd400", "Title safe 90 %");
+          cross(H / 20);
+        } else if (kind === "name") {
+          frame();
+          var res = q.get("res") || W + "×" + H, hz = q.get("hz");
+          var name = q.get("name") || q.get("display") || "";
+          var lines = [
+            [name, 72, 600],
+            [q.get("name") ? q.get("display") : "", 32, 400],
+            [res.replace("x", "×") + (hz ? " · " + hz + " Hz" : ""), 32, 400],
+            [dual ? "Fill + key" : mode === "key" ? "Key" : "Fill", 28, 400],
+          ].filter(function (l) { return l[0]; });
+          var y = H / 2 - (lines.length > 1 ? 76 + 48 * (lines.length - 2) : 0) * u / 2;
+          lines.forEach(function (l, n) {
+            var t = el("text", { x: W / 2, y: y, "font-size": l[1] * u, "font-weight": l[2] }, l[0]);
+            if (n) t.setAttribute("fill", "#ccc");
+            y += (n ? 48 : 76) * u;
+          });
+        } else {
+          // SMPTE-style bars at 75 %: 7 bars, the reverse strip, then -I, white, +Q, black, PLUGE.
+          var c = ["#bfbfbf", "#bfbf00", "#00bfbf", "#00bf00", "#bf00bf", "#bf0000", "#0000bf"];
+          var r = ["#0000bf", "#131313", "#bf00bf", "#131313", "#00bfbf", "#131313", "#bfbfbf"];
+          var bw = W / 7, h1 = (H * 2) / 3, h2 = H / 12;
+          rect(0, 0, W, H, "#131313");
+          for (var j = 0; j < 7; j++) {
+            rect(j * bw, 0, bw + 0.5, h1, c[j]);
+            rect(j * bw, h1, bw + 0.5, h2, r[j]);
+          }
+          var y3 = h1 + h2, h3 = H - y3, b5 = (bw * 5) / 4;
+          rect(0, y3, b5, h3, "#00214c");
+          rect(b5, y3, b5, h3, "#ffffff");
+          rect(2 * b5, y3, b5, h3, "#32006a");
+          rect(bw * 5, y3, bw / 3, h3, "#090909");
+          rect(bw * 5 + (bw * 2) / 3, y3, bw / 3, h3, "#1d1d1d");
+        }
+        var half = function (key) {
+          var d = document.createElement("div");
+          d.style.background = bg;
+          if (key) d.className = "key";
+          d.appendChild(svg.cloneNode(true));
+          document.body.appendChild(d);
+        };
+        if (/^[hv]r?$/.test(dual)) {
+          document.body.className = dual;
+          half(false);
+          half(true);
+        } else half(mode === "key");
+      })();
+    </script>
+  </body>
+</html>

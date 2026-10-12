@@ -1,0 +1,196 @@
+/* Countdown, Editorial style: a cover page on the dark plate. Centred: an optional logo, the title
+   as a kicker in tracked small caps in the accent between two fine rules ("DOORS OPEN IN"), the
+   digits in a large serif with tabular lining figures (so they never jitter), and the subtitle as
+   an italic serif standfirst.
+   Sizing: one unit --u, 1px at 1080p on the frame's short side; the digits also stay within the
+   frame's width, so an hour counter fits a vertical frame.
+   Motion: the plate fades up, the kicker comes first and its rules draw outwards, then the digits
+   and the standfirst stagger in. Transform and opacity only, durations × --speed.
+   Variables: --accent (kicker), --secondary (subtitle), --text (digits), --plate (background),
+   --font-heading (digits, subtitle), --font-body (kicker), --speed (duration factor). */
+
+:host {
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+}
+
+.cd {
+  position: absolute;
+  inset: 0;
+  container-type: size;
+}
+
+.cd__bg {
+  position: absolute;
+  inset: 0;
+  background: var(--plate);
+}
+
+.cd__stage {
+  --u: 1px;
+  position: absolute;
+  inset: 8cqh 8cqw;
+  display: grid;
+  place-items: center;
+}
+
+@supports (width: 1cqmin) {
+  .cd__stage {
+    --u: calc(100cqmin / 1080);
+  }
+}
+
+@container (orientation: portrait) {
+  .cd__stage {
+    inset: 10cqh 6cqw;
+  }
+}
+
+/* A layer box smaller than a frame (or a wide bar): no title-safe margins, a small inset, and
+   the unit scales the block (747 × 634 at 1px: a block with room, plus the inset) to the box. */
+@container ((max-width: 999px) and (max-height: 999px)) or (min-aspect-ratio: 2/1) {
+  .cd__stage {
+    --u: min(100cqw / 795, 100cqh / 682);
+    inset: calc(24 * var(--u));
+  }
+}
+
+
+
+.cd__block {
+  box-sizing: border-box;
+  width: min(100%, calc(1500 * var(--u)));
+  text-align: center;
+  color: var(--text);
+  line-height: normal;
+  -webkit-font-smoothing: antialiased;
+}
+
+.cd__logo {
+  display: block;
+  width: auto;
+  max-width: calc(360 * var(--u));
+  height: calc(76 * var(--u));
+  margin: 0 auto calc(52 * var(--u));
+  object-fit: contain;
+}
+
+.cd__kicker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  column-gap: calc(28 * var(--u));
+}
+
+.cd__title {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  color: var(--accent);
+  font-family: var(--font-body);
+  font-size: calc(30 * var(--u));
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0.24em;
+  margin-right: -0.24em;
+  text-transform: uppercase;
+}
+
+.cd__rule {
+  flex: none;
+  width: calc(120 * var(--u));
+  height: 1px;
+  background: color-mix(in srgb, var(--text) 35%, transparent);
+  transform-origin: right center;
+}
+
+.cd__rule + .cd__title + .cd__rule {
+  transform-origin: left center;
+}
+
+.cd__time {
+  margin: calc(10 * var(--u)) 0 0;
+  white-space: nowrap;
+  font-family: var(--font-heading);
+  font-size: min(calc(300 * var(--u)), 21cqw);
+  font-weight: 600;
+  line-height: 1.12;
+  letter-spacing: -0.02em;
+  font-variant-numeric: lining-nums tabular-nums;
+}
+
+.cd__sub {
+  max-width: calc(1100 * var(--u));
+  margin: calc(8 * var(--u)) auto 0;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+  color: var(--secondary);
+  font-family: var(--font-heading);
+  font-size: calc(42 * var(--u));
+  font-style: italic;
+  font-weight: 400;
+  line-height: 1.3;
+}
+
+@container (orientation: portrait) {
+  .cd__rule {
+    width: calc(56 * var(--u));
+  }
+}
+
+.cd__title:empty,
+.cd__sub:empty,
+.cd__kicker:has(> .cd__title[data-empty]),
+.cd__sub[data-empty],
+.cd__logo[src=""],
+.cd__logo[data-empty] {
+  display: none;
+}
+
+/* In: the plate, the logo, the kicker first with its rules drawing outwards, then the digits and
+   the standfirst. */
+.cd[data-state="in"] .cd__bg {
+  animation: cd-fade calc(460ms * var(--speed)) var(--ease) both;
+}
+
+.cd[data-state="in"] .cd__logo {
+  animation: cd-fade calc(500ms * var(--speed)) var(--ease) calc(120ms * var(--speed)) both;
+}
+
+.cd[data-state="in"] .cd__title {
+  animation: cd-rise calc(460ms * var(--speed)) var(--ease) calc(180ms * var(--speed)) both;
+}
+
+.cd[data-state="in"] .cd__rule {
+  animation: cd-draw calc(700ms * var(--speed)) var(--ease) calc(260ms * var(--speed)) both;
+}
+
+.cd[data-state="in"] .cd__time {
+  animation: cd-rise calc(600ms * var(--speed)) var(--ease) calc(340ms * var(--speed)) both;
+}
+
+.cd[data-state="in"] .cd__sub {
+  animation: cd-rise calc(560ms * var(--speed)) var(--ease) calc(480ms * var(--speed)) both;
+}
+
+/* Out: the text first, then the plate with the root, whose animation end is the end of the
+   layer. */
+.cd[data-state="out"] {
+  animation: cd-out calc(380ms * var(--speed)) var(--ease-in) forwards;
+}
+
+.cd[data-state="out"] .cd__block {
+  animation: cd-fade-out calc(180ms * var(--speed)) var(--ease-in) forwards;
+}
+
+@keyframes cd-fade { from { opacity: 0; } to { opacity: 1; } }
+
+@keyframes cd-rise { from { opacity: 0; transform: translateY(calc(26 * var(--u))); } to { opacity: 1; transform: none; } }
+
+@keyframes cd-draw { from { transform: scaleX(0); } to { transform: none; } }
+
+@keyframes cd-fade-out { to { opacity: 0; } }
+
+@keyframes cd-out { 0%, 40% { opacity: 1; } 100% { opacity: 0; } }

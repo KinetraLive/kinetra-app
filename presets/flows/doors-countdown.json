@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "id": "doors-countdown",
+  "name": "Doors countdown",
+  "description": "At 17:45 takes the countdown; at 18:00 swaps it for the doors-open graphic for 30 s.",
+  "category": "schedule",
+  "slots": [
+    {"key":"countdown","label":"Countdown layer","kind":"layer","prefer":{"template":"countdown"}},
+    {"key":"doors","label":"Doors open layer","kind":"layer","prefer":{"template":"fullscreen-title"}}
+  ],
+  "flows": [
+    {
+      "armed": false,
+      "nodes": [
+        {"id":"time","position":{"x":0,"y":0},"type":"trigger.timeOfDay","config":{"at":"17:45"}},
+        {"id":"take1","position":{"x":260,"y":0},"type":"action.take","config":{"screenId":"{{countdown.screenId}}","layerId":"{{countdown.layerId}}"}},
+        {"id":"until","position":{"x":520,"y":0},"type":"logic.waitUntil","config":{"at":"18:00"}},
+        {"id":"clear","position":{"x":780,"y":0},"type":"action.clear","config":{"screenId":"{{countdown.screenId}}","layerId":"{{countdown.layerId}}"}},
+        {"id":"take2","position":{"x":1040,"y":0},"type":"action.take","config":{"screenId":"{{doors.screenId}}","layerId":"{{doors.layerId}}","forMs":30000}}
+      ],
+      "edges": [
+        {"id":"e1","from":{"node":"time","port":"fired"},"to":{"node":"take1","port":"in"},"kind":"event"},
+        {"id":"e2","from":{"node":"take1","port":"done"},"to":{"node":"until","port":"in"},"kind":"event"},
+        {"id":"e3","from":{"node":"until","port":"out"},"to":{"node":"clear","port":"in"},"kind":"event"},
+        {"id":"e4","from":{"node":"clear","port":"done"},"to":{"node":"take2","port":"in"},"kind":"event"}
+      ]
+    }
+  ]
+}

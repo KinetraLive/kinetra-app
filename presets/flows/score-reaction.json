@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "id": "score-reaction",
+  "name": "React to a score",
+  "description": "When the scoreboard goes on air, shows a reaction graphic for a score of 0 or 10.",
+  "category": "sports",
+  "slots": [
+    {"key":"score","label":"Score field","kind":"field","prefer":{"template":"scoreboard"}},
+    {"key":"zero","label":"Reaction layer (score 0)","kind":"layer"},
+    {"key":"ten","label":"Reaction layer (score 10)","kind":"layer"}
+  ],
+  "flows": [
+    {
+      "armed": false,
+      "nodes": [
+        {"id":"air","position":{"x":0,"y":0},"type":"trigger.layer","config":{"screenId":"{{score.screenId}}","layerId":"{{score.layerId}}","onAir":true}},
+        {"id":"switch","position":{"x":260,"y":0},"type":"logic.switch","config":{"cases":["0","10"]}},
+        {"id":"take0","position":{"x":520,"y":0},"type":"action.take","config":{"screenId":"{{zero.screenId}}","layerId":"{{zero.layerId}}","forMs":5000}},
+        {"id":"take10","position":{"x":520,"y":160},"type":"action.take","config":{"screenId":"{{ten.screenId}}","layerId":"{{ten.layerId}}","forMs":5000}},
+        {"id":"value","position":{"x":0,"y":320},"type":"data.fieldValue","config":{"screenId":"{{score.screenId}}","layerId":"{{score.layerId}}","key":"{{score.key}}"}}
+      ],
+      "edges": [
+        {"id":"e1","from":{"node":"air","port":"fired"},"to":{"node":"switch","port":"in"},"kind":"event"},
+        {"id":"e2","from":{"node":"switch","port":"case0"},"to":{"node":"take0","port":"in"},"kind":"event"},
+        {"id":"e3","from":{"node":"switch","port":"case1"},"to":{"node":"take10","port":"in"},"kind":"event"},
+        {"id":"d1","from":{"node":"value","port":"value"},"to":{"node":"switch","port":"value"},"kind":"data"}
+      ]
+    }
+  ]
+}

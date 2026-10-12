@@ -1,0 +1,504 @@
+/* Poll, News style: a stack on the right: an accent state tag (LIVE POLL, STARTING SOON;
+   navy VOTING CLOSED or RESULTS once voting ends) with the total votes in a navy tag, the question in a white bar (Archivo
+   800), then a navy panel with one row per option: label, votes and a heavy percentage over an
+   accent bar. A bar's length comes from its row's `pct` (0-100) through a bound --p; a changed
+   share glides to its new length. When closed, the winner (row mark _winner) gets an accent rule
+   and the other options dim. Sizing: one unit --u, 1px at 1080p; a smaller layer box scales the
+   panel to fill it. The renderer sets data-state="in" | "out" on the root (.pl); rows get --i
+   and data-row. Motion: the tags drop in, the bars wipe in, the rows follow with their bars
+   growing. Transform and opacity only; every duration × --speed.
+   Variables: --accent, --secondary (navy), --text (ink), --plate (white), --font-heading,
+   --font-body, --radius (px), --speed. */
+
+:host {
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --wipe: cubic-bezier(0.7, 0, 0.2, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+}
+
+.pl {
+  position: absolute;
+  inset: 0;
+  container-type: size;
+}
+
+.pl__safe {
+  --u: 1px;
+  position: absolute;
+  inset: 8cqh 6cqw;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+@supports (width: 1cqmin) {
+  .pl__safe {
+    --u: max(100cqmin / 1080, 100cqw / 1920);
+  }
+}
+
+@container (orientation: portrait) {
+  .pl__safe {
+    inset: 10cqh 5cqw 17cqh;
+    align-items: flex-end;
+    justify-content: center;
+  }
+}
+
+@container ((max-width: 999px) and (max-height: 999px)) or (min-aspect-ratio: 2/1) {
+  .pl__safe {
+    --u: min(100cqw / 740, (100cqh - 6px) / 408);
+    inset: 0;
+    justify-content: center;
+  }
+}
+
+.pl__box {
+  flex: 0 1 calc(740 * var(--u));
+  min-width: 0;
+  line-height: normal;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* The tags: clipped, so they drop in from the row's top edge. */
+.pl__head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  overflow: hidden;
+  white-space: nowrap;
+  font-family: var(--font-body);
+  font-size: calc(18 * var(--u));
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.pl__state,
+.pl__total {
+  padding: calc(7 * var(--u)) calc(16 * var(--u)) calc(6 * var(--u));
+  border-radius: var(--radius) var(--radius) 0 0;
+  color: var(--plate);
+  font-variant-numeric: tabular-nums;
+}
+
+.pl__state {
+  background: var(--accent);
+}
+
+.pl:is([data-poll="closed"], [data-poll="full"]) .pl__state {
+  background: var(--secondary);
+}
+
+.pl__total {
+  background: var(--secondary);
+  font-weight: 600;
+}
+
+.pl__total::after {
+  content: " votes";
+  font-weight: 400;
+}
+
+.pl__suml::after {
+  content: "votes";
+}
+
+.pl[data-votes="1"] .pl__total::after {
+  content: " vote";
+}
+
+.pl[data-votes="1"] .pl__suml::after {
+  content: "vote";
+}
+
+.pl__qbar,
+.pl__panel {
+  position: relative;
+}
+
+.pl__fill {
+  position: absolute;
+  inset: 0;
+  transform-origin: left center;
+}
+
+.pl__qbar > .pl__fill {
+  background: var(--plate);
+}
+
+.pl__panel > .pl__fill {
+  border-radius: 0 0 var(--radius) var(--radius);
+  background: var(--secondary);
+}
+
+.pl__q {
+  position: relative;
+  padding: calc(18 * var(--u)) calc(28 * var(--u)) calc(20 * var(--u));
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+  color: var(--text);
+  font-family: var(--font-heading);
+  font-size: calc(38 * var(--u));
+  font-weight: 800;
+  line-height: 1.12;
+}
+
+.pl__opts {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  row-gap: calc(18 * var(--u));
+  padding: calc(24 * var(--u)) calc(28 * var(--u)) calc(28 * var(--u));
+  color: var(--plate);
+}
+
+.pl__opt {
+  position: relative;
+}
+
+.pl__row {
+  display: flex;
+  align-items: baseline;
+  column-gap: calc(14 * var(--u));
+  margin-bottom: calc(9 * var(--u));
+  white-space: nowrap;
+}
+
+.pl__label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--font-body);
+  font-size: calc(24 * var(--u));
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.pl__votes {
+  color: color-mix(in srgb, var(--plate) 60%, transparent);
+  font-family: var(--font-body);
+  font-size: calc(17 * var(--u));
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+}
+
+.pl__pct {
+  min-width: 3.4ch;
+  text-align: right;
+  font-family: var(--font-heading);
+  font-size: calc(30 * var(--u));
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.pl__pct::after {
+  content: "%";
+  margin-left: 0.06em;
+  font-size: 0.65em;
+}
+
+/* The bar: a track, the share as a bound scaleX (it glides when the share changes), and the accent
+   fill that grows in on take. */
+.pl__track {
+  position: relative;
+  height: calc(12 * var(--u));
+  background: color-mix(in srgb, var(--plate) 14%, transparent);
+}
+
+.pl__bar {
+  --p: 0;
+  position: absolute;
+  inset: 0;
+  transform: scaleX(clamp(0, var(--p) / 100, 1));
+  transform-origin: left center;
+  transition: transform 700ms var(--ease);
+}
+
+.pl__grow {
+  position: absolute;
+  inset: 0;
+  background: var(--accent);
+  transform-origin: left center;
+}
+
+.pl__label:empty,
+.pl__label[data-empty],
+.pl__votes:empty,
+.pl__votes[data-empty],
+.pl__total:empty,
+.pl__total[data-empty],
+.pl__qbar:has(> .pl__q:empty),
+.pl__qbar:has(> .pl__q[data-empty]),
+.pl__panel:has(> .pl__opts[data-empty]) {
+  display: none;
+}
+
+/* Closed: an accent rule at the winner's left edge, heavier label; the other options dim. */
+.pl[data-poll="closed"] .pl__opt[data-winner]::before {
+  content: "";
+  position: absolute;
+  left: calc(-28 * var(--u));
+  top: calc(-6 * var(--u));
+  bottom: calc(-6 * var(--u));
+  width: calc(7 * var(--u));
+  background: var(--accent);
+}
+
+.pl[data-poll="closed"] .pl__opt[data-winner] .pl__label {
+  font-weight: 800;
+}
+
+.pl[data-poll="closed"] .pl__opt:not([data-winner]) {
+  opacity: 0.45;
+  transition: opacity 400ms var(--ease);
+}
+
+/* In: the tags drop, question bar and panel wipe in, then each option with its bar growing. */
+.pl[data-state="in"] .pl__state,
+.pl[data-state="in"] .pl__total {
+  animation: pl-drop calc(340ms * var(--speed)) var(--ease) both;
+}
+
+.pl[data-state="in"] .pl__qbar > .pl__fill {
+  animation: pl-wipe calc(420ms * var(--speed)) var(--wipe) calc(100ms * var(--speed)) both;
+}
+
+.pl[data-state="in"] .pl__panel > .pl__fill {
+  animation: pl-wipe calc(420ms * var(--speed)) var(--wipe) calc(180ms * var(--speed)) both;
+}
+
+.pl[data-state="in"] .pl__q {
+  animation: pl-slide calc(380ms * var(--speed)) var(--ease) calc(300ms * var(--speed)) both;
+}
+
+.pl[data-state="in"] .pl__row {
+  animation: pl-slide calc(360ms * var(--speed)) var(--ease) calc((380ms + min(var(--i), 8) * 70ms) * var(--speed)) both;
+}
+
+.pl[data-state="in"] .pl__grow {
+  animation: pl-wipe calc(620ms * var(--speed)) var(--ease) calc((440ms + min(var(--i), 8) * 70ms) * var(--speed)) both;
+}
+
+.pl__opt[data-row="out"] {
+  animation: pl-fade-out calc(200ms * var(--speed)) var(--ease-in) forwards;
+}
+
+.pl[data-state="out"] {
+  animation: pl-out calc(360ms * var(--speed)) var(--ease-in) forwards;
+}
+
+.pl[data-state="out"] .pl__head,
+.pl[data-state="out"] .pl__q,
+.pl[data-state="out"] .pl__opts {
+  animation: pl-fade-out calc(140ms * var(--speed)) var(--ease-in) forwards;
+}
+
+.pl[data-state="out"] .pl__fill {
+  transform-origin: right center;
+  animation: pl-wipe-out calc(240ms * var(--speed)) var(--wipe) calc(80ms * var(--speed)) forwards;
+}
+
+@keyframes pl-drop {
+  from {
+    opacity: 0;
+    transform: translateY(-100%);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes pl-wipe {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: none;
+  }
+}
+
+@keyframes pl-wipe-out {
+  to {
+    transform: scaleX(0);
+  }
+}
+
+@keyframes pl-slide {
+  from {
+    opacity: 0;
+    transform: translateX(calc(-20 * var(--u)));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes pl-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes pl-out {
+  0%,
+  55% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* The voting tile beside the poll: the QR (black on white) with VOTE AT and the short link while
+   voting; full or closed, the total takes its place. No QR: one column. */
+.pl__cols {
+  display: flex;
+  align-items: flex-start;
+  column-gap: calc(28 * var(--u));
+}
+
+.pl__main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.pl__side {
+  --qr: calc(176 * var(--u));
+  position: relative;
+  flex: none;
+  width: var(--qr);
+  height: calc(var(--qr) + 50 * var(--u));
+}
+
+.pl__cols:has(.pl__qr[data-empty]) .pl__side {
+  display: none;
+}
+
+.pl__vote,
+.pl__sum {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  transition-property: opacity, transform;
+  transition-duration: calc(360ms * var(--speed));
+  transition-timing-function: var(--ease);
+}
+
+.pl__qr {
+  display: block;
+  width: var(--qr);
+  height: var(--qr);
+  border-radius: var(--radius);
+  background: #fff;
+  image-rendering: pixelated;
+}
+
+.pl__at,
+.pl__suml {
+  margin-top: calc(10 * var(--u));
+  color: var(--secondary);
+  font-family: var(--font-body);
+  font-size: calc(13 * var(--u));
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.pl__url {
+  margin-top: calc(2 * var(--u));
+  white-space: nowrap;
+  font-family: var(--font-body);
+  font-size: calc(16 * var(--u));
+  font-weight: 600;
+}
+
+.pl__sum {
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transform: scale(0.96);
+}
+
+.pl__sumn {
+  font-family: var(--font-heading);
+  font-size: calc(54 * var(--u));
+  font-weight: 600;
+  line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+}
+
+.pl:is([data-poll="closed"], [data-poll="full"]) .pl__vote {
+  opacity: 0;
+  transform: scale(0.96);
+}
+
+.pl:is([data-poll="closed"], [data-poll="full"]) .pl__sum {
+  opacity: 1;
+  transform: none;
+}
+
+/* Voting over: the total moves to the tile. */
+.pl:is([data-poll="closed"], [data-poll="full"]) :has(.pl__qr:not([data-empty])) .pl__total {
+  visibility: hidden;
+}
+
+.pl[data-state="in"] .pl__side {
+  animation: pl-slide calc(380ms * var(--speed)) var(--ease) calc(340ms * var(--speed)) both;
+}
+
+.pl[data-state="out"] .pl__side {
+  animation: pl-fade-out calc(150ms * var(--speed)) var(--ease-in) forwards;
+}
+
+/* Any other status reads as a live poll. */
+.pl__state::after {
+  content: "Live poll";
+}
+
+.pl[data-poll="draft"] .pl__state::after {
+  content: "Starting soon";
+}
+
+.pl[data-poll="full"] .pl__state::after {
+  content: "Voting closed";
+}
+
+.pl[data-poll="closed"] .pl__state::after {
+  content: "Results";
+}
+
+/* Rounded when given, else exact. */
+.pl__pct--raw,
+.pl__pct--round[data-empty] {
+  display: none;
+}
+
+.pl__pct--round[data-empty] + .pl__pct--raw {
+  display: inline;
+}
+
+/* The tile sits on the dark panel, like the options. */
+.pl__side {
+  --qr: calc(156 * var(--u));
+  padding: calc(16 * var(--u));
+  border-radius: var(--radius);
+  background: var(--secondary);
+  color: var(--plate);
+}
+
+.pl__vote,
+.pl__sum {
+  inset: calc(16 * var(--u));
+}
+
+.pl__at,
+.pl__suml {
+  color: color-mix(in srgb, var(--plate) 70%, transparent);
+}

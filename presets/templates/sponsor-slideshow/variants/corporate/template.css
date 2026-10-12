@@ -1,0 +1,388 @@
+/* Sponsor slideshow, Corporate style: a rounded corner card: the label in capitals on an accent
+   header block, the logo (on the dark --secondary stage with the logo background on) (no logo: the name in large type), a light
+   caption plate with name, tagline and an accent progress line. One grid cell for all slides;
+   data-current="true" marks the showing one (none: the first). --u is 1px at 1080p; a smaller
+   layer box scales the card. Plates wipe open with scaleX; in/out durations × --speed. */
+
+:host {
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --wipe: cubic-bezier(0.65, 0, 0.15, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+}
+
+.ss {
+  position: absolute;
+  inset: 0;
+  container-type: size;
+}
+
+/* Safe area: four corner cells named after the --position values. */
+.ss__stage {
+  --u: 1px;
+  position: absolute;
+  inset: 8cqh 6cqw;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  grid-template-rows: auto 1fr auto;
+  grid-template-areas:
+    "top-left . top-right"
+    ". . ."
+    "bottom-left . bottom-right";
+}
+
+@supports (width: 1cqmin) {
+  .ss__stage {
+    --u: max(100cqmin / 1080, 100cqw / 1920);
+  }
+}
+
+@container (orientation: portrait) {
+  .ss__stage {
+    inset: 8cqh 5cqw 17cqh;
+  }
+}
+
+/* A layer box smaller than a frame: the card fills the box. */
+@container (max-width: 999px) and (max-height: 999px) {
+  .ss__stage {
+    --u: min(100cqw / 520, 100cqh / 400);
+    inset: calc(14 * var(--u));
+  }
+}
+
+.ss__card {
+  --cap: calc(112 * var(--u));
+  --stage: calc(176 * var(--u));
+  grid-area: var(--position);
+  display: flex;
+  flex-direction: column;
+  width: calc(460 * var(--u));
+  overflow: hidden;
+  border-radius: var(--radius);
+  line-height: normal;
+  -webkit-font-smoothing: antialiased;
+}
+
+.ss__brand {
+  min-height: calc(8 * var(--u));
+  box-sizing: border-box;
+  padding: 0 calc(26 * var(--u));
+  background: var(--accent);
+}
+
+.ss__label {
+  display: block;
+  padding: calc(12 * var(--u)) 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--plate);
+  font-family: var(--font-body);
+  font-size: calc(17 * var(--u));
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.ss__label:empty,
+.ss__label[data-empty] {
+  display: none;
+}
+
+/* The body: the stage (card colour; dark with the logo background on) over the light caption
+   plate (at least --cap tall, under the stage); both wipe open. */
+.ss__body {
+  position: relative;
+  isolation: isolate;
+}
+
+.ss__body::before,
+.ss__body::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  background: var(--plate);
+  transform-origin: left center;
+}
+
+.ss__body::after {
+  top: var(--stage);
+}
+
+/* One grid cell for all slides: the card is as tall as the tallest. */
+.ss__slides {
+  display: grid;
+}
+
+.ss__slide {
+  /* Seconds shown: data-duration (below), else --interval. */
+  --dur: var(--interval);
+  grid-area: 1 / 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  opacity: 0;
+  transform: translateX(calc(-12 * var(--u)));
+}
+
+.ss__slide[data-current="true"] {
+  opacity: 1;
+  transform: none;
+}
+
+/* No current slide (a preview): the first shows. */
+.ss__slides:not(:has(> [data-current="true"])) > .ss__slide:first-child {
+  opacity: 1;
+  transform: none;
+}
+
+.ss__media {
+  display: grid;
+  grid-template: 100% / 100%;
+  place-items: center;
+  height: var(--stage);
+  box-sizing: border-box;
+  padding: calc(30 * var(--u)) calc(44 * var(--u));
+  color: var(--text);
+}
+
+.ss__logo {
+  grid-area: 1 / 1;
+  display: block;
+  width: auto;
+  height: 100%;
+  max-width: 100%;
+  object-fit: contain;
+}
+
+/* No logo: the name in large type; with one, the caption repeats the name. */
+.ss__big {
+  grid-area: 1 / 1;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+  text-align: center;
+  font-family: var(--font-heading);
+  font-size: calc(50 * var(--u));
+  font-weight: 600;
+  line-height: 1.05;
+}
+
+.ss__logo:not([src=""]):not([data-empty]) + .ss__big,
+.ss__slide:has(.ss__logo[data-empty]) .ss__name,
+.ss__slide:has(.ss__logo[src=""]) .ss__name,
+.ss__logo[src=""],
+.ss__logo[data-empty] {
+  display: none;
+}
+
+.ss__caption {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: var(--cap);
+  box-sizing: border-box;
+  padding: calc(14 * var(--u)) calc(26 * var(--u)) calc(20 * var(--u));
+  color: var(--text);
+}
+
+.ss__name {
+  font-family: var(--font-heading);
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+  font-size: calc(26 * var(--u));
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.ss__tagline {
+  margin-top: calc(2 * var(--u));
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+  font-family: var(--font-body);
+  font-size: calc(20 * var(--u));
+  font-weight: 400;
+  line-height: 1.3;
+  opacity: 0.72;
+}
+
+.ss__name:empty,
+.ss__name[data-empty],
+.ss__tagline:empty,
+.ss__tagline[data-empty] {
+  display: none;
+}
+
+/* Progress: a line in the accent filled over the slide's duration. */
+.ss__bar {
+  display: var(--progress);
+  position: relative;
+  height: max(2px, calc(4 * var(--u)));
+  margin-top: calc(12 * var(--u));
+  overflow: hidden;
+  border-radius: calc(2 * var(--u));
+}
+
+.ss__bar::before,
+.ss__bar::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--accent);
+}
+
+.ss__bar::before {
+  opacity: 0.18;
+}
+
+.ss__bar::after {
+  transform: scaleX(0);
+  transform-origin: left center;
+}
+
+.ss[data-state="in"] .ss__slide[data-current="true"] .ss__bar::after {
+  animation: ss-progress var(--dur) linear both;
+}
+
+/* In: the header block slides in, the stage and caption wipe open, then label and slide. */
+.ss[data-state="in"] .ss__brand {
+  animation: ss-slide calc(420ms * var(--speed)) var(--ease) both;
+}
+
+.ss[data-state="in"] .ss__body::before {
+  animation: ss-wipe calc(480ms * var(--speed)) var(--wipe) calc(100ms * var(--speed)) both;
+}
+
+.ss[data-state="in"] .ss__body::after {
+  animation: ss-wipe calc(480ms * var(--speed)) var(--wipe) calc(180ms * var(--speed)) both;
+}
+
+.ss[data-state="in"] .ss__label {
+  animation: ss-text calc(400ms * var(--speed)) var(--ease) calc(200ms * var(--speed)) both;
+}
+
+.ss[data-state="in"] .ss__slides {
+  animation: ss-text calc(440ms * var(--speed)) var(--ease) calc(360ms * var(--speed)) both;
+}
+
+/* Out: content, plate wipes, header; the root animation ends the layer. */
+.ss[data-state="out"] {
+  animation: ss-out calc(380ms * var(--speed)) var(--ease-in) forwards;
+}
+
+.ss[data-state="out"] .ss__label,
+.ss[data-state="out"] .ss__slides {
+  animation: ss-fade-out calc(140ms * var(--speed)) var(--ease-in) forwards;
+}
+
+.ss[data-state="out"] .ss__body::before,
+.ss[data-state="out"] .ss__body::after {
+  animation: ss-unwipe calc(240ms * var(--speed)) var(--ease-in) calc(70ms * var(--speed)) forwards;
+}
+
+.ss[data-state="out"] .ss__brand {
+  animation: ss-slide-out calc(200ms * var(--speed)) var(--ease-in) calc(150ms * var(--speed)) forwards;
+}
+
+@keyframes ss-slide { from { transform: translateX(-101%); } }
+
+@keyframes ss-slide-out { to { transform: translateX(-101%); } }
+
+@keyframes ss-wipe { from { transform: scaleX(0); } }
+
+@keyframes ss-unwipe { to { transform: scaleX(0); } }
+
+@keyframes ss-text { from { opacity: 0; transform: translateX(calc(-12 * var(--u))); } }
+
+@keyframes ss-progress { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+
+@keyframes ss-fade-out { to { opacity: 0; } }
+
+@keyframes ss-out { 0%, 60% { opacity: 1; } 100% { opacity: 0; } }
+
+/* Logo background (--logo-bg): off (the default), the logo sits on the light card as it is,
+   transparency kept; on, the dark --secondary stage behind it (and the name in large type in the
+   card colour). */
+@container style(--logo-bg: on) {
+  .ss__body::before {
+    background: var(--secondary);
+  }
+
+  .ss__media {
+    color: var(--plate);
+  }
+}
+
+/* Slide change: --motion over --motion-ms. */
+.ss__slide{--t:var(--motion-ms);--half:calc(var(--t) / 2);--te:cubic-bezier(0.2, 0, 0, 1);transition:opacity var(--half) var(--ease-in),transform var(--t) var(--te)}
+.ss__slide[data-current="true"]{transition:opacity var(--half) var(--te) var(--half),transform var(--t) var(--te)}
+@container not style(--motion: fade){.ss__slide,.ss__slide[data-current="true"]{transition:opacity var(--t) var(--te),transform var(--t) var(--te)}}
+@container style(--motion: slide){.ss__slides{overflow:clip}.ss__slide{transform:translateX(-100%)}.ss__slide[data-current="true"] ~ .ss__slide{transform:translateX(100%)}}
+@container style(--motion: zoom){.ss__slide{transform:scale(1.15)}.ss__slide[data-current="true"] ~ .ss__slide{transform:scale(0.85)}}
+
+/* Per-slide durations sent by the source (whole seconds). */
+.ss__slide[data-duration="1"]{--dur:1s}
+.ss__slide[data-duration="2"]{--dur:2s}
+.ss__slide[data-duration="3"]{--dur:3s}
+.ss__slide[data-duration="4"]{--dur:4s}
+.ss__slide[data-duration="5"]{--dur:5s}
+.ss__slide[data-duration="6"]{--dur:6s}
+.ss__slide[data-duration="7"]{--dur:7s}
+.ss__slide[data-duration="8"]{--dur:8s}
+.ss__slide[data-duration="9"]{--dur:9s}
+.ss__slide[data-duration="10"]{--dur:10s}
+.ss__slide[data-duration="11"]{--dur:11s}
+.ss__slide[data-duration="12"]{--dur:12s}
+.ss__slide[data-duration="13"]{--dur:13s}
+.ss__slide[data-duration="14"]{--dur:14s}
+.ss__slide[data-duration="15"]{--dur:15s}
+.ss__slide[data-duration="16"]{--dur:16s}
+.ss__slide[data-duration="17"]{--dur:17s}
+.ss__slide[data-duration="18"]{--dur:18s}
+.ss__slide[data-duration="19"]{--dur:19s}
+.ss__slide[data-duration="20"]{--dur:20s}
+.ss__slide[data-duration="21"]{--dur:21s}
+.ss__slide[data-duration="22"]{--dur:22s}
+.ss__slide[data-duration="23"]{--dur:23s}
+.ss__slide[data-duration="24"]{--dur:24s}
+.ss__slide[data-duration="25"]{--dur:25s}
+.ss__slide[data-duration="26"]{--dur:26s}
+.ss__slide[data-duration="27"]{--dur:27s}
+.ss__slide[data-duration="28"]{--dur:28s}
+.ss__slide[data-duration="29"]{--dur:29s}
+.ss__slide[data-duration="30"]{--dur:30s}
+.ss__slide[data-duration="31"]{--dur:31s}
+.ss__slide[data-duration="32"]{--dur:32s}
+.ss__slide[data-duration="33"]{--dur:33s}
+.ss__slide[data-duration="34"]{--dur:34s}
+.ss__slide[data-duration="35"]{--dur:35s}
+.ss__slide[data-duration="36"]{--dur:36s}
+.ss__slide[data-duration="37"]{--dur:37s}
+.ss__slide[data-duration="38"]{--dur:38s}
+.ss__slide[data-duration="39"]{--dur:39s}
+.ss__slide[data-duration="40"]{--dur:40s}
+.ss__slide[data-duration="41"]{--dur:41s}
+.ss__slide[data-duration="42"]{--dur:42s}
+.ss__slide[data-duration="43"]{--dur:43s}
+.ss__slide[data-duration="44"]{--dur:44s}
+.ss__slide[data-duration="45"]{--dur:45s}
+.ss__slide[data-duration="46"]{--dur:46s}
+.ss__slide[data-duration="47"]{--dur:47s}
+.ss__slide[data-duration="48"]{--dur:48s}
+.ss__slide[data-duration="49"]{--dur:49s}
+.ss__slide[data-duration="50"]{--dur:50s}
+.ss__slide[data-duration="51"]{--dur:51s}
+.ss__slide[data-duration="52"]{--dur:52s}
+.ss__slide[data-duration="53"]{--dur:53s}
+.ss__slide[data-duration="54"]{--dur:54s}
+.ss__slide[data-duration="55"]{--dur:55s}
+.ss__slide[data-duration="56"]{--dur:56s}
+.ss__slide[data-duration="57"]{--dur:57s}
+.ss__slide[data-duration="58"]{--dur:58s}
+.ss__slide[data-duration="59"]{--dur:59s}
+.ss__slide[data-duration="60"]{--dur:60s}
+.ss__slide[data-duration="75"]{--dur:75s}
+.ss__slide[data-duration="90"]{--dur:90s}
+.ss__slide[data-duration="120"]{--dur:120s}

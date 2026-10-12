@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "id": "reusable-lower-third",
+  "name": "Reusable lower third",
+  "description": "Other flows run it with a text: it writes the text into the field and takes the layer for 8 s.",
+  "category": "blocks",
+  "slots": [
+    {"key":"name","label":"Name field","kind":"field","prefer":{"template":"classic-bar"}}
+  ],
+  "flows": [
+    {
+      "armed": "cue",
+      "nodes": [
+        {"id":"run","position":{"x":0,"y":0},"type":"trigger.runByFlow","config":{}},
+        {"id":"set","position":{"x":260,"y":0},"type":"action.setFields","config":{"screenId":"{{name.screenId}}","layerId":"{{name.layerId}}","fields":{"{{name.key}}":""}}},
+        {"id":"take","position":{"x":520,"y":0},"type":"action.take","config":{"screenId":"{{name.screenId}}","layerId":"{{name.layerId}}","forMs":8000}}
+      ],
+      "edges": [
+        {"id":"e1","from":{"node":"run","port":"fired"},"to":{"node":"set","port":"in"},"kind":"event"},
+        {"id":"e2","from":{"node":"set","port":"done"},"to":{"node":"take","port":"in"},"kind":"event"},
+        {"id":"d1","from":{"node":"run","port":"value"},"to":{"node":"set","port":"{{name.key}}"},"kind":"data"}
+      ]
+    }
+  ]
+}

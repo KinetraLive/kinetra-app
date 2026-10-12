@@ -1,0 +1,488 @@
+/* Poll, Pill style: a white rounded card: a head line (the state as an accent capsule:
+   LIVE POLL, STARTING SOON, VOTING CLOSED or RESULTS from `status`, and the total votes), the question, then one capsule per
+   option: its share fills the capsule from the left (a tint of the accent), with the label,
+   votes and percentage on top. A bar's length comes from its row's `pct` (0-100) through a
+   bound --p; a changed share glides to its new length. When closed, the winner (row mark
+   _winner) gets an accent ring and its percentage on an accent capsule; the others dim.
+   Sizing: --u, 1px at 1080p; a smaller layer box scales the card to fill it.
+   Motion: the card pops in (scale), the head and question follow, then each option capsule
+   expands and fills in turn. data-state on the root (.pl); rows get --i and data-row.
+   Transform and opacity only; durations × --speed. Capsule ends: --radius × 40.
+   Variables: --accent, --secondary, --text, --plate, --font-heading, --font-body,
+   --radius (px), --speed. */
+
+:host {
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --pop: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --snap: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+}
+
+.pl {
+  --cap: calc(var(--radius) * 40);
+  position: absolute;
+  inset: 0;
+  container-type: size;
+}
+
+.pl__safe {
+  --u: 1px;
+  position: absolute;
+  inset: 8cqh 6cqw;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+@supports (width: 1cqmin) {
+  .pl__safe {
+    --u: max(100cqmin / 1080, 100cqw / 1920);
+  }
+}
+
+@container (orientation: portrait) {
+  .pl__safe {
+    inset: 10cqh 5cqw 17cqh;
+    align-items: flex-end;
+    justify-content: center;
+  }
+}
+
+@container ((max-width: 999px) and (max-height: 999px)) or (min-aspect-ratio: 2/1) {
+  .pl__safe {
+    --u: min(100cqw / 760, (100cqh - 6px) / 444);
+    inset: 0;
+    justify-content: center;
+  }
+}
+
+.pl__box {
+  position: relative;
+  flex: 0 1 calc(760 * var(--u));
+  min-width: 0;
+  box-sizing: border-box;
+  padding: calc(34 * var(--u)) calc(36 * var(--u)) calc(36 * var(--u));
+  color: var(--text);
+  line-height: normal;
+  -webkit-font-smoothing: antialiased;
+}
+
+.pl__plate {
+  position: absolute;
+  inset: 0;
+  border-radius: min(var(--cap), calc(44 * var(--u)));
+  background: var(--plate);
+  box-shadow:
+    0 0 0 1px rgb(20 16 40 / 0.07),
+    0 calc(12 * var(--u)) calc(40 * var(--u)) rgb(20 16 40 / 0.24);
+}
+
+.pl__head {
+  position: relative;
+  display: flex;
+  align-items: center;
+  column-gap: calc(14 * var(--u));
+  margin-bottom: calc(16 * var(--u));
+  white-space: nowrap;
+  font-family: var(--font-heading);
+  font-size: calc(18 * var(--u));
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.pl__state {
+  padding: calc(8 * var(--u)) calc(18 * var(--u));
+  border-radius: var(--cap);
+  background: var(--accent);
+  color: var(--plate);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.pl:is([data-poll="closed"], [data-poll="full"]) .pl__state {
+  background: var(--text);
+}
+
+.pl__total {
+  color: var(--secondary);
+  font-family: var(--font-body);
+  font-size: calc(20 * var(--u));
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
+.pl__total::after {
+  content: " votes";
+}
+
+.pl__suml::after {
+  content: "votes";
+}
+
+.pl[data-votes="1"] .pl__total::after {
+  content: " vote";
+}
+
+.pl[data-votes="1"] .pl__suml::after {
+  content: "vote";
+}
+
+.pl__q {
+  position: relative;
+  margin: 0 calc(6 * var(--u)) calc(24 * var(--u));
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+  font-family: var(--font-heading);
+  font-size: calc(40 * var(--u));
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+}
+
+.pl__opts {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  row-gap: calc(12 * var(--u));
+}
+
+/* An option: a capsule track, its share as a tinted fill, the text on top. */
+.pl__opt {
+  position: relative;
+  border-radius: var(--cap);
+  transform-origin: left center;
+}
+
+.pl__track {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: var(--cap);
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+}
+
+.pl__bar {
+  --p: 0;
+  position: absolute;
+  inset: 0;
+  transform: scaleX(clamp(0, var(--p) / 100, 1));
+  transform-origin: left center;
+  transition: transform 700ms var(--ease);
+}
+
+.pl__fill {
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--accent) 30%, var(--plate));
+  transform-origin: left center;
+}
+
+.pl__row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  column-gap: calc(14 * var(--u));
+  min-height: calc(60 * var(--u));
+  padding: 0 calc(8 * var(--u)) 0 calc(26 * var(--u));
+  white-space: nowrap;
+}
+
+.pl__label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--font-body);
+  font-size: calc(26 * var(--u));
+  font-weight: 500;
+  line-height: 1.25;
+}
+
+.pl__votes {
+  color: var(--secondary);
+  font-family: var(--font-body);
+  font-size: calc(19 * var(--u));
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
+.pl__pct {
+  min-width: 3.6ch;
+  padding: calc(6 * var(--u)) calc(14 * var(--u));
+  text-align: center;
+  border-radius: var(--cap);
+  background: var(--plate);
+  font-family: var(--font-heading);
+  font-size: calc(24 * var(--u));
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.pl__pct::after {
+  content: "%";
+  margin-left: 0.04em;
+  color: var(--secondary);
+  font-weight: 400;
+}
+
+.pl__label:empty,
+.pl__label[data-empty],
+.pl__votes:empty,
+.pl__votes[data-empty],
+.pl__total:empty,
+.pl__total[data-empty],
+.pl__q:empty,
+.pl__q[data-empty] {
+  display: none;
+}
+
+/* Closed: an accent ring on the winner, its percentage on an accent capsule; the rest dim. */
+.pl[data-poll="closed"] .pl__opt[data-winner] {
+  box-shadow: 0 0 0 calc(3 * var(--u)) var(--accent);
+}
+
+.pl[data-poll="closed"] .pl__opt[data-winner] .pl__label {
+  font-weight: 600;
+}
+
+.pl[data-poll="closed"] .pl__opt[data-winner] .pl__pct,
+.pl[data-poll="closed"] .pl__opt[data-winner] .pl__pct::after {
+  background: var(--accent);
+  color: var(--plate);
+}
+
+.pl[data-poll="closed"] .pl__opt:not([data-winner]) {
+  opacity: 0.55;
+  transition: opacity 400ms var(--ease);
+}
+
+.pl[data-state="in"] .pl__plate {
+  animation: pl-pop calc(480ms * var(--speed)) var(--snap) both;
+}
+
+.pl[data-state="in"] .pl__state {
+  animation: pl-pop calc(420ms * var(--speed)) var(--pop) calc(140ms * var(--speed)) both;
+}
+
+.pl[data-state="in"] .pl__total,
+.pl[data-state="in"] .pl__q {
+  animation: pl-rise calc(380ms * var(--speed)) var(--ease) calc(200ms * var(--speed)) both;
+}
+
+.pl[data-state="in"] .pl__opt {
+  animation: pl-expand calc(460ms * var(--speed)) var(--snap) calc((280ms + min(var(--i), 8) * 80ms) * var(--speed)) both;
+}
+
+.pl[data-state="in"] .pl__fill {
+  animation: pl-grow calc(700ms * var(--speed)) var(--ease) calc((420ms + min(var(--i), 8) * 80ms) * var(--speed)) both;
+}
+
+.pl__opt[data-row="out"],
+.pl[data-state="in"] .pl__opt[data-row="out"] {
+  animation: pl-fade-out calc(200ms * var(--speed)) var(--ease-in) forwards;
+}
+
+.pl[data-state="out"] {
+  animation: pl-out calc(340ms * var(--speed)) var(--ease-in) forwards;
+}
+
+.pl[data-state="out"] .pl__box > :not(.pl__plate) {
+  animation: pl-fade-out calc(140ms * var(--speed)) var(--ease-in) forwards;
+}
+
+.pl[data-state="out"] .pl__plate {
+  animation: pl-shrink calc(260ms * var(--speed)) var(--ease-in) calc(60ms * var(--speed)) forwards;
+}
+
+@keyframes pl-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes pl-expand {
+  from {
+    opacity: 0;
+    transform: scaleX(0.1);
+  }
+  20% {
+    opacity: 1;
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes pl-grow {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: none;
+  }
+}
+
+@keyframes pl-rise {
+  from {
+    opacity: 0;
+    transform: translateY(calc(12 * var(--u)));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes pl-shrink {
+  to {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+}
+
+@keyframes pl-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes pl-out {
+  0%,
+  50% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* The voting tile beside the poll: the QR (black on white) with VOTE AT and the short link while
+   voting; full or closed, the total takes its place. No QR: one column. */
+.pl__cols {
+  display: flex;
+  align-items: flex-start;
+  column-gap: calc(28 * var(--u));
+}
+
+.pl__main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.pl__side {
+  --qr: calc(176 * var(--u));
+  position: relative;
+  flex: none;
+  width: var(--qr);
+  height: calc(var(--qr) + 50 * var(--u));
+}
+
+.pl__cols:has(.pl__qr[data-empty]) .pl__side {
+  display: none;
+}
+
+.pl__vote,
+.pl__sum {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  transition-property: opacity, transform;
+  transition-duration: calc(360ms * var(--speed));
+  transition-timing-function: var(--ease);
+}
+
+.pl__qr {
+  display: block;
+  width: var(--qr);
+  height: var(--qr);
+  border-radius: var(--radius);
+  background: #fff;
+  image-rendering: pixelated;
+}
+
+.pl__at,
+.pl__suml {
+  margin-top: calc(10 * var(--u));
+  color: var(--secondary);
+  font-family: var(--font-body);
+  font-size: calc(13 * var(--u));
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.pl__url {
+  margin-top: calc(2 * var(--u));
+  white-space: nowrap;
+  font-family: var(--font-body);
+  font-size: calc(16 * var(--u));
+  font-weight: 600;
+}
+
+.pl__sum {
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transform: scale(0.96);
+}
+
+.pl__sumn {
+  font-family: var(--font-heading);
+  font-size: calc(54 * var(--u));
+  font-weight: 600;
+  line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+}
+
+.pl:is([data-poll="closed"], [data-poll="full"]) .pl__vote {
+  opacity: 0;
+  transform: scale(0.96);
+}
+
+.pl:is([data-poll="closed"], [data-poll="full"]) .pl__sum {
+  opacity: 1;
+  transform: none;
+}
+
+/* Voting over: the total moves to the tile. */
+.pl:is([data-poll="closed"], [data-poll="full"]) :has(.pl__qr:not([data-empty])) .pl__total {
+  visibility: hidden;
+}
+
+.pl[data-state="in"] .pl__side {
+  animation: pl-rise calc(380ms * var(--speed)) var(--ease) calc(300ms * var(--speed)) both;
+}
+
+/* Any other status reads as a live poll. */
+.pl__state::after {
+  content: "Live poll";
+}
+
+.pl[data-poll="draft"] .pl__state::after {
+  content: "Starting soon";
+}
+
+.pl[data-poll="full"] .pl__state::after {
+  content: "Voting closed";
+}
+
+.pl[data-poll="closed"] .pl__state::after {
+  content: "Results";
+}
+
+/* Rounded when given, else exact. */
+.pl__pct--raw,
+.pl__pct--round[data-empty] {
+  display: none;
+}
+
+.pl__pct--round[data-empty] + .pl__pct--raw {
+  display: inline;
+}

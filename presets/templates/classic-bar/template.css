@@ -1,0 +1,164 @@
+/* Classic bar: name and title on a solid bar with an accent stripe.
+   The renderer sets data-state="in" | "out" on the root (.cbar). Only transform and opacity animate.
+   Variables arrive as custom properties on the host: --accent, --panel, --text, --font,
+   --scale (unitless), --radius (px), --align (left | center | right). */
+
+:host {
+  /* One scaled pixel. Sizes are multiples of it, so --scale resizes the graphic while its
+     position stays anchored to the safe area. */
+  --u: calc(1px * var(--scale));
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+}
+
+/* The root fills the layer box and is its size container; .cbar__safe holds the layout. */
+.cbar {
+  position: absolute;
+  inset: 0;
+  container-type: size;
+}
+
+/* Safe area: 8% of 1920 left/right, 8% of 1080 from the bottom. text-align places the bar. */
+.cbar__safe {
+  position: absolute;
+  left: 154px;
+  right: 154px;
+  bottom: 86px;
+  text-align: var(--align);
+  line-height: 0;
+}
+
+/* A layer box smaller than a frame (or a wide bar): the graphic scales to fill it. */
+@container ((max-width: 999px) and (max-height: 999px)) or (min-aspect-ratio: 2/1) {
+  .cbar__safe {
+    /* The graphic fills the box: its extent at 1080p with the sample (name and title on the bar). */
+    --u: calc(min(100cqw / 528, 100cqh / 140) * var(--scale));
+    left: 0;
+    right: 0;
+    bottom: 0;
+  }
+}
+
+.cbar__box {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  row-gap: calc(4 * var(--u));
+  vertical-align: bottom;
+  box-sizing: border-box;
+  min-width: calc(420 * var(--u));
+  max-width: min(100%, calc(1280 * var(--u)));
+  padding: calc(20 * var(--u)) calc(44 * var(--u)) calc(22 * var(--u)) calc(50 * var(--u));
+  font-family: var(--font);
+  color: var(--text);
+  line-height: normal;
+  text-align: left;
+  -webkit-font-smoothing: antialiased;
+}
+
+.cbar__panel {
+  position: absolute;
+  inset: 0;
+  background: var(--panel);
+  border-radius: calc(var(--radius) * var(--scale));
+  transform-origin: left center;
+}
+
+.cbar__stripe {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: calc(10 * var(--u));
+  background: var(--accent);
+  border-radius: calc(var(--radius) * var(--scale)) 0 0 calc(var(--radius) * var(--scale));
+  transform-origin: center bottom;
+}
+
+.cbar__name,
+.cbar__title {
+  position: relative; /* paint above the absolutely positioned panel */
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  /* overflow: hidden clips at the line box, which is shorter than descenders (g, j, p, y) and
+     accented capitals (Å, Ø, É). Pad the clip box and cancel it with a negative margin. */
+  padding-block: 0.2em;
+  margin-block: -0.2em;
+}
+
+.cbar__name {
+  font-size: calc(52 * var(--u));
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.005em;
+}
+
+.cbar__title {
+  font-size: calc(28 * var(--u));
+  font-weight: 400;
+  line-height: 1.2;
+  letter-spacing: 0.02em;
+  opacity: 0.8;
+}
+
+/* An empty line takes no room (the binding leaves a single empty text node). */
+.cbar__name:empty,
+.cbar__title:empty {
+  display: none;
+}
+
+/* In: the stripe grows, the bar wipes out from it, then name and title slide in. */
+.cbar[data-state="in"] .cbar__stripe {
+  animation: cbar-grow 300ms var(--ease) both;
+}
+
+.cbar[data-state="in"] .cbar__panel {
+  animation: cbar-wipe 460ms var(--ease) 60ms both;
+}
+
+.cbar[data-state="in"] .cbar__name {
+  animation: cbar-text-in 420ms var(--ease) 200ms both;
+}
+
+.cbar[data-state="in"] .cbar__title {
+  animation: cbar-text-in 420ms var(--ease) 280ms both;
+}
+
+/* Out: one animation on the root, so its animationend marks the end of the layer. */
+.cbar[data-state="out"] {
+  animation: cbar-out 320ms var(--ease-in) forwards;
+}
+
+@keyframes cbar-grow {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+
+@keyframes cbar-wipe {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+/* No `to` frame: the text ends at its own opacity (the title is dimmed). */
+@keyframes cbar-text-in {
+  from {
+    opacity: 0;
+    transform: translateX(-24px);
+  }
+}
+
+@keyframes cbar-out {
+  to {
+    opacity: 0;
+    transform: translateX(-32px);
+  }
+}

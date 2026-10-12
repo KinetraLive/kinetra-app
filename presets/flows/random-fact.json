@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "id": "random-fact",
+  "name": "Random fact card",
+  "description": "Shows one of the first three facts at random for 10 s, never the same twice in a row.",
+  "category": "show",
+  "slots": [
+    {"key":"facts","label":"Fact list source","kind":"textSource"},
+    {"key":"card","label":"Fact card layer","kind":"layer","prefer":{"template":"news-strap"}}
+  ],
+  "flows": [
+    {
+      "armed": "cue",
+      "nodes": [
+        {"id":"cue","position":{"x":0,"y":0},"type":"trigger.cue","config":{"label":"Random fact"}},
+        {"id":"random","position":{"x":260,"y":0},"type":"logic.random","config":{"count":3,"noRepeat":true}},
+        {"id":"step0","position":{"x":520,"y":0},"type":"action.stepSource","config":{"sourceId":"{{facts}}","step":{"to":"index","index":0}}},
+        {"id":"step1","position":{"x":520,"y":160},"type":"action.stepSource","config":{"sourceId":"{{facts}}","step":{"to":"index","index":1}}},
+        {"id":"step2","position":{"x":520,"y":320},"type":"action.stepSource","config":{"sourceId":"{{facts}}","step":{"to":"index","index":2}}},
+        {"id":"take","position":{"x":780,"y":0},"type":"action.take","config":{"screenId":"{{card.screenId}}","layerId":"{{card.layerId}}","forMs":10000}}
+      ],
+      "edges": [
+        {"id":"e1","from":{"node":"cue","port":"fired"},"to":{"node":"random","port":"in"},"kind":"event"},
+        {"id":"e2","from":{"node":"random","port":"r0"},"to":{"node":"step0","port":"in"},"kind":"event"},
+        {"id":"e3","from":{"node":"random","port":"r1"},"to":{"node":"step1","port":"in"},"kind":"event"},
+        {"id":"e4","from":{"node":"random","port":"r2"},"to":{"node":"step2","port":"in"},"kind":"event"},
+        {"id":"e5","from":{"node":"step0","port":"done"},"to":{"node":"take","port":"in"},"kind":"event"},
+        {"id":"e6","from":{"node":"step1","port":"done"},"to":{"node":"take","port":"in"},"kind":"event"},
+        {"id":"e7","from":{"node":"step2","port":"done"},"to":{"node":"take","port":"in"},"kind":"event"}
+      ]
+    }
+  ]
+}

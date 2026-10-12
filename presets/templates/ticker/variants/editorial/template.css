@@ -1,0 +1,197 @@
+/* Ticker, Editorial style: a full-width dark strap; at its left the label as a kicker (tracked
+   small caps in the accent) closed by a hairline, then the items in a serif, scrolling right to
+   left, separated by fine vertical rules.
+   Sizing: one unit --u, 1px at 1080p; a strap-shaped layer box (≤ 300px tall) is filled.
+   Motion: the plate settles, the kicker comes first, then the items fade in and scroll.
+   Transform and opacity only.
+   Variables: --accent (label), --plate, --text (items), --font-heading (items), --font-body
+   (label), --radius (px), --speed (seconds per loop; this template's own meaning).
+
+   The loop: the track holds two identical runs of the items, each at least as wide as the window
+   (a container, so a run's min-width is 100cqw of it). The track moves left by -50%, exactly one
+   run, then starts over: the jump is invisible. CSS only, and only while the layer is on air. */
+
+:host {
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+}
+
+.tk {
+  position: absolute;
+  inset: 0;
+  container-type: size;
+}
+
+.tk__safe {
+  --u: 1px;
+  position: absolute;
+  left: 6cqw;
+  right: 6cqw;
+  bottom: 7cqh;
+}
+
+@supports (width: 1cqmin) {
+  .tk__safe {
+    --u: max(100cqmin / 1080, 100cqw / 1920);
+  }
+}
+
+@container (orientation: portrait) {
+  .tk__safe {
+    left: 0;
+    right: 0;
+    bottom: 14cqh;
+  }
+}
+
+@container (max-height: 300px) {
+  .tk__safe {
+    --u: min((100cqh - 2px) / 72, max(100cqw / 1920, min(100cqw / 800, 1px)));
+    left: 0;
+    right: 0;
+    top: 50%;
+    bottom: auto;
+    transform: translateY(-50%);
+  }
+}
+
+.tk__strap {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  height: calc(72 * var(--u));
+  line-height: normal;
+  -webkit-font-smoothing: antialiased;
+}
+
+.tk__plate {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius);
+  background: var(--plate);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 7%, transparent);
+}
+
+@container (orientation: portrait) {
+  .tk__plate {
+    border-radius: 0;
+  }
+}
+
+.tk__label {
+  position: relative;
+  flex: none;
+  display: flex;
+  align-items: center;
+  max-width: calc(420 * var(--u));
+  margin: calc(18 * var(--u)) 0;
+  padding: 0 calc(28 * var(--u)) 0 calc(30 * var(--u));
+  border-right: 1px solid color-mix(in srgb, var(--text) 26%, transparent);
+}
+
+.tk__ltext {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--accent);
+  font-family: var(--font-body);
+  font-size: calc(20 * var(--u));
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+}
+
+.tk__label:has(> .tk__ltext:empty),
+.tk__label:has(> .tk__ltext[data-empty]) {
+  display: none;
+}
+
+.tk__window {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  margin: 0 calc(8 * var(--u));
+  overflow: hidden;
+  container-type: inline-size;
+  color: var(--text);
+  font-family: var(--font-heading);
+  font-size: calc(30 * var(--u));
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 1em, #000 calc(100% - 1em), transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 1em, #000 calc(100% - 1em), transparent);
+}
+
+.tk__track {
+  display: flex;
+  flex: none;
+  width: max-content;
+}
+
+.tk__run {
+  display: flex;
+  flex: none;
+  min-width: 1612px;
+  min-width: 100cqw;
+}
+
+.tk__item {
+  flex: none;
+  display: flex;
+  align-items: center;
+  column-gap: 0.9em;
+  padding: 0 0.9em 0 0;
+  font-weight: 400;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.tk__item::before {
+  content: "";
+  flex: none;
+  width: 1px;
+  height: 0.8em;
+  background: color-mix(in srgb, var(--text) 35%, transparent);
+}
+
+/* In: the plate, the kicker, then the items fade in and start to scroll. */
+.tk[data-state="in"] .tk__plate {
+  animation: tk-plate 380ms var(--ease) both;
+}
+
+.tk[data-state="in"] .tk__label {
+  animation: tk-rise 420ms var(--ease) 140ms both;
+}
+
+.tk[data-state="in"] .tk__window {
+  animation: tk-fade 480ms var(--ease) 280ms both;
+}
+
+.tk[data-state="in"] .tk__track {
+  animation: tk-scroll var(--speed) linear 280ms infinite;
+}
+
+/* Out: the items go at once (no jump back), then the root, whose end is the layer's end. */
+.tk[data-state="out"] .tk__window {
+  opacity: 0;
+}
+
+.tk[data-state="out"] .tk__label {
+  animation: tk-fade-out 140ms var(--ease-in) forwards;
+}
+
+.tk[data-state="out"] {
+  animation: tk-out 300ms var(--ease-in) forwards;
+}
+
+@keyframes tk-plate { from { opacity: 0; transform: translateY(calc(10 * var(--u))); } to { opacity: 1; transform: none; } }
+
+@keyframes tk-rise { from { opacity: 0; transform: translateY(calc(10 * var(--u))); } to { opacity: 1; transform: none; } }
+
+@keyframes tk-fade { from { opacity: 0; } to { opacity: 1; } }
+
+@keyframes tk-fade-out { to { opacity: 0; } }
+
+@keyframes tk-scroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+
+@keyframes tk-out { 0%, 35% { opacity: 1; } 100% { opacity: 0; } }

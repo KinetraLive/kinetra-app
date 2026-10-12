@@ -1,0 +1,383 @@
+/* Lower third, News style: an accent tag (the label) on top, a white name bar in heavy Archivo
+   800, a navy title bar in caps under it, an optional photo at the left and the logo in a
+   navy box at the right under an accent rule (the News clock box; this type has no clock field).
+   Missing parts collapse (data-empty, or an empty src / text).
+   Sizing: one unit --u, 1px at 1080p; a smaller layer box scales the strap to fill it.
+   Motion: the tag drops in, the bars wipe in from the left, the text follows, the logo box last.
+   Only transform and opacity animate; every duration is multiplied by --speed.
+   Variables: --accent (tag, rule), --secondary (title bar, logo box), --text (name), --plate (name
+   bar; text on accent and navy), --font-heading, --font-body, --radius (px), --speed,
+   --photo-shape (0 square, 50 round). */
+
+:host {
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --wipe: cubic-bezier(0.7, 0, 0.2, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+}
+
+.lt {
+  position: absolute;
+  inset: 0;
+  container-type: size;
+}
+
+.lt__safe {
+  --u: 1px;
+  position: absolute;
+  left: 6cqw;
+  right: 6cqw;
+  bottom: 9cqh;
+  display: flex;
+}
+
+@supports (width: 1cqmin) {
+  .lt__safe {
+    --u: max(100cqmin / 1080, 100cqw / 1920);
+  }
+}
+
+@container (orientation: portrait) {
+  .lt__safe {
+    left: 5cqw;
+    right: 5cqw;
+    bottom: 17cqh;
+  }
+}
+
+@container ((max-width: 999px) and (max-height: 999px)) or (min-aspect-ratio: 2/1) {
+  .lt__safe {
+    /* The graphic's frame: the largest box of the design's aspect (4.8:1) in the layer box, at
+       its bottom left; the look scales to fill it by its own extent at 1080p. */
+    --fw: min(100cqw, 480cqh);
+    --fh: min(100cqh, 100cqw / 4.8);
+    --u: min(var(--fw) / 986, var(--fh) / 176);
+    left: 0;
+    right: auto;
+    bottom: 0;
+    width: var(--fw);
+    height: var(--fh);
+  }
+}
+
+.lt__box {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  max-width: 100%;
+  min-width: 0;
+  line-height: normal;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* The tag: clipped by its row, so it drops in from the row's top edge. */
+.lt__tags {
+  display: flex;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.lt__tag {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  padding: calc(7 * var(--u)) calc(16 * var(--u)) calc(6 * var(--u));
+  border-radius: var(--radius) var(--radius) 0 0;
+  background: var(--accent);
+  color: var(--plate);
+  font-family: var(--font-body);
+  font-size: calc(22 * var(--u));
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.lt__row {
+  display: flex;
+  align-items: stretch;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.lt__photo {
+  flex: none;
+  align-self: stretch;
+  width: calc(150 * var(--u));
+  height: auto;
+  /* As tall as the bars: the image adds no height of its own. */
+  contain: size;
+  object-fit: cover;
+  background: var(--secondary);
+}
+
+@container style(--photo-shape: 50) {
+  .lt__photo {
+    align-self: center;
+    width: calc(126 * var(--u));
+    height: calc(126 * var(--u));
+    contain: none;
+    margin-right: calc(14 * var(--u));
+    border-radius: 50%;
+    box-shadow: 0 0 0 calc(4 * var(--u)) var(--accent);
+  }
+}
+
+.lt__bars {
+  display: flex;
+  flex-direction: column;
+  min-width: calc(460 * var(--u));
+  max-width: calc(1240 * var(--u));
+}
+
+.lt__bar {
+  position: relative;
+  box-sizing: border-box;
+}
+
+.lt__bg {
+  position: absolute;
+  inset: 0;
+  transform-origin: left center;
+}
+
+.lt__bar--name .lt__bg {
+  background: var(--plate);
+}
+
+.lt__bar--title .lt__bg {
+  background: var(--secondary);
+}
+
+.lt__name,
+.lt__title {
+  position: relative;
+  overflow-wrap: anywhere;
+}
+
+.lt__name {
+  padding: calc(12 * var(--u)) calc(34 * var(--u)) calc(14 * var(--u));
+  color: var(--text);
+  font-family: var(--font-heading);
+  font-size: calc(60 * var(--u));
+  font-weight: 800;
+  line-height: 1.08;
+  letter-spacing: -0.01em;
+}
+
+.lt__title {
+  padding: calc(10 * var(--u)) calc(34 * var(--u)) calc(11 * var(--u));
+  color: var(--plate);
+  font-family: var(--font-body);
+  font-size: calc(26 * var(--u));
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* The logo box: navy, an accent rule along its top. */
+.lt__side {
+  position: relative;
+  flex: none;
+  display: flex;
+  align-items: center;
+  padding: 0 calc(30 * var(--u));
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+
+.lt__side > .lt__bg {
+  background: color-mix(in srgb, var(--secondary) 88%, #000);
+  border-radius: inherit;
+}
+
+.lt__rule {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: calc(6 * var(--u));
+  background: var(--accent);
+  transform-origin: left center;
+}
+
+.lt__logo {
+  position: relative;
+  display: block;
+  width: auto;
+  max-width: calc(200 * var(--u));
+  height: calc(54 * var(--u));
+  object-fit: contain;
+}
+
+@container (orientation: portrait) {
+  .lt__photo {
+    width: calc(124 * var(--u));
+  }
+  .lt__bars {
+    min-width: 0;
+  }
+  .lt__logo {
+    max-width: calc(120 * var(--u));
+    height: calc(44 * var(--u));
+  }
+  .lt__side {
+    padding: 0 calc(22 * var(--u));
+  }
+}
+
+.lt__tag:empty,
+.lt__tag[data-empty],
+.lt__name:empty,
+.lt__name[data-empty],
+.lt__photo[src=""],
+.lt__photo[data-empty],
+.lt__tags:has(> .lt__tag:empty),
+.lt__tags:has(> .lt__tag[data-empty]),
+.lt__bar--title:has(> .lt__title:empty),
+.lt__bar--title:has(> .lt__title[data-empty]),
+.lt__side:has(> .lt__logo[src=""]),
+.lt__side:has(> .lt__logo[data-empty]) {
+  display: none;
+}
+
+/* In: the tag drops, the name bar then the title bar wipe in, their text follows, the logo box
+   last. */
+.lt[data-state="in"] .lt__tag {
+  animation: lt-drop calc(340ms * var(--speed)) var(--ease) both;
+}
+
+.lt[data-state="in"] .lt__photo {
+  animation: lt-fade calc(300ms * var(--speed)) var(--ease) calc(140ms * var(--speed)) both;
+}
+
+.lt[data-state="in"] .lt__bar--name .lt__bg {
+  animation: lt-wipe calc(420ms * var(--speed)) var(--wipe) calc(120ms * var(--speed)) both;
+}
+
+.lt[data-state="in"] .lt__bar--title .lt__bg {
+  animation: lt-wipe calc(420ms * var(--speed)) var(--wipe) calc(200ms * var(--speed)) both;
+}
+
+.lt[data-state="in"] .lt__name {
+  animation: lt-slide calc(380ms * var(--speed)) var(--ease) calc(300ms * var(--speed)) both;
+}
+
+.lt[data-state="in"] .lt__title {
+  animation: lt-slide calc(380ms * var(--speed)) var(--ease) calc(370ms * var(--speed)) both;
+}
+
+.lt[data-state="in"] .lt__side > .lt__bg {
+  animation: lt-wipe calc(320ms * var(--speed)) var(--wipe) calc(440ms * var(--speed)) both;
+}
+
+.lt[data-state="in"] .lt__rule {
+  animation: lt-wipe calc(320ms * var(--speed)) var(--wipe) calc(540ms * var(--speed)) both;
+}
+
+.lt[data-state="in"] .lt__logo {
+  animation: lt-fade calc(300ms * var(--speed)) var(--ease) calc(600ms * var(--speed)) both;
+}
+
+/* Out: the text goes, the bars wipe away to the right; the root animation ends the layer. */
+.lt[data-state="out"] {
+  animation: lt-out calc(360ms * var(--speed)) var(--ease-in) forwards;
+}
+
+.lt[data-state="out"] .lt__name,
+.lt[data-state="out"] .lt__title,
+.lt[data-state="out"] .lt__logo,
+.lt[data-state="out"] .lt__tag,
+.lt[data-state="out"] .lt__photo {
+  animation: lt-fade-out calc(140ms * var(--speed)) var(--ease-in) forwards;
+}
+
+.lt[data-state="out"] .lt__bg,
+.lt[data-state="out"] .lt__rule {
+  transform-origin: right center;
+  animation: lt-wipe-out calc(240ms * var(--speed)) var(--wipe) calc(80ms * var(--speed)) forwards;
+}
+
+@keyframes lt-drop {
+  from {
+    opacity: 0;
+    transform: translateY(-100%);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes lt-wipe {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: none;
+  }
+}
+
+@keyframes lt-wipe-out {
+  to {
+    transform: scaleX(0);
+  }
+}
+
+@keyframes lt-slide {
+  from {
+    opacity: 0;
+    transform: translateX(calc(-24 * var(--u)));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes lt-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes lt-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes lt-out {
+  0%,
+  55% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* A layer box smaller than a frame, part 2: the strap fills the frame: the bars take the width, the name bar the height (the name centred in it). */
+@container ((max-width: 999px) and (max-height: 999px)) or (min-aspect-ratio: 2/1) {
+  .lt__box {
+    flex: 1 1 auto;
+  }
+
+  .lt__row {
+    flex: 1 1 auto;
+    align-self: stretch;
+  }
+
+  .lt__bars {
+    flex: 1 1 auto;
+  }
+
+  .lt__bar--name {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+}

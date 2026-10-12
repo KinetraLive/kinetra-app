@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "id": "event-schedule",
+  "name": "Event schedule",
+  "description": "A run of show with a board, Now & Next and a countdown.",
+  "panel": "schedule",
+  "version": 1,
+  "source": { "kind": "schedule", "name": "Schedule", "sample": "around-now" },
+  "screen": { "name": "Event", "width": 1920, "height": 1080 },
+  "layers": [
+    {
+      "name": "Schedule board",
+      "preset": "schedule-board",
+      "rect": { "x": 0, "y": 0, "w": 1920, "h": 1080 },
+      "fields": { "title": "Schedule" },
+      "vars": {},
+      "bindings": {
+        "items": { "sourceId": "$source", "column": "" },
+        "day": { "sourceId": "$source", "column": "day", "row": "next" }
+      }
+    },
+    {
+      "name": "Now & Next",
+      "preset": "now-next",
+      "rect": { "x": 0, "y": 0, "w": 1920, "h": 1080 },
+      "fields": {},
+      "vars": {},
+      "bindings": {
+        "now_label": { "sourceId": "$source", "column": "label", "row": "now" },
+        "now_title": { "sourceId": "$source", "column": "title", "row": "now" },
+        "now_location": { "sourceId": "$source", "column": "location", "row": "now" },
+        "now_end": { "sourceId": "$source", "column": "end", "row": "now" },
+        "next_label": { "sourceId": "$source", "column": "label", "row": "next" },
+        "next_status": { "sourceId": "$source", "column": "status", "row": "next" },
+        "next_title": { "sourceId": "$source", "column": "title", "row": "next" },
+        "next_location": { "sourceId": "$source", "column": "location", "row": "next" },
+        "next_start": { "sourceId": "$source", "column": "start", "row": "next" },
+        "next_new_start": { "sourceId": "$source", "column": "new_start", "row": "next" },
+        "next_countdown": { "sourceId": "$source", "column": "countdown", "row": "next" }
+      }
+    },
+    {
+      "name": "Next up countdown",
+      "preset": "next-up",
+      "rect": { "x": 0, "y": 0, "w": 1920, "h": 1080 },
+      "fields": {},
+      "vars": {},
+      "bindings": {
+        "label": { "sourceId": "$source", "column": "label", "row": "next" },
+        "status": { "sourceId": "$source", "column": "status", "row": "next" },
+        "title": { "sourceId": "$source", "column": "title", "row": "next" },
+        "subtitle": { "sourceId": "$source", "column": "subtitle", "row": "next" },
+        "location": { "sourceId": "$source", "column": "location", "row": "next" },
+        "countdown": { "sourceId": "$source", "column": "countdown", "row": "next" }
+      }
+    }
+  ],
+  "rules": [
+    {
+      "name": "When an item starts, take Now & Next for 10 s",
+      "enabled": false,
+      "when": { "on": "itemStatus", "sourceId": "$source", "status": "now" },
+      "then": [{ "do": "take", "screenId": "$screen", "layerId": "$layer:1", "forMs": 10000 }]
+    },
+    {
+      "name": "5 minutes before the next item, take Next up for 1 min",
+      "enabled": false,
+      "when": { "on": "beforeNext", "sourceId": "$source", "minutes": 5 },
+      "then": [{ "do": "take", "screenId": "$screen", "layerId": "$layer:2", "forMs": 60000 }]
+    }
+  ]
+}

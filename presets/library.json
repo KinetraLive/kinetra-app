@@ -1,0 +1,29 @@
+{
+  "styles": [
+    { "id": "minimal", "name": "Minimal", "description": "Quiet type on a hairline, no plates: the picture stays the star." },
+    { "id": "corporate", "name": "Corporate", "description": "Solid panels, a clean sans and a brand-color edge for conferences and town halls." },
+    { "id": "news", "name": "News", "description": "Bold straps, strong contrast and a hard accent, built for fast information." },
+    { "id": "elegant", "name": "Elegant", "description": "Serif headlines, generous spacing and soft fades for galas and culture." },
+    { "id": "swiss", "name": "Swiss", "description": "A strict grid, flush-left type and one strong field of color." },
+    { "id": "editorial", "name": "Editorial", "description": "Magazine hierarchy: large headlines, small-caps kickers and fine rules." },
+    { "id": "inline", "name": "Inline", "description": "Everything on one line: compact single-row straps with an auto-out bar." },
+    { "id": "frame", "name": "Frame", "description": "Kinetra's signature: viewfinder brackets, mono labels." },
+    { "id": "pill", "name": "Pill", "description": "Rounded capsules and friendly type for streams and community shows." }
+  ],
+  "presets": [
+    { "id": "lower-third", "kind": "lowerThird" },
+    { "id": "fullscreen-title", "kind": "title" },
+    { "id": "corner-bug", "kind": "bug" },
+    { "id": "ticker", "kind": "ticker" },
+    { "id": "now-next", "kind": "nowNext" },
+    { "id": "sponsor-slideshow", "kind": "slideshow" },
+    { "id": "countdown", "kind": "countdown" },
+    { "id": "poll", "kind": "poll" },
+    { "id": "scoreboard", "kind": "scoreboard" },
+    { "id": "sponsor-wall", "kind": "sponsorWall" },
+    { "id": "classic-bar", "legacy": true },
+    { "id": "minimal-line", "legacy": true },
+    { "id": "slide-in-accent", "legacy": true },
+    { "id": "news-strap", "legacy": true }
+  ]
+}

@@ -1,0 +1,3 @@
+{
+  "removed": ["columns", "tile_text", "panel", "font", "scale"]
+}

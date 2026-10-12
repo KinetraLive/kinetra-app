@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "name": "Minimal line",
+  "description": "Name and title split by a thin accent line.",
+  "preset": { "id": "minimal-line", "version": 4 },
+  "fields": [
+    { "key": "name", "label": "Name", "type": "text", "default": "" },
+    { "key": "title", "label": "Title", "type": "text", "default": "" }
+  ],
+  "variables": [
+    { "key": "accent", "label": "Line", "type": "color", "default": "#4cc9f0" },
+    { "key": "text", "label": "Text", "type": "color", "default": "#ffffff" },
+    { "key": "font", "label": "Font", "type": "font", "default": "IBM Plex Sans" },
+    { "key": "scale", "label": "Size", "type": "range", "min": 0.5, "max": 1.5, "step": 0.05, "unit": "", "default": "1" },
+    { "key": "weight", "label": "Line weight", "type": "range", "min": 1, "max": 8, "step": 1, "unit": "px", "default": "3" },
+    { "key": "shadow", "label": "Text shadow", "type": "range", "min": 0, "max": 1, "step": 0.05, "unit": "", "default": "0.4" },
+    {
+      "key": "align",
+      "label": "Position",
+      "type": "select",
+      "options": [
+        { "value": "left", "label": "Left" },
+        { "value": "center", "label": "Center" },
+        { "value": "right", "label": "Right" }
+      ],
+      "default": "left"
+    }
+  ],
+  "autoOutMs": null,
+  "design": { "w": 596, "h": 140, "x": 154, "y": 854, "sizing": "fit" },
+  "updatedAt": ""
+}

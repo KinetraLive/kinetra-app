@@ -1,0 +1,160 @@
+{
+  "schemaVersion": 2,
+  "name": "Ticker",
+  "description": "A bottom strap with items scrolling in a loop.",
+  "preset": { "id": "ticker", "version": 3 },
+  "fields": [
+    { "key": "label", "label": "Label", "type": "text", "default": "" },
+    {
+      "key": "items",
+      "label": "Items",
+      "type": "list",
+      "columns": [
+        { "key": "text", "label": "Text" }
+      ],
+      "default": "[]"
+    }
+  ],
+  "variables": [
+    { "key": "accent", "label": "Label box", "type": "color", "default": "#e63946" },
+    { "key": "ink", "label": "Label text", "type": "color", "default": "#ffffff" },
+    { "key": "panel", "label": "Strap", "type": "color", "default": "#0b0e13eb" },
+    { "key": "text", "label": "Item text", "type": "color", "default": "#ffffff" },
+    { "key": "font", "label": "Font", "type": "font", "default": "IBM Plex Sans Condensed" },
+    { "key": "scale", "label": "Size", "type": "range", "min": 0.5, "max": 1.5, "step": 0.05, "unit": "", "default": "1" },
+    { "key": "speed", "label": "Seconds per loop", "type": "range", "min": 5, "max": 180, "step": 1, "unit": "s", "default": "30" },
+    { "key": "radius", "label": "Corner radius", "type": "range", "min": 0, "max": 16, "step": 1, "unit": "px", "default": "0" },
+    { "key": "secondary", "label": "Secondary", "type": "color", "default": "#b3bac5" },
+    { "key": "plate", "label": "Plate", "type": "color", "default": "#0c0d11d9" },
+    { "key": "font-heading", "label": "Heading font", "type": "font", "default": "Space Grotesk" },
+    { "key": "font-body", "label": "Body font", "type": "font", "default": "IBM Plex Sans" }
+  ],
+  "autoOutMs": null,
+  "design": { "w": 1920, "h": 72, "x": 0, "y": 932, "sizing": "reflow" },
+  "defaultVariant": "classic",
+  "variants": [
+    {
+      "id": "classic",
+      "name": "Classic",
+      "vars": {}
+    },
+    {
+      "id": "minimal",
+      "name": "Minimal",
+      "vars": {
+        "accent": "#ff5a3c",
+        "secondary": "#e4e7ec",
+        "text": "#ffffff",
+        "plate": "#06080c",
+        "font-heading": "Manrope",
+        "font-body": "Manrope",
+        "radius": "2"
+      }
+    },
+    {
+      "id": "corporate",
+      "name": "Corporate",
+      "vars": {
+        "accent": "#2563eb",
+        "secondary": "#16202e",
+        "text": "#16202e",
+        "plate": "#ffffff",
+        "font-heading": "IBM Plex Sans",
+        "font-body": "IBM Plex Sans",
+        "radius": "8"
+      }
+    },
+    {
+      "id": "news",
+      "name": "News",
+      "vars": {
+        "accent": "#c8102e",
+        "secondary": "#16202e",
+        "text": "#0f1722",
+        "plate": "#ffffff",
+        "font-heading": "Archivo",
+        "font-body": "Archivo",
+        "radius": "0"
+      }
+    },
+    {
+      "id": "elegant",
+      "name": "Elegant",
+      "vars": {
+        "accent": "#d9bc7a",
+        "secondary": "#d6cdbb",
+        "text": "#f5f0e6",
+        "plate": "#0d0c0bc7",
+        "font-heading": "Playfair Display",
+        "font-body": "Jost",
+        "radius": "2"
+      }
+    },
+    {
+      "id": "swiss",
+      "name": "Swiss",
+      "vars": {
+        "accent": "#e2231a",
+        "secondary": "#6b6b6b",
+        "text": "#111111",
+        "plate": "#ffffff",
+        "font-heading": "Instrument Sans",
+        "font-body": "Instrument Sans",
+        "radius": "0"
+      }
+    },
+    {
+      "id": "editorial",
+      "name": "Editorial",
+      "vars": {
+        "accent": "#ff7a4d",
+        "secondary": "#a8a49b",
+        "text": "#f4f1ea",
+        "plate": "#111214",
+        "font-heading": "Source Serif 4",
+        "font-body": "Instrument Sans",
+        "radius": "0"
+      }
+    },
+    {
+      "id": "inline",
+      "name": "Inline",
+      "vars": {
+        "accent": "#2b59ff",
+        "secondary": "#5b6270",
+        "text": "#12141a",
+        "plate": "#ffffff",
+        "font-heading": "Plus Jakarta Sans",
+        "font-body": "Plus Jakarta Sans",
+        "radius": "8"
+      }
+    },
+    {
+      "id": "frame",
+      "name": "Frame",
+      "vars": {
+        "accent": "#33d6ff",
+        "secondary": "#b3bac5",
+        "text": "#f5f5f2",
+        "plate": "#0c0d11d9",
+        "font-heading": "Space Grotesk",
+        "font-body": "IBM Plex Sans",
+        "radius": "2"
+      }
+    },
+    {
+      "id": "pill",
+      "name": "Pill",
+      "vars": {
+        "accent": "#6c4cff",
+        "secondary": "#6b6880",
+        "text": "#1d1a2e",
+        "plate": "#ffffff",
+        "font-heading": "Outfit",
+        "font-body": "Outfit",
+        "radius": "16"
+      }
+    }
+  ],
+  "updatedAt": ""
+}

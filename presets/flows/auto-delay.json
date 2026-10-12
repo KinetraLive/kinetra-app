@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "auto-delay",
+  "name": "Auto-delay when a block overruns",
+  "description": "At 14:00, if an item is still running, delays the next item by 10 min.",
+  "category": "schedule",
+  "slots": [
+    {"key":"schedule","label":"Run of show","kind":"scheduleSource"}
+  ],
+  "flows": [
+    {
+      "armed": false,
+      "nodes": [
+        {"id":"time","position":{"x":0,"y":0},"type":"trigger.timeOfDay","config":{"at":"14:00"}},
+        {"id":"branch","position":{"x":260,"y":0},"type":"logic.branch","config":{}},
+        {"id":"delay","position":{"x":520,"y":0},"type":"action.schedule","config":{"sourceId":"{{schedule}}","item":{"pick":"next"},"op":{"op":"delay","minutes":10}}},
+        {"id":"now","position":{"x":0,"y":160},"type":"data.scheduleItem","config":{"sourceId":"{{schedule}}","which":"now"}}
+      ],
+      "edges": [
+        {"id":"e1","from":{"node":"time","port":"fired"},"to":{"node":"branch","port":"in"},"kind":"event"},
+        {"id":"e2","from":{"node":"branch","port":"then"},"to":{"node":"delay","port":"in"},"kind":"event"},
+        {"id":"d1","from":{"node":"now","port":"exists"},"to":{"node":"branch","port":"condition"},"kind":"data"}
+      ]
+    }
+  ]
+}

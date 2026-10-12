@@ -1,0 +1,49 @@
+# Stable: a tag vX.Y.Z on main → full tests, Kinetra builds, uploaded to
+# releases/stable/<version>/ and updates/latest.json. docs/RELEASING.md.
+name: Stable release
+
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-stable
+  cancel-in-progress: false
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        # Credentials kept (read-only token) for the git fetch below.
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with: { node-version: "24" }
+      - name: The tag is on main
+        run: |
+          git fetch --quiet origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::$GITHUB_REF_NAME is not on main"; exit 1
+          fi
+      - id: v
+        name: The tag equals the app version
+        env:
+          TAG: ${{ github.ref_name }}
+        run: node .github/scripts/release.mjs version --channel stable --tag "$TAG"
+
+  build:
+    needs: version
+    uses: ./.github/workflows/build.yml
+    with: { channel: stable, version: "${{ needs.version.outputs.version }}", suite: full }
+    secrets: inherit
+
+  publish:
+    needs: [version, build]
+    uses: ./.github/workflows/publish.yml
+    with: { channel: stable, version: "${{ needs.version.outputs.version }}", tag: "${{ github.ref_name }}" }
+    secrets: inherit

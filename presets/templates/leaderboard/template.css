@@ -1,0 +1,282 @@
+/* Leaderboard: a ranked standings panel, title on top, one row per list entry (at most 10).
+   The renderer sets data-state="in" | "out" on the root (.lb), and on each row --i (0-based
+   index) and data-row="in" | "out". Only transform and opacity animate.
+   Variables: --position (left | center | right), --accent / --ink (title bar and top-three
+   ranks), --panel, --text, --font, --scale (unitless), --radius (px). */
+
+:host {
+  /* One scaled pixel; --scale resizes the panel while it stays in its place. */
+  --u: calc(1px * var(--scale));
+  --r: calc(var(--radius) * var(--scale));
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+}
+
+/* The root fills the layer box and is its size container; .lb__safe holds the layout. */
+.lb {
+  position: absolute;
+  inset: 0;
+  container-type: size;
+}
+
+/* The stage inside the safe area (8%) has three columns named after the --position values; the
+   empty ones collapse, so the centre column spans the frame and centres its panel. */
+.lb__safe {
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+  padding: 86px 154px;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  grid-template-areas: "left center right";
+  align-items: center;
+  justify-items: center;
+}
+
+/* A layer box smaller than a frame (or a wide bar): the panel fills the box (see the end of the
+   layout rules) with a small inset, and the unit scales a five-row panel (720 × 390 at 1px, plus
+   the inset) to it. */
+@container ((max-width: 999px) and (max-height: 999px)) or (min-aspect-ratio: 2/1) {
+  .lb__safe {
+    --u: calc(min(100cqw / 760, 100cqh / 430) * var(--scale));
+    padding: calc(20 * var(--u));
+  }
+}
+
+.lb__box {
+  grid-area: var(--position);
+  box-sizing: border-box;
+  width: calc(720 * var(--u));
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: var(--r);
+  overflow: hidden; /* rounds the title bar and the last row */
+  background: var(--panel);
+  color: var(--text);
+  font-family: var(--font);
+  line-height: normal;
+  -webkit-font-smoothing: antialiased;
+}
+
+.lb__title {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  padding: calc(14 * var(--u)) calc(28 * var(--u)) calc(13 * var(--u));
+  background: var(--accent);
+  color: var(--ink);
+  font-size: calc(36 * var(--u));
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.lb__title:empty {
+  display: none;
+}
+
+.lb__rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.lb__row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  column-gap: calc(20 * var(--u));
+  height: calc(60 * var(--u));
+  padding: 0 calc(28 * var(--u)) 0 calc(20 * var(--u));
+}
+
+.lb__row:first-child {
+  margin-top: calc(8 * var(--u));
+}
+
+.lb__row:last-child {
+  margin-bottom: calc(8 * var(--u));
+}
+
+/* A hairline between rows, from the text colour at low opacity (no colour mixing needed). */
+.lb__row + .lb__row::before {
+  content: "";
+  position: absolute;
+  left: calc(20 * var(--u));
+  right: calc(28 * var(--u));
+  top: 0;
+  height: max(1px, calc(1 * var(--u)));
+  background: var(--text);
+  opacity: 0.12;
+}
+
+.lb__rank {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: calc(44 * var(--u));
+  height: calc(40 * var(--u));
+  border-radius: calc(var(--r) * 0.6);
+  font-size: calc(28 * var(--u));
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.7;
+}
+
+/* The top three ranks: filled accent badges. Rows are the list's only element children, and
+   leaving rows always sit after the current ones, so nth-child is the rank. */
+.lb__row:nth-child(-n + 3) .lb__rank {
+  background: var(--accent);
+  color: var(--ink);
+  opacity: 1;
+}
+
+.lb__who {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  column-gap: calc(14 * var(--u));
+}
+
+.lb__name,
+.lb__team {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  /* Room for descenders and accented capitals inside the clip; the margin cancels it. */
+  padding-block: 0.2em;
+  margin-block: -0.2em;
+}
+
+.lb__name {
+  flex: 0 1 auto;
+  font-size: calc(32 * var(--u));
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.lb__team {
+  flex: 0 10 auto; /* gives way before the name does */
+  font-size: calc(24 * var(--u));
+  font-weight: 400;
+  line-height: 1.2;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.65;
+}
+
+.lb__team:empty {
+  display: none;
+}
+
+.lb__score {
+  flex: none;
+  min-width: calc(64 * var(--u));
+  text-align: right;
+  font-size: calc(34 * var(--u));
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Box case: the panel spans the box whatever the position; the rows show as many as fit, cut at
+   a row boundary (a row that doesn't fit wraps into a second column, outside the clip). */
+@container ((max-width: 999px) and (max-height: 999px)) or (min-aspect-ratio: 2/1) {
+  .lb__box {
+    grid-column: 1 / -1;
+    justify-self: stretch;
+    align-self: stretch;
+    display: flex;
+    flex-direction: column;
+    width: auto;
+  }
+
+  .lb__title {
+    flex: none;
+  }
+
+  .lb__rows {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-flow: column wrap;
+    align-content: flex-start;
+    overflow: hidden;
+  }
+
+  .lb__row {
+    flex: none;
+    box-sizing: border-box;
+    width: 100%;
+  }
+}
+
+/* In: the panel drops in, the title follows, and the rows enter one after another. Rows added
+   later on air enter the same way; rows that update in place never re-animate. */
+.lb[data-state="in"] .lb__box {
+  animation: lb-in 420ms var(--ease) both;
+}
+
+.lb[data-state="in"] .lb__title {
+  animation: lb-fade 360ms var(--ease) 120ms both;
+}
+
+.lb[data-state="in"] .lb__row[data-row="in"] {
+  animation: lb-row-in 380ms var(--ease) both;
+  animation-delay: calc(180ms + var(--i) * 70ms);
+}
+
+.lb[data-state="in"] .lb__row[data-row="out"] {
+  animation: lb-row-out 260ms var(--ease-in) forwards;
+}
+
+/* Out: one animation on the root, so its animationend marks the end of the layer. */
+.lb[data-state="out"] {
+  animation: lb-out 320ms var(--ease-in) forwards;
+}
+
+@keyframes lb-in {
+  from {
+    opacity: 0;
+    transform: translateY(-16px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes lb-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes lb-row-in {
+  from {
+    opacity: 0;
+    transform: translateX(-24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes lb-row-out {
+  to {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+}
+
+@keyframes lb-out {
+  to {
+    opacity: 0;
+    transform: translateY(-16px);
+  }
+}

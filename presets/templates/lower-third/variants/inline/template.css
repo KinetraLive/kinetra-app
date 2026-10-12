@@ -1,0 +1,411 @@
+/* Lower third, Inline style: everything on one line on a white plate: an optional photo, the
+   label as an accent tag, the name (bold), a hairline divider and the title, an optional logo on
+   an ink chip, and a thin accent bar along the bottom. Vertical frames stack the title under the
+   name (same plate). Missing parts collapse (data-empty, or an empty src / text).
+   Sizing: one unit --u, 1px at 1080p; a smaller layer box scales the strap to fill it.
+   Motion: the plate expands from the left (scaleX), the text follows, the bar fills (scaleX over
+   --bar). The renderer sets data-state="in" | "out" on the root (.lt). Only transform and opacity
+   animate; every duration is multiplied by --speed.
+   Variables: --accent (tag, bar), --secondary (title), --text, --plate, --font-heading,
+   --font-body, --radius (px), --speed, --photo-shape (0 square, 50 round). */
+
+:host {
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --snap: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+}
+
+.lt {
+  --bar: var(--auto-out-ms, calc(1400ms * var(--speed)));
+  position: absolute;
+  inset: 0;
+  container-type: size;
+}
+
+.lt__safe {
+  --u: 1px;
+  position: absolute;
+  left: 6cqw;
+  right: 6cqw;
+  bottom: 9cqh;
+  display: flex;
+}
+
+@supports (width: 1cqmin) {
+  .lt__safe {
+    --u: max(100cqmin / 1080, 100cqw / 1920);
+  }
+}
+
+@container (orientation: portrait) {
+  .lt__safe {
+    left: 5cqw;
+    right: 5cqw;
+    bottom: 17cqh;
+  }
+}
+
+@container ((max-width: 999px) and (max-height: 999px)) or (min-aspect-ratio: 2/1) {
+  .lt__safe {
+    /* The graphic's frame: the largest box of the design's aspect (4.8:1) in the layer box, at
+       its bottom left; the look scales to fill it by its own extent at 1080p. */
+    --fw: min(100cqw, 480cqh);
+    --fh: min(100cqh, 100cqw / 4.8);
+    --u: min(var(--fw) / 700, var(--fh) / 124);
+    left: 0;
+    right: auto;
+    bottom: 0;
+    width: var(--fw);
+    height: var(--fh);
+  }
+}
+
+.lt__box {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+  min-height: calc(88 * var(--u));
+  color: var(--text);
+  line-height: normal;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* The plate: white, a hairline and a soft shadow so it reads on light pictures too; the bar is
+   its ::after, clipped by its corners. */
+.lt__plate {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: var(--radius);
+  background: var(--plate);
+  box-shadow:
+    0 0 0 1px rgb(12 14 20 / 0.08),
+    0 calc(10 * var(--u)) calc(34 * var(--u)) rgb(12 14 20 / 0.22);
+  transform-origin: left center;
+}
+
+.lt__plate::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: max(2px, calc(5 * var(--u)));
+  background: var(--accent);
+  transform-origin: left center;
+}
+
+.lt__photo {
+  position: relative;
+  flex: none;
+  align-self: stretch;
+  width: calc(84 * var(--u));
+  height: auto;
+  object-fit: cover;
+  border-radius: var(--radius) 0 0 var(--radius);
+}
+
+@container style(--photo-shape: 50) {
+  .lt__photo {
+    align-self: center;
+    width: calc(60 * var(--u));
+    height: calc(60 * var(--u));
+    margin-left: calc(14 * var(--u));
+    border-radius: 50%;
+  }
+}
+
+.lt__label {
+  position: relative;
+  flex: none;
+  max-width: calc(320 * var(--u));
+  margin-left: calc(18 * var(--u));
+  padding: calc(7 * var(--u)) calc(12 * var(--u));
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  border-radius: calc(var(--radius) / 2);
+  background: var(--accent);
+  color: var(--plate);
+  font-family: var(--font-heading);
+  font-size: calc(18 * var(--u));
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.lt__text {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  padding: calc(18 * var(--u)) calc(34 * var(--u)) calc(20 * var(--u)) calc(26 * var(--u));
+}
+
+.lt__name {
+  flex: 0 0 auto;
+  max-width: calc(640 * var(--u));
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-family: var(--font-heading);
+  font-size: calc(40 * var(--u));
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+}
+
+/* The divider: a hairline before the title. */
+.lt__title {
+  position: relative;
+  flex: 0 1 auto;
+  min-width: 0;
+  margin-left: calc(24 * var(--u));
+  padding-left: calc(25 * var(--u));
+  overflow-wrap: anywhere;
+  color: var(--secondary);
+  font-family: var(--font-body);
+  font-size: calc(30 * var(--u));
+  font-weight: 400;
+  line-height: 1.2;
+}
+
+.lt__title::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.2em;
+  bottom: 0.2em;
+  width: max(1px, calc(2 * var(--u)));
+  background: color-mix(in srgb, var(--text) 22%, transparent);
+}
+
+.lt__name:is(:empty, [data-empty]) + .lt__title {
+  margin-left: 0;
+  padding-left: 0;
+}
+
+.lt__name:is(:empty, [data-empty]) + .lt__title::before {
+  display: none;
+}
+
+/* Logo: on an ink chip at the right end (logos are usually made for dark backgrounds). */
+.lt__chip {
+  position: relative;
+  flex: none;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  margin: calc(10 * var(--u)) calc(10 * var(--u)) calc(15 * var(--u)) 0;
+  padding: 0 calc(20 * var(--u));
+  border-radius: calc(var(--radius) * 0.6);
+  background: var(--text);
+}
+
+.lt__logo {
+  display: block;
+  width: auto;
+  max-width: calc(180 * var(--u));
+  height: calc(40 * var(--u));
+  object-fit: contain;
+}
+
+/* Vertical frames: the title under the name. */
+@container (orientation: portrait) {
+  .lt__text {
+    flex-direction: column;
+    align-items: flex-start;
+    row-gap: calc(4 * var(--u));
+  }
+  .lt__name {
+    max-width: 100%;
+  }
+  .lt__title {
+    max-width: 100%;
+    margin-left: 0;
+    padding-left: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    font-size: calc(28 * var(--u));
+  }
+  .lt__title::before {
+    display: none;
+  }
+  .lt__logo {
+    max-width: calc(120 * var(--u));
+    height: calc(34 * var(--u));
+  }
+}
+
+.lt__label:empty,
+.lt__name:empty,
+.lt__title:empty,
+.lt__label[data-empty],
+.lt__name[data-empty],
+.lt__title[data-empty],
+.lt__photo[src=""],
+.lt__photo[data-empty],
+.lt__chip:has(> .lt__logo[src=""]),
+.lt__chip:has(> .lt__logo[data-empty]) {
+  display: none;
+}
+
+/* In: the plate expands from the left, the parts follow in reading order, the bar fills. */
+.lt[data-state="in"] .lt__plate {
+  animation: lt-expand calc(460ms * var(--speed)) var(--snap) both;
+}
+
+.lt[data-state="in"] .lt__plate::after {
+  animation: lt-bar var(--bar) cubic-bezier(0.3, 0, 0.2, 1) calc(380ms * var(--speed)) both;
+}
+
+/* With an auto-out (the renderer's --auto-out-ms) the bar is its countdown: full at the take, it
+   drains linearly to empty as the graphic leaves; it stays empty while it plays out. */
+@container style(--auto-out-ms) {
+  .lt[data-state="in"] .lt__plate::after {
+    animation: lt-drain var(--bar) linear both;
+  }
+
+  .lt[data-state="out"] .lt__plate::after {
+    transform: scaleX(0);
+  }
+}
+
+.lt[data-state="in"] .lt__photo,
+.lt[data-state="in"] .lt__label {
+  animation: lt-slide calc(340ms * var(--speed)) var(--ease) calc(120ms * var(--speed)) both;
+}
+
+.lt[data-state="in"] .lt__name {
+  animation: lt-slide calc(380ms * var(--speed)) var(--ease) calc(180ms * var(--speed)) both;
+}
+
+.lt[data-state="in"] .lt__title {
+  animation: lt-slide calc(380ms * var(--speed)) var(--ease) calc(250ms * var(--speed)) both;
+}
+
+.lt[data-state="in"] .lt__chip {
+  animation: lt-pop calc(340ms * var(--speed)) var(--ease) calc(320ms * var(--speed)) both;
+}
+
+/* Out: the content fades, the plate folds back to the left; the root animation ends the layer. */
+.lt[data-state="out"] {
+  animation: lt-out calc(340ms * var(--speed)) var(--ease-in) forwards;
+}
+
+.lt[data-state="out"] .lt__box > :not(.lt__plate) {
+  animation: lt-fade-out calc(140ms * var(--speed)) var(--ease-in) forwards;
+}
+
+.lt[data-state="out"] .lt__plate {
+  animation: lt-fold calc(280ms * var(--speed)) var(--ease-in) calc(60ms * var(--speed)) forwards;
+}
+
+@keyframes lt-expand {
+  from {
+    opacity: 0;
+    transform: scaleX(0.04);
+  }
+  20% {
+    opacity: 1;
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes lt-fold {
+  to {
+    opacity: 0;
+    transform: scaleX(0.04);
+  }
+}
+
+@keyframes lt-bar {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: none;
+  }
+}
+
+@keyframes lt-drain {
+  from {
+    transform: none;
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+
+@keyframes lt-slide {
+  from {
+    opacity: 0;
+    transform: translateX(calc(-16 * var(--u)));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes lt-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes lt-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes lt-out {
+  0%,
+  50% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* A layer box smaller than a frame, part 2: the title under the name (as in vertical frames), the plate fills the frame. */
+@container ((max-width: 999px) and (max-height: 999px)) or (min-aspect-ratio: 2/1) {
+  .lt__box {
+    flex: 1 1 auto;
+  }
+
+  .lt__text {
+    flex: 1 1 auto;
+    flex-direction: column;
+    align-items: flex-start;
+    row-gap: calc(4 * var(--u));
+  }
+
+  .lt__name {
+    max-width: 100%;
+  }
+
+  .lt__title {
+    max-width: 100%;
+    margin-left: 0;
+    padding-left: 0;
+    font-size: calc(28 * var(--u));
+  }
+
+  .lt__title::before {
+    display: none;
+  }
+}

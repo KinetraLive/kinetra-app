@@ -1,0 +1,307 @@
+/* Ticker, Minimal style: no plate. The strap sits on a hairline; at its left the label in small
+   accent capitals after a 3px accent bar, then the items scrolling right to left, each led by a
+   short accent bar. White type with a soft halo (blurred shadows and a feathered shade along the
+   strap, in the plate colour) so it reads on light pictures too.
+   Sizing: one unit --u, 1px at 1080p; a strap-shaped layer box (≤ 300px tall) is filled.
+   The renderer sets data-state="in" | "out" on the root (.tk). Only transform and opacity animate.
+   Variables: --accent (bars, label), --text (items, hairline), --plate (halo colour),
+   --font-heading (label), --font-body (items), --speed (seconds per loop; this template's own
+   meaning).
+
+   The loop: the track holds two identical runs of the items, each at least as wide as the window
+   (a container, so a run's min-width is 100cqw of it). The track moves left by -50%, exactly one
+   run, then starts over: the jump is invisible. CSS only, and only while the layer is on air. */
+
+:host {
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --halo: 0 0 0.04em color-mix(in srgb, var(--plate) 90%, transparent),
+    0 0 0.1em color-mix(in srgb, var(--plate) 75%, transparent),
+    0 0.02em 0.22em color-mix(in srgb, var(--plate) 55%, transparent);
+  --shade: drop-shadow(0 0 2px color-mix(in srgb, var(--plate) 70%, transparent))
+    drop-shadow(0 0 10px color-mix(in srgb, var(--plate) 40%, transparent));
+}
+
+.tk {
+  position: absolute;
+  inset: 0;
+  container-type: size;
+}
+
+/* Title safe, along the bottom; vertical frames sit higher, clear of platform UI. */
+.tk__safe {
+  --u: 1px;
+  position: absolute;
+  left: 6cqw;
+  right: 6cqw;
+  bottom: 7cqh;
+}
+
+@supports (width: 1cqmin) {
+  .tk__safe {
+    --u: max(100cqmin / 1080, 100cqw / 1920);
+  }
+}
+
+/* Vertical frames: larger type across the narrow frame. */
+@container (orientation: portrait) {
+  .tk__safe {
+    --u: calc(130cqw / 1080);
+    left: 5cqw;
+    right: 0;
+    bottom: 14cqh;
+  }
+}
+
+/* A strap-shaped layer box: the strap fills it. */
+@container (max-height: 300px) {
+  .tk__safe {
+    --u: min((100cqh - 2px) / 58, max(100cqw / 1540, min(100cqw / 800, 1px)));
+    left: calc(16 * var(--u));
+    right: 0;
+    top: 50%;
+    bottom: auto;
+    transform: translateY(-50%);
+  }
+
+  /* The strap ends at the label bar's foot (no empty band below it), so the box hugs it; the items
+     stay level with the label. */
+  .tk .tk__strap {
+    height: calc(58 * var(--u));
+  }
+
+  .tk .tk__label {
+    padding-bottom: 0;
+  }
+
+  .tk .tk__window {
+    padding-top: calc(14 * var(--u));
+  }
+}
+
+.tk__strap {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  align-items: center;
+  height: calc(72 * var(--u));
+  line-height: normal;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* The halo: a feathered shade along the strap. */
+.tk__strap::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: calc(10 * var(--u)) 0;
+  border-radius: calc(40 * var(--u));
+  background: color-mix(in srgb, var(--plate) 28%, transparent);
+  filter: blur(calc(26 * var(--u)));
+}
+
+/* The hairline the strap sits on, drawn from the left. */
+.tk__line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 1px;
+  background: color-mix(in srgb, var(--text) 45%, transparent);
+  filter: var(--shade);
+  transform-origin: left center;
+}
+
+.tk__label {
+  flex: none;
+  display: flex;
+  align-items: center;
+  align-self: stretch;
+  column-gap: calc(18 * var(--u));
+  max-width: calc(420 * var(--u));
+  padding: calc(14 * var(--u)) calc(26 * var(--u)) calc(14 * var(--u)) 0;
+}
+
+.tk__bar {
+  flex: none;
+  align-self: stretch;
+  width: max(2px, calc(3 * var(--u)));
+  background: var(--accent);
+  filter: var(--shade);
+  transform-origin: 50% 100%;
+}
+
+.tk__ltext {
+  overflow: clip;
+  overflow-clip-margin: 0.6em;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--accent);
+  font-family: var(--font-heading);
+  font-size: calc(22 * var(--u));
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  text-shadow: var(--halo);
+}
+
+/* Without a label the block goes. */
+.tk__label:has(> .tk__ltext:empty),
+.tk__label:has(> .tk__ltext[data-empty]) {
+  display: none;
+}
+
+/* The visible part of the track; inside it sizes are in em (the window is a container). */
+.tk__window {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  container-type: inline-size;
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: calc(30 * var(--u));
+  /* Items fade at both edges instead of being cut. */
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 1em, #000 calc(100% - 1.5em), transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 1em, #000 calc(100% - 1.5em), transparent);
+}
+
+.tk__track {
+  display: flex;
+  flex: none;
+  width: max-content;
+}
+
+.tk__run {
+  display: flex;
+  flex: none;
+  /* At least the window's width, so short lists never show a gap. */
+  min-width: 1612px;
+  min-width: 100cqw;
+}
+
+.tk__item {
+  flex: none;
+  display: flex;
+  align-items: center;
+  column-gap: 0.75em;
+  padding: 0 0.75em;
+  font-weight: 500;
+  line-height: 1.5;
+  white-space: nowrap;
+  text-shadow: var(--halo);
+}
+
+.tk__item::before {
+  content: "";
+  flex: none;
+  width: max(2px, 0.1em);
+  height: 0.8em;
+  background: var(--accent);
+}
+
+/* In: the hairline draws, the label bar grows, then the label and the items fade in and scroll. */
+.tk[data-state="in"] .tk__line {
+  animation: tk-draw 480ms var(--ease) both;
+}
+
+.tk[data-state="in"] .tk__strap::before {
+  animation: tk-fade 420ms var(--ease) both;
+}
+
+.tk[data-state="in"] .tk__bar {
+  animation: tk-grow 320ms var(--ease) 60ms both;
+}
+
+.tk[data-state="in"] .tk__ltext {
+  animation: tk-rise 420ms var(--ease) 180ms both;
+}
+
+.tk[data-state="in"] .tk__window {
+  animation: tk-rise 440ms var(--ease) 260ms both;
+}
+
+.tk[data-state="in"] .tk__track {
+  animation: tk-scroll var(--speed) linear 260ms infinite;
+}
+
+/* Out: the scroll stops, so the items are hidden at once rather than seen jumping back; then one
+   animation on the root, whose end is the layer's end. */
+.tk[data-state="out"] .tk__window {
+  opacity: 0;
+}
+
+.tk[data-state="out"] .tk__bar {
+  transform-origin: 50% 0;
+  animation: tk-shrink 200ms var(--ease-in) forwards;
+}
+
+.tk[data-state="out"] {
+  animation: tk-out 300ms var(--ease-in) forwards;
+}
+
+@keyframes tk-draw {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: none;
+  }
+}
+
+@keyframes tk-grow {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: none;
+  }
+}
+
+@keyframes tk-shrink {
+  to {
+    transform: scaleY(0);
+  }
+}
+
+@keyframes tk-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes tk-rise {
+  from {
+    opacity: 0;
+    transform: translateY(calc(12 * var(--u)));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes tk-scroll {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@keyframes tk-out {
+  0%,
+  35% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}

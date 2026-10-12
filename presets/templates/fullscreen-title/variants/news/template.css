@@ -1,0 +1,270 @@
+/* Full-screen title, News style: the frame covered in deep navy; flush left in the title safe
+   area an optional logo, the kicker as an accent tag, the title in a white bar (Archivo 800) and
+   the subtitle in caps on a navy bar with an accent edge. Missing parts collapse.
+   Sizing: one unit --u, 1px at 1080p on the frame's short side (16:9 and 9:16 alike; a smaller
+   layer box scales the whole block). Motion: the background fades, the tag drops in, the bars
+   wipe in from the left and their text follows. Transform and opacity only, × --speed.
+   Variables: --accent (tag, edge), --secondary (navy), --text (title), --plate (title bar; text on
+   accent and navy), --font-heading, --font-body, --radius (px), --speed. */
+
+:host {
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --wipe: cubic-bezier(0.7, 0, 0.2, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+}
+
+.ft {
+  position: absolute;
+  inset: 0;
+  container-type: size;
+}
+
+.ft__bg {
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, color-mix(in srgb, var(--secondary) 55%, #000) 96%, transparent);
+}
+
+.ft__stage {
+  --u: 1px;
+  position: absolute;
+  inset: 8cqh 8cqw;
+  display: flex;
+  align-items: center;
+}
+
+@supports (width: 1cqmin) {
+  .ft__stage {
+    --u: calc(100cqmin / 1080);
+  }
+}
+
+@container (orientation: portrait) {
+  .ft__stage {
+    inset: 10cqh 6cqw;
+  }
+}
+
+/* A layer box smaller than a frame (or a wide bar): no title-safe margins, a small inset, and
+   the unit scales the block (1549 × 542 at 1px: a block with room, plus the inset) to the box. */
+@container ((max-width: 999px) and (max-height: 999px)) or (min-aspect-ratio: 2/1) {
+  .ft__stage {
+    --u: min(100cqw / 1597, 100cqh / 590);
+    inset: calc(24 * var(--u));
+  }
+}
+
+
+
+.ft__block {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  max-width: min(100%, calc(1560 * var(--u)));
+  min-width: 0;
+  line-height: normal;
+  -webkit-font-smoothing: antialiased;
+}
+
+.ft__logo {
+  display: block;
+  width: auto;
+  max-width: calc(380 * var(--u));
+  height: calc(80 * var(--u));
+  margin-bottom: calc(48 * var(--u));
+  object-fit: contain;
+  object-position: left center;
+}
+
+.ft__tags {
+  display: flex;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.ft__kicker {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  padding: calc(10 * var(--u)) calc(24 * var(--u)) calc(9 * var(--u));
+  border-radius: var(--radius) var(--radius) 0 0;
+  background: var(--accent);
+  color: var(--plate);
+  font-family: var(--font-body);
+  font-size: calc(32 * var(--u));
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.ft__bar {
+  position: relative;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.ft__fill {
+  position: absolute;
+  inset: 0;
+  transform-origin: left center;
+}
+
+.ft__bar--title .ft__fill {
+  background: var(--plate);
+}
+
+.ft__bar--sub .ft__fill {
+  background: var(--secondary);
+  box-shadow: inset calc(10 * var(--u)) 0 0 var(--accent);
+}
+
+.ft__title,
+.ft__subtitle {
+  position: relative;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+}
+
+.ft__title {
+  padding: calc(22 * var(--u)) calc(48 * var(--u)) calc(28 * var(--u)) calc(44 * var(--u));
+  color: var(--text);
+  font-family: var(--font-heading);
+  font-size: calc(112 * var(--u));
+  font-weight: 800;
+  line-height: 1.02;
+  letter-spacing: -0.015em;
+}
+
+.ft__subtitle {
+  padding: calc(16 * var(--u)) calc(40 * var(--u)) calc(17 * var(--u)) calc(44 * var(--u));
+  color: var(--plate);
+  font-family: var(--font-body);
+  font-size: calc(36 * var(--u));
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.ft__kicker:empty,
+.ft__kicker[data-empty],
+.ft__tags:has(> .ft__kicker:empty),
+.ft__tags:has(> .ft__kicker[data-empty]),
+.ft__bar--title:has(> .ft__title:empty),
+.ft__bar--title:has(> .ft__title[data-empty]),
+.ft__bar--sub:has(> .ft__subtitle:empty),
+.ft__bar--sub:has(> .ft__subtitle[data-empty]),
+.ft__logo[src=""],
+.ft__logo[data-empty] {
+  display: none;
+}
+
+/* In: background, logo, the tag drops, the bars wipe, the text follows. */
+.ft[data-state="in"] .ft__bg {
+  animation: ft-fade calc(360ms * var(--speed)) var(--ease) both;
+}
+
+.ft[data-state="in"] .ft__logo {
+  animation: ft-fade calc(360ms * var(--speed)) var(--ease) calc(120ms * var(--speed)) both;
+}
+
+.ft[data-state="in"] .ft__kicker {
+  animation: ft-drop calc(360ms * var(--speed)) var(--ease) calc(160ms * var(--speed)) both;
+}
+
+.ft[data-state="in"] .ft__bar--title .ft__fill {
+  animation: ft-wipe calc(480ms * var(--speed)) var(--wipe) calc(260ms * var(--speed)) both;
+}
+
+.ft[data-state="in"] .ft__bar--sub .ft__fill {
+  animation: ft-wipe calc(440ms * var(--speed)) var(--wipe) calc(360ms * var(--speed)) both;
+}
+
+.ft[data-state="in"] .ft__title {
+  animation: ft-slide calc(420ms * var(--speed)) var(--ease) calc(460ms * var(--speed)) both;
+}
+
+.ft[data-state="in"] .ft__subtitle {
+  animation: ft-slide calc(420ms * var(--speed)) var(--ease) calc(540ms * var(--speed)) both;
+}
+
+/* Out: text first, the bars wipe away, the background fades with the root. */
+.ft[data-state="out"] {
+  animation: ft-out calc(380ms * var(--speed)) var(--ease-in) forwards;
+}
+
+.ft[data-state="out"] .ft__title,
+.ft[data-state="out"] .ft__subtitle,
+.ft[data-state="out"] .ft__kicker,
+.ft[data-state="out"] .ft__logo {
+  animation: ft-fade-out calc(140ms * var(--speed)) var(--ease-in) forwards;
+}
+
+.ft[data-state="out"] .ft__fill {
+  transform-origin: right center;
+  animation: ft-wipe-out calc(240ms * var(--speed)) var(--wipe) calc(80ms * var(--speed)) forwards;
+}
+
+@keyframes ft-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes ft-drop {
+  from {
+    opacity: 0;
+    transform: translateY(-100%);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes ft-wipe {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: none;
+  }
+}
+
+@keyframes ft-wipe-out {
+  to {
+    transform: scaleX(0);
+  }
+}
+
+@keyframes ft-slide {
+  from {
+    opacity: 0;
+    transform: translateX(calc(-32 * var(--u)));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes ft-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes ft-out {
+  0%,
+  50% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}

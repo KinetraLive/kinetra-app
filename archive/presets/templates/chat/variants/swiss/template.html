@@ -1,0 +1,19 @@
+<div class="ch">
+  <div class="ch__safe">
+    <div class="ch__wipe">
+      <div class="ch__panel">
+        <div class="ch__head">{{title}}</div>
+        <div class="ch__list">
+          <div class="ch__msg" data-each="messages" data-hl="{{.highlighted}}" data-id="{{.id}}" data-ts="{{.timestamp}}">
+            <div class="ch__meta">
+              <span class="ch__dot" style="color:{{.color}}"></span>
+              <span class="ch__user">{{.user}}</span>
+              <span class="ch__platform">{{.platform}}</span>
+            </div>
+            <div class="ch__text">{{.text}}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,173 @@
+{
+  "schemaVersion": 2,
+  "name": "Full-screen title",
+  "description": "A large title card with a kicker and subtitle.",
+  "preset": { "id": "fullscreen-title", "version": 3 },
+  "fields": [
+    { "key": "kicker", "label": "Kicker", "type": "text", "default": "" },
+    { "key": "title", "label": "Title", "type": "multiline", "default": "" },
+    { "key": "subtitle", "label": "Subtitle", "type": "multiline", "default": "" },
+    { "key": "logo", "label": "Logo", "type": "image", "default": "" }
+  ],
+  "variables": [
+    { "key": "accent", "label": "Accent", "type": "color", "default": "#f2c14e" },
+    { "key": "panel", "label": "Background", "type": "color", "default": "#0b0e13eb" },
+    { "key": "text", "label": "Text", "type": "color", "default": "#ffffff" },
+    { "key": "font", "label": "Font", "type": "font", "default": "Oswald" },
+    { "key": "scale", "label": "Size", "type": "range", "min": 0.5, "max": 1.5, "step": 0.05, "unit": "", "default": "1" },
+    {
+      "key": "align",
+      "label": "Alignment",
+      "type": "select",
+      "options": [
+        { "value": "left", "label": "Left" },
+        { "value": "center", "label": "Center" },
+        { "value": "right", "label": "Right" }
+      ],
+      "default": "center"
+    },
+    { "key": "secondary", "label": "Secondary", "type": "color", "default": "#b3bac5" },
+    { "key": "plate", "label": "Plate", "type": "color", "default": "#0c0d11d9" },
+    { "key": "font-heading", "label": "Heading font", "type": "font", "default": "Space Grotesk" },
+    { "key": "font-body", "label": "Body font", "type": "font", "default": "IBM Plex Sans" },
+    { "key": "radius", "label": "Corner radius", "type": "range", "min": 0, "max": 24, "step": 1, "unit": "px", "default": "2" },
+    { "key": "speed", "label": "Animation speed", "type": "range", "min": 0.5, "max": 2, "step": 0.1, "unit": "", "default": "1" }
+  ],
+  "autoOutMs": null,
+  "design": { "w": 1920, "h": 1080, "x": 0, "y": 0, "sizing": "reflow" },
+  "defaultVariant": "classic",
+  "variants": [
+    {
+      "id": "classic",
+      "name": "Classic",
+      "vars": {}
+    },
+    {
+      "id": "minimal",
+      "name": "Minimal",
+      "vars": {
+        "accent": "#ff5a3c",
+        "secondary": "#e4e7ec",
+        "text": "#ffffff",
+        "plate": "#06080c",
+        "font-heading": "Manrope",
+        "font-body": "Manrope",
+        "radius": "2",
+        "speed": "1"
+      }
+    },
+    {
+      "id": "corporate",
+      "name": "Corporate",
+      "vars": {
+        "accent": "#2563eb",
+        "secondary": "#16202e",
+        "text": "#16202e",
+        "plate": "#ffffff",
+        "font-heading": "IBM Plex Sans",
+        "font-body": "IBM Plex Sans",
+        "radius": "8",
+        "speed": "1"
+      }
+    },
+    {
+      "id": "news",
+      "name": "News",
+      "vars": {
+        "accent": "#c8102e",
+        "secondary": "#16202e",
+        "text": "#0f1722",
+        "plate": "#ffffff",
+        "font-heading": "Archivo",
+        "font-body": "Archivo",
+        "radius": "0",
+        "speed": "1"
+      }
+    },
+    {
+      "id": "elegant",
+      "name": "Elegant",
+      "vars": {
+        "accent": "#d9bc7a",
+        "secondary": "#d6cdbb",
+        "text": "#f5f0e6",
+        "plate": "#0d0c0bc7",
+        "font-heading": "Playfair Display",
+        "font-body": "Jost",
+        "radius": "2",
+        "speed": "1"
+      }
+    },
+    {
+      "id": "swiss",
+      "name": "Swiss",
+      "vars": {
+        "accent": "#e2231a",
+        "secondary": "#6b6b6b",
+        "text": "#111111",
+        "plate": "#ffffff",
+        "font-heading": "Instrument Sans",
+        "font-body": "Instrument Sans",
+        "radius": "0",
+        "speed": "1"
+      }
+    },
+    {
+      "id": "editorial",
+      "name": "Editorial",
+      "vars": {
+        "accent": "#ff7a4d",
+        "secondary": "#a8a49b",
+        "text": "#f4f1ea",
+        "plate": "#111214",
+        "font-heading": "Source Serif 4",
+        "font-body": "Instrument Sans",
+        "radius": "0",
+        "speed": "1"
+      }
+    },
+    {
+      "id": "inline",
+      "name": "Inline",
+      "vars": {
+        "accent": "#2b59ff",
+        "secondary": "#5b6270",
+        "text": "#12141a",
+        "plate": "#ffffff",
+        "font-heading": "Plus Jakarta Sans",
+        "font-body": "Plus Jakarta Sans",
+        "radius": "8",
+        "speed": "1"
+      }
+    },
+    {
+      "id": "frame",
+      "name": "Frame",
+      "vars": {
+        "accent": "#33d6ff",
+        "secondary": "#b3bac5",
+        "text": "#f5f5f2",
+        "plate": "#0c0d11d9",
+        "font-heading": "Space Grotesk",
+        "font-body": "IBM Plex Sans",
+        "radius": "2",
+        "speed": "1"
+      }
+    },
+    {
+      "id": "pill",
+      "name": "Pill",
+      "vars": {
+        "accent": "#6c4cff",
+        "secondary": "#6b6880",
+        "text": "#1d1a2e",
+        "plate": "#ffffff",
+        "font-heading": "Outfit",
+        "font-body": "Outfit",
+        "radius": "24",
+        "speed": "1"
+      }
+    }
+  ],
+  "updatedAt": ""
+}

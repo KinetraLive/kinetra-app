@@ -1,0 +1,366 @@
+/* Sponsor slideshow, Pill style: a white capsule in a corner, the label as a small accent capsule
+   on its top edge (bottom edge at the top of the frame). Each slide: the logo on an ink capsule
+   at the left end, the name over the tagline; no logo: the name alone. A slim accent capsule
+   fills over the slide's duration. One grid cell for all slides; data-current="true" marks the
+   showing one (none: the first). --u is 1px at 1080p; a smaller layer box scales the capsule.
+   The capsule expands (scaleX), the label pops; in/out × --speed. Capsule ends: --radius × 40. */
+
+:host {
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --pop: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --snap: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+}
+
+.ss {
+  --cap: calc(var(--radius) * 40);
+  position: absolute;
+  inset: 0;
+  container-type: size;
+}
+
+.ss__stage {
+  --u: 1px;
+  position: absolute;
+  inset: 8cqh 6cqw;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  grid-template-rows: auto 1fr auto;
+  grid-template-areas:
+    "top-left . top-right"
+    ". . ."
+    "bottom-left . bottom-right";
+}
+
+@supports (width: 1cqmin) {
+  .ss__stage {
+    --u: max(100cqmin / 1080, 100cqw / 1920);
+  }
+}
+
+@container (orientation: portrait) {
+  .ss__stage {
+    inset: 8cqh 5cqw 17cqh;
+  }
+}
+
+/* A smaller layer box: the strap (and its tab) fill the box. */
+@container (max-width: 999px) and (max-height: 999px) {
+  .ss__stage {
+    --u: min(100cqw / 720, 100cqh / 140);
+    inset: calc(24 * var(--u)) calc(8 * var(--u)) calc(8 * var(--u));
+  }
+}
+
+.ss__card {
+  grid-area: var(--position);
+  position: relative;
+  display: grid;
+  min-width: calc(460 * var(--u));
+  max-width: calc(700 * var(--u));
+  color: var(--text);
+  line-height: normal;
+  -webkit-font-smoothing: antialiased;
+}
+
+.ss__plate {
+  grid-area: 1 / 1;
+  border-radius: var(--cap);
+  background: var(--plate);
+  box-shadow:
+    0 0 0 1px rgb(20 16 40 / 0.07),
+    0 calc(8 * var(--u)) calc(28 * var(--u)) rgb(20 16 40 / 0.22);
+  transform-origin: left center;
+}
+
+/* The label: a small accent capsule on the top edge (the bottom edge along the top of the frame). */
+.ss__label {
+  position: absolute;
+  z-index: 1;
+  right: calc(40 * var(--u));
+  top: 0;
+  translate: 0 -50%;
+  max-width: calc(100% - 68 * var(--u));
+  box-sizing: border-box;
+  padding: calc(6 * var(--u)) calc(16 * var(--u));
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  border-radius: var(--cap);
+  background: var(--accent);
+  color: var(--plate);
+  font-family: var(--font-heading);
+  font-size: calc(16 * var(--u));
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+@container style(--position: top-left) or style(--position: top-right) {
+  .ss__label {
+    top: 100%;
+  }
+}
+
+.ss__label:empty,
+.ss__label[data-empty] {
+  display: none;
+}
+
+.ss__slides {
+  grid-area: 1 / 1;
+  display: grid;
+  min-width: 0;
+}
+
+.ss__slide {
+  --dur: var(--interval);
+  grid-area: 1 / 1;
+  position: relative;
+  display: flex;
+  align-items: center;
+  column-gap: calc(22 * var(--u));
+  min-width: 0;
+  min-height: calc(96 * var(--u));
+  box-sizing: border-box;
+  padding: calc(10 * var(--u)) calc(44 * var(--u)) calc(10 * var(--u)) calc(10 * var(--u));
+  opacity: 0;
+}
+
+.ss__slide[data-current="true"] {
+  opacity: 1;
+}
+
+.ss__slides:not(:has(> [data-current="true"])) > .ss__slide:first-child {
+  opacity: 1;
+}
+
+.ss__chip,
+.ss__caption {
+  transform: translateX(calc(-14 * var(--u)));
+  transition: transform 260ms var(--ease-in);
+}
+
+.ss__slide[data-current="true"] > :is(.ss__chip, .ss__caption),
+.ss__slides:not(:has(> [data-current="true"])) > .ss__slide:first-child > :is(.ss__chip, .ss__caption) {
+  transform: none;
+  transition: transform 560ms var(--ease) 160ms;
+}
+
+.ss__chip {
+  flex: none;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: calc(150 * var(--u));
+  box-sizing: border-box;
+  padding: calc(10 * var(--u)) calc(28 * var(--u));
+  border-radius: var(--cap);
+}
+
+.ss__logo {
+  display: block;
+  width: auto;
+  max-width: calc(200 * var(--u));
+  height: calc(46 * var(--u));
+  object-fit: contain;
+}
+
+.ss__caption {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  row-gap: calc(2 * var(--u));
+  min-width: 0;
+  padding-left: calc(8 * var(--u));
+}
+
+.ss__name {
+  flex: 0 1 auto;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+  min-width: 0;
+  font-family: var(--font-heading);
+  font-size: calc(32 * var(--u));
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+}
+
+.ss__tagline {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+  color: var(--secondary);
+  font-family: var(--font-body);
+  font-size: calc(24 * var(--u));
+  font-weight: 400;
+  line-height: 1.25;
+}
+
+.ss__name:empty,
+.ss__name[data-empty],
+.ss__tagline:empty,
+.ss__tagline[data-empty],
+.ss__chip:has(> .ss__logo[src=""]),
+.ss__chip:has(> .ss__logo[data-empty]) {
+  display: none;
+}
+
+.ss__slide:has(> .ss__chip > .ss__logo[data-empty]) {
+  padding-left: calc(40 * var(--u));
+}
+
+/* Progress: a slim accent capsule under the caption, filled over the slide's duration. */
+.ss__bar {
+  display: var(--progress);
+  position: relative;
+  align-self: stretch;
+  min-width: calc(160 * var(--u));
+  margin-top: calc(8 * var(--u));
+  height: max(2px, calc(5 * var(--u)));
+  overflow: hidden;
+  border-radius: var(--cap);
+}
+
+.ss__bar::before,
+.ss__bar::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--accent);
+}
+
+.ss__bar::before {
+  opacity: 0.15;
+}
+
+.ss__bar::after {
+  transform: scaleX(0);
+  transform-origin: left center;
+}
+
+.ss[data-state="in"] .ss__slide[data-current="true"] .ss__bar::after {
+  animation: ss-progress var(--dur) linear both;
+}
+
+/* In: the capsule expands to the right, the label pops, the slide follows. */
+.ss[data-state="in"] .ss__plate {
+  animation: ss-expand calc(480ms * var(--speed)) var(--snap) calc(100ms * var(--speed)) both;
+}
+
+.ss[data-state="in"] .ss__label {
+  animation: ss-pop calc(420ms * var(--speed)) var(--pop) calc(260ms * var(--speed)) both;
+}
+
+.ss[data-state="in"] .ss__slide[data-current="true"] > .ss__chip,
+.ss[data-state="in"] .ss__slides:not(:has(> [data-current="true"])) > .ss__slide:first-child > .ss__chip {
+  animation: ss-pop calc(440ms * var(--speed)) var(--pop) calc(200ms * var(--speed)) both;
+}
+
+.ss[data-state="in"] .ss__slides {
+  animation: ss-slide calc(400ms * var(--speed)) var(--ease) calc(220ms * var(--speed)) both;
+}
+
+.ss[data-state="out"] {
+  animation: ss-out calc(340ms * var(--speed)) var(--ease-in) forwards;
+}
+
+.ss[data-state="out"] .ss__label,
+.ss[data-state="out"] .ss__slides {
+  animation: ss-fade-out calc(140ms * var(--speed)) var(--ease-in) forwards;
+}
+
+.ss[data-state="out"] .ss__plate {
+  animation: ss-fold calc(280ms * var(--speed)) var(--ease-in) calc(60ms * var(--speed)) forwards;
+}
+
+@keyframes ss-expand { from { opacity: 0; transform: scaleX(0.04); } 20% { opacity: 1; } to { opacity: 1; transform: none; } }
+@keyframes ss-fold { to { opacity: 0; transform: scaleX(0.04); } }
+@keyframes ss-pop { from { opacity: 0; transform: scale(0.3); } }
+@keyframes ss-slide { from { opacity: 0; transform: translateX(calc(-16 * var(--u))); } }
+@keyframes ss-progress { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@keyframes ss-fade-out { to { opacity: 0; } }
+@keyframes ss-out { 0%, 50% { opacity: 1; } 100% { opacity: 0; } }
+
+/* Logo background (--logo-bg): off (the default), the logo stands on the strap as it is,
+   transparency kept; on, the chip in the text colour behind it. */
+@container style(--logo-bg: on) {
+  .ss__chip {
+    background: var(--text);
+  }
+}
+
+/* Slide change: --motion over --motion-ms. */
+.ss__slide{--t:var(--motion-ms);--half:calc(var(--t) / 2);--te:cubic-bezier(0.2, 0, 0, 1);transition:opacity var(--half) var(--ease-in),transform var(--t) var(--te)}
+.ss__slide[data-current="true"]{transition:opacity var(--half) var(--te) var(--half),transform var(--t) var(--te)}
+@container not style(--motion: fade){.ss__slide,.ss__slide[data-current="true"]{transition:opacity var(--t) var(--te),transform var(--t) var(--te)}}
+@container style(--motion: slide){.ss__slides{overflow:clip}.ss__slide{transform:translateX(-100%)}.ss__slide[data-current="true"] ~ .ss__slide{transform:translateX(100%)}}
+@container style(--motion: zoom){.ss__slide{transform:scale(1.15)}.ss__slide[data-current="true"] ~ .ss__slide{transform:scale(0.85)}}
+
+/* Per-slide durations sent by the source (whole seconds). */
+.ss__slide[data-duration="1"]{--dur:1s}
+.ss__slide[data-duration="2"]{--dur:2s}
+.ss__slide[data-duration="3"]{--dur:3s}
+.ss__slide[data-duration="4"]{--dur:4s}
+.ss__slide[data-duration="5"]{--dur:5s}
+.ss__slide[data-duration="6"]{--dur:6s}
+.ss__slide[data-duration="7"]{--dur:7s}
+.ss__slide[data-duration="8"]{--dur:8s}
+.ss__slide[data-duration="9"]{--dur:9s}
+.ss__slide[data-duration="10"]{--dur:10s}
+.ss__slide[data-duration="11"]{--dur:11s}
+.ss__slide[data-duration="12"]{--dur:12s}
+.ss__slide[data-duration="13"]{--dur:13s}
+.ss__slide[data-duration="14"]{--dur:14s}
+.ss__slide[data-duration="15"]{--dur:15s}
+.ss__slide[data-duration="16"]{--dur:16s}
+.ss__slide[data-duration="17"]{--dur:17s}
+.ss__slide[data-duration="18"]{--dur:18s}
+.ss__slide[data-duration="19"]{--dur:19s}
+.ss__slide[data-duration="20"]{--dur:20s}
+.ss__slide[data-duration="21"]{--dur:21s}
+.ss__slide[data-duration="22"]{--dur:22s}
+.ss__slide[data-duration="23"]{--dur:23s}
+.ss__slide[data-duration="24"]{--dur:24s}
+.ss__slide[data-duration="25"]{--dur:25s}
+.ss__slide[data-duration="26"]{--dur:26s}
+.ss__slide[data-duration="27"]{--dur:27s}
+.ss__slide[data-duration="28"]{--dur:28s}
+.ss__slide[data-duration="29"]{--dur:29s}
+.ss__slide[data-duration="30"]{--dur:30s}
+.ss__slide[data-duration="31"]{--dur:31s}
+.ss__slide[data-duration="32"]{--dur:32s}
+.ss__slide[data-duration="33"]{--dur:33s}
+.ss__slide[data-duration="34"]{--dur:34s}
+.ss__slide[data-duration="35"]{--dur:35s}
+.ss__slide[data-duration="36"]{--dur:36s}
+.ss__slide[data-duration="37"]{--dur:37s}
+.ss__slide[data-duration="38"]{--dur:38s}
+.ss__slide[data-duration="39"]{--dur:39s}
+.ss__slide[data-duration="40"]{--dur:40s}
+.ss__slide[data-duration="41"]{--dur:41s}
+.ss__slide[data-duration="42"]{--dur:42s}
+.ss__slide[data-duration="43"]{--dur:43s}
+.ss__slide[data-duration="44"]{--dur:44s}
+.ss__slide[data-duration="45"]{--dur:45s}
+.ss__slide[data-duration="46"]{--dur:46s}
+.ss__slide[data-duration="47"]{--dur:47s}
+.ss__slide[data-duration="48"]{--dur:48s}
+.ss__slide[data-duration="49"]{--dur:49s}
+.ss__slide[data-duration="50"]{--dur:50s}
+.ss__slide[data-duration="51"]{--dur:51s}
+.ss__slide[data-duration="52"]{--dur:52s}
+.ss__slide[data-duration="53"]{--dur:53s}
+.ss__slide[data-duration="54"]{--dur:54s}
+.ss__slide[data-duration="55"]{--dur:55s}
+.ss__slide[data-duration="56"]{--dur:56s}
+.ss__slide[data-duration="57"]{--dur:57s}
+.ss__slide[data-duration="58"]{--dur:58s}
+.ss__slide[data-duration="59"]{--dur:59s}
+.ss__slide[data-duration="60"]{--dur:60s}
+.ss__slide[data-duration="75"]{--dur:75s}
+.ss__slide[data-duration="90"]{--dur:90s}
+.ss__slide[data-duration="120"]{--dur:120s}

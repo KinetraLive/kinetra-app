@@ -1,0 +1,68 @@
+# Rollback: points a channel's update manifest and latest.json back at a release that is
+# already in R2 (its release.json and every file it lists must exist). Deletes nothing.
+# docs/RELEASING.md.
+name: Rollback
+
+on:
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: Channel
+        type: choice
+        options: [stable, canary]
+      version:
+        description: "Version to point the channel at (e.g. 0.1.4 or 0.2.0-canary.20261010.12)"
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ inputs.channel }}
+  cancel-in-progress: false
+
+jobs:
+  rollback:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      BUCKET: kinetra-downloads
+      CHANNEL: ${{ inputs.channel }}
+      VERSION: ${{ inputs.version }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with: { node-version: "24" }
+      - name: Validate
+        run: |
+          node .github/scripts/release.mjs validate --channel "$CHANNEL" --version "$VERSION"
+          . .github/scripts/r2-env.sh
+      - name: Read the release record and check its files
+        run: |
+          set -euo pipefail
+          . .github/scripts/r2-env.sh
+          mkdir -p rb
+          aws s3api get-object --bucket "$BUCKET" --key "releases/$CHANNEL/$VERSION/release.json" rb/release.json > /dev/null
+          node .github/scripts/release.mjs rollback --channel "$CHANNEL" --version "$VERSION" --record rb/release.json --out publish
+          while read -r key; do
+            [ -n "$key" ] || continue
+            aws s3api head-object --bucket "$BUCKET" --key "$key" > /dev/null
+            echo "exists $key"
+          done < publish/keys.txt
+      - name: Point the channel at it (latest.json, then the manifest)
+        run: |
+          set -euo pipefail
+          . .github/scripts/r2-env.sh
+          while IFS=$'\t' read -r path key cache type; do
+            [ -n "$path" ] || continue
+            aws s3api put-object --bucket "$BUCKET" --key "$key" --body "publish/$path" \
+              --cache-control "$cache" --content-type "$type" > /dev/null
+            echo "uploaded $key"
+          done < publish/plan.tsv
+      - name: Verify from download.kinetra.live
+        run: node .github/scripts/release.mjs verify --channel "$CHANNEL" --version "$VERSION"

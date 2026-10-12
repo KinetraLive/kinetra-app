@@ -1,0 +1,17 @@
+<div class="lb">
+  <div class="lb__safe">
+    <div class="lb__box">
+      <div class="lb__title">{{title}}</div>
+      <ol class="lb__rows">
+        <li class="lb__row" data-each="rows" data-limit="10">
+          <span class="lb__rank">{{#}}</span>
+          <span class="lb__who">
+            <span class="lb__name">{{.name}}</span>
+            <span class="lb__team">{{.team}}</span>
+          </span>
+          <span class="lb__score">{{.score}}</span>
+        </li>
+      </ol>
+    </div>
+  </div>
+</div>

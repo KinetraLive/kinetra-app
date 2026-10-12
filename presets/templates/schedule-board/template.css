@@ -1,0 +1,536 @@
+/* Schedule board: a run of show. Header with title, day and the current time (a clock field),
+   then one row per item: start (and end) time, title and subtitle, location and a status badge.
+   The renderer sets data-state="in" | "out" on the root (.sch); on each row --i (0-based index),
+   data-row="in" | "out" and data-status (previous | now | next | delayed | upcoming | cancelled)
+   from the schedule. Only transform and opacity animate.
+   Variables: --layout (full | side), --past (grid | none: finished items shown or hidden),
+   --accent (NOW), --next (UP NEXT), --warning (DELAYED), --ink (text on filled badges), --panel,
+   --text, --font, --scale (unitless), --radius (px). */
+
+:host {
+  /* One scaled pixel; --scale resizes the board while it stays in its place. */
+  --u: calc(1px * var(--scale));
+  --r: calc(var(--radius) * var(--scale));
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+}
+
+/* The root fills the layer box and is its size container; .sch__safe holds the layout. */
+.sch {
+  position: absolute;
+  inset: 0;
+  container-type: size;
+}
+
+/* The stage inside the safe area (8%). Named grid lines give the two --layout values: `full`
+   spans the safe area, `side` is the right-hand column. */
+.sch__safe {
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+  padding: 86px 154px;
+  display: grid;
+  grid-template-columns: [full-start] minmax(0, 1fr) [side-start] calc(720 * var(--u)) [side-end full-end];
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.sch__box {
+  grid-column: var(--layout);
+  grid-row: 1;
+  align-self: start;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  max-height: 100%;
+  box-sizing: border-box;
+  border-radius: var(--r);
+  overflow: hidden;
+  background: var(--panel);
+  color: var(--text);
+  font-family: var(--font);
+  line-height: normal;
+  -webkit-font-smoothing: antialiased;
+  container: sch / inline-size;
+}
+
+/* ---- Header ---- */
+
+.sch__head {
+  position: relative;
+  flex: none;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  column-gap: calc(32 * var(--u));
+  padding: calc(30 * var(--u)) calc(36 * var(--u)) calc(24 * var(--u));
+}
+
+/* An accent rule under the header. */
+.sch__head::after {
+  content: "";
+  position: absolute;
+  left: calc(36 * var(--u));
+  right: calc(36 * var(--u));
+  bottom: 0;
+  height: calc(3 * var(--u));
+  background: var(--accent);
+  transform-origin: left center;
+}
+
+.sch__heading {
+  min-width: 0;
+}
+
+.sch__title,
+.sch__day {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  /* Room for descenders and accented capitals inside the clip; the margin cancels it. */
+  padding-block: 0.2em;
+  margin-block: -0.2em;
+}
+
+.sch__title {
+  font-size: calc(52 * var(--u));
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.sch__day {
+  margin-top: calc(6 * var(--u));
+  font-size: calc(24 * var(--u));
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  opacity: 0.68;
+}
+
+.sch__title:empty,
+.sch__day:empty {
+  display: none;
+}
+
+.sch__clock {
+  flex: none;
+  font-size: calc(60 * var(--u));
+  font-weight: 600;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+/* ---- Rows ---- */
+
+.sch__rows {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  margin: 0;
+  padding: calc(10 * var(--u)) 0 calc(14 * var(--u));
+  list-style: none;
+  /* Rows past the bottom of the frame fade out instead of being cut. */
+  -webkit-mask-image: linear-gradient(#000 calc(100% - 28 * var(--u)), transparent);
+  mask-image: linear-gradient(#000 calc(100% - 28 * var(--u)), transparent);
+}
+
+.sch__row {
+  /* Status colour of the row's edge bar (none for upcoming items). */
+  --st: transparent;
+  position: relative;
+  display: grid;
+  /* Fixed location and badge columns, so they line up from row to row. */
+  grid-template-columns: calc(150 * var(--u)) minmax(0, 1fr) calc(300 * var(--u)) calc(176 * var(--u));
+  align-items: center;
+  column-gap: calc(28 * var(--u));
+  min-height: calc(84 * var(--u));
+  box-sizing: border-box;
+  padding: calc(12 * var(--u)) calc(36 * var(--u));
+  transition: opacity 400ms var(--ease);
+}
+
+/* A hairline between rows, from the text colour at low opacity. */
+.sch__row + .sch__row::before {
+  content: "";
+  position: absolute;
+  left: calc(36 * var(--u));
+  right: calc(36 * var(--u));
+  top: 0;
+  height: max(1px, calc(1 * var(--u)));
+  background: var(--text);
+  opacity: 0.1;
+}
+
+/* The status edge: a bar on the leading side (NOW, UP NEXT, DELAYED). */
+.sch__row::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: calc(8 * var(--u));
+  bottom: calc(8 * var(--u));
+  width: calc(6 * var(--u));
+  background: var(--st);
+  opacity: 0;
+  transform: scaleY(0.4);
+  transition: opacity 400ms var(--ease), transform 400ms var(--ease);
+}
+
+.sch__row[data-status="now"] {
+  --st: var(--accent);
+}
+
+.sch__row[data-status="next"] {
+  --st: var(--next);
+}
+
+.sch__row[data-status="delayed"] {
+  --st: var(--warning);
+}
+
+.sch__row[data-status="now"]::after,
+.sch__row[data-status="next"]::after,
+.sch__row[data-status="delayed"]::after {
+  opacity: 1;
+  transform: none;
+}
+
+/* NOW: the whole row sits on a tint of the accent (replaces the hairline). */
+.sch__rows > .sch__row[data-status="now"]::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  height: auto;
+  background: var(--accent);
+  opacity: 0.16;
+}
+
+.sch__row[data-status="previous"] {
+  display: var(--past);
+  opacity: 0.42;
+}
+
+.sch__row[data-status="cancelled"] {
+  opacity: 0.5;
+}
+
+/* Time: the start in large type, the end on the line below. A new start (delayed or moved) takes
+   the large line and the original start moves down next to the end, struck through. The new start
+   comes first in the markup so a sibling selector can reach the original. */
+.sch__time {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: calc(8 * var(--u));
+  min-width: 0;
+  overflow: hidden;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.sch__start,
+.sch__new {
+  flex: 0 0 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: calc(32 * var(--u));
+  font-weight: 600;
+  line-height: 1.15;
+}
+
+.sch__new {
+  color: var(--warning);
+}
+
+.sch__new:empty {
+  display: none;
+}
+
+.sch__new:not(:empty) + .sch__start {
+  flex: none;
+  margin-top: calc(2 * var(--u));
+  font-size: calc(20 * var(--u));
+  font-weight: 400;
+  line-height: 1.2;
+  text-decoration: line-through;
+  text-decoration-thickness: calc(2 * var(--u));
+  opacity: 0.6;
+}
+
+.sch__end {
+  margin-top: calc(2 * var(--u));
+  font-size: calc(20 * var(--u));
+  font-weight: 400;
+  line-height: 1.2;
+  opacity: 0.6;
+}
+
+.sch__end:empty {
+  display: none;
+}
+
+.sch__end::before {
+  content: "\2013\00a0";
+}
+
+.sch__row[data-status="now"] .sch__start {
+  color: var(--accent);
+}
+
+.sch__what {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.sch__name,
+.sch__sub,
+.sch__where {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  padding-block: 0.2em;
+  margin-block: -0.2em;
+}
+
+.sch__name {
+  font-size: calc(32 * var(--u));
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.sch__sub {
+  margin-top: calc(4 * var(--u));
+  font-size: calc(22 * var(--u));
+  font-weight: 400;
+  line-height: 1.2;
+  opacity: 0.7;
+}
+
+.sch__sub:empty,
+.sch__where:empty {
+  display: none;
+}
+
+.sch__row[data-status="cancelled"] .sch__name {
+  text-decoration: line-through;
+  text-decoration-thickness: calc(2 * var(--u));
+}
+
+.sch__where {
+  font-size: calc(22 * var(--u));
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.72;
+}
+
+/* Status badge: the schedule's label (NOW, UP NEXT, DELAYED, …); upcoming items have none. */
+.sch__badge {
+  /* Fills its column, so every badge has the same width. */
+  grid-column: 4;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-sizing: border-box;
+  padding: calc(5 * var(--u)) calc(14 * var(--u));
+  border: calc(2 * var(--u)) solid currentColor;
+  border-radius: calc(var(--r) * 0.6);
+  text-align: center;
+  font-size: calc(20 * var(--u));
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  opacity: 0.7;
+}
+
+.sch__badge:empty {
+  display: none;
+}
+
+.sch__row[data-status="now"] .sch__badge {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--ink);
+  opacity: 1;
+}
+
+.sch__row[data-status="next"] .sch__badge {
+  color: var(--next);
+  opacity: 1;
+}
+
+.sch__row[data-status="delayed"] .sch__badge {
+  border-color: var(--warning);
+  background: var(--warning);
+  color: var(--ink);
+  opacity: 1;
+}
+
+/* Side panel (or any narrow box): the location gives way. */
+@container sch (max-width: 980px) {
+  .sch__row {
+    grid-template-columns: calc(112 * var(--u)) minmax(0, 1fr) auto;
+    column-gap: calc(20 * var(--u));
+    padding-inline: calc(28 * var(--u));
+  }
+
+  .sch__row + .sch__row::before {
+    left: calc(28 * var(--u));
+    right: calc(28 * var(--u));
+  }
+
+  .sch__where {
+    display: none;
+  }
+
+  .sch__badge {
+    grid-column: 3;
+    justify-self: end;
+    padding-inline: calc(10 * var(--u));
+    font-size: calc(17 * var(--u));
+  }
+
+  .sch__head {
+    padding-inline: calc(28 * var(--u));
+  }
+
+  .sch__head::after {
+    left: calc(28 * var(--u));
+    right: calc(28 * var(--u));
+  }
+
+  .sch__title {
+    font-size: calc(40 * var(--u));
+  }
+
+  .sch__clock {
+    font-size: calc(48 * var(--u));
+  }
+}
+
+/* A layer box smaller than a frame (or a wide bar): the board fills the box whatever the layout,
+   with a small inset instead of the safe area. The unit is set per board width (100cqw is the
+   board, 100cqh the layer box): the wide board scales a 1612 × 664 board (header and five rows,
+   plus the inset) to the box, the narrow one (a board under 980px, location hidden) 720 × 600.
+   The rows show as many as fit, cut at a row boundary: a row that doesn't fit wraps into a
+   second column, outside the clip. */
+@container ((max-width: 999px) and (max-height: 999px)) or (min-aspect-ratio: 2/1) {
+  .sch__safe {
+    grid-template-columns: [full-start side-start] minmax(0, 1fr) [side-end full-end];
+    padding: 1.8cqmin;
+  }
+
+  .sch__box {
+    align-self: stretch;
+  }
+
+  .sch__head,
+  .sch__rows {
+    --u: calc(min(100cqw / 1612, 100cqh / 664) * var(--scale));
+  }
+
+  @container sch (max-width: 980px) {
+    .sch__head,
+    .sch__rows {
+      --u: calc(min(100cqw / 720, 100cqh / 600) * var(--scale));
+    }
+  }
+
+  .sch__rows {
+    display: flex;
+    flex-flow: column wrap;
+    align-content: flex-start;
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
+
+  .sch__row {
+    flex: none;
+    width: 100%;
+  }
+}
+
+/* In: the board rises, the header rule draws, rows enter one after another (rows added later on
+   air enter the same way; rows that update in place never re-animate). */
+.sch[data-state="in"] .sch__box {
+  animation: sch-in 440ms var(--ease) both;
+}
+
+.sch[data-state="in"] .sch__head > * {
+  animation: sch-fade 380ms var(--ease) 120ms both;
+}
+
+.sch[data-state="in"] .sch__head::after {
+  animation: sch-draw 520ms var(--ease) 160ms both;
+}
+
+.sch[data-state="in"] .sch__row[data-row="in"] {
+  animation: sch-row-in 400ms var(--ease) backwards;
+  animation-delay: calc(200ms + min(var(--i), 12) * 50ms);
+}
+
+.sch[data-state="in"] .sch__row[data-row="out"] {
+  animation: sch-row-out 260ms var(--ease-in) forwards;
+}
+
+/* Out: one animation on the root, so its animationend marks the end of the layer. */
+.sch[data-state="out"] {
+  animation: sch-out 340ms var(--ease-in) forwards;
+}
+
+@keyframes sch-in {
+  from {
+    opacity: 0;
+    transform: translateY(24px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes sch-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes sch-draw {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+/* No `to` frame: dimmed rows end at their own opacity. */
+@keyframes sch-row-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+}
+
+@keyframes sch-row-out {
+  to {
+    opacity: 0;
+    transform: translateX(-24px);
+  }
+}
+
+@keyframes sch-out {
+  to {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+}

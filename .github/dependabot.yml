@@ -1,0 +1,17 @@
+# Keeps the SHA-pinned actions in .github/workflows current: one weekly pull request that bumps
+# the SHA and its "# vX.Y.Z" comment. Review it like any dependency change (docs/RELEASING.md).
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Oslo
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: ci
+    open-pull-requests-limit: 5

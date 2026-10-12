@@ -1,0 +1,344 @@
+/* Chat, Inline style: a stack of white straps on the right of the safe area, newest at the
+   bottom. Each message reads as one line of chat: a dot in the user's colour, the user in bold,
+   the platform as a small tag, then the text running on (wrapping, at most 4 lines). The newest
+   message carries the thin accent bar; highlighted ones (row mark _highlight, or highlighted =
+   "true") get an accent edge and a tinted plate. The title is an accent tab. At most 8 show.
+   Sizing: --u, 1px at 1080p; a smaller layer box scales the stack to fill it.
+   Motion: a message expands from the left (scaleX), its line follows, the bar fills.
+   data-state on the root (.ch); rows get --i and data-row. Transform and opacity only;
+   durations × --speed. Variables: --accent, --secondary (platform), --text, --plate,
+   --font-heading, --font-body, --radius (px), --speed. */
+
+:host {
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --snap: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+}
+
+.ch {
+  --bar: var(--auto-out-ms, calc(1400ms * var(--speed)));
+  position: absolute;
+  inset: 0;
+  container-type: size;
+}
+
+.ch__safe {
+  --u: 1px;
+  position: absolute;
+  top: 10cqh;
+  right: 5cqw;
+  bottom: 9cqh;
+  width: calc(600 * var(--u));
+}
+
+@supports (width: 1cqmin) {
+  .ch__safe {
+    --u: max(100cqmin / 1080, 100cqw / 1920);
+  }
+}
+
+@container (orientation: portrait) {
+  .ch__safe {
+    top: 42cqh;
+    left: 5cqw;
+    bottom: 17cqh;
+    width: auto;
+  }
+}
+
+@container ((max-width: 999px) and (max-height: 999px)) or (min-aspect-ratio: 2/1) {
+  .ch__safe {
+    --u: min(100cqw / 640, 100cqh / 560);
+    inset: calc(14 * var(--u));
+    width: auto;
+  }
+}
+
+.ch__panel {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: flex-start;
+  height: 100%;
+  color: var(--text);
+  line-height: normal;
+  -webkit-font-smoothing: antialiased;
+}
+
+.ch__head {
+  flex: none;
+  max-width: 100%;
+  box-sizing: border-box;
+  margin-bottom: calc(14 * var(--u));
+  padding: calc(7 * var(--u)) calc(12 * var(--u));
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  border-radius: calc(var(--radius) / 2);
+  background: var(--accent);
+  color: var(--plate);
+  font-family: var(--font-heading);
+  font-size: calc(16 * var(--u));
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.ch__head:empty,
+.ch__head[data-empty] {
+  display: none;
+}
+
+.ch__list {
+  flex: 0 1 auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: flex-start;
+  row-gap: calc(10 * var(--u));
+  max-width: 100%;
+  min-height: 0;
+  overflow: clip;
+  /* Room for the shadows inside the clip; the margin cancels it. */
+  padding: calc(16 * var(--u));
+  margin: calc(-16 * var(--u));
+}
+
+.ch__msg {
+  position: relative;
+  flex: none;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: calc(13 * var(--u)) calc(22 * var(--u)) calc(15 * var(--u));
+}
+
+.ch__msg:nth-last-child(n + 9) {
+  display: none;
+}
+
+.ch__plate {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: var(--radius);
+  background: var(--plate);
+  box-shadow:
+    0 0 0 1px rgb(12 14 20 / 0.08),
+    0 calc(6 * var(--u)) calc(22 * var(--u)) rgb(12 14 20 / 0.2);
+  transform-origin: left center;
+}
+
+/* The newest message: the accent bar. */
+.ch__msg:last-child .ch__plate::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: max(2px, calc(4 * var(--u)));
+  background: var(--accent);
+  transform-origin: left center;
+}
+
+.ch__msg[data-highlight] .ch__plate,
+.ch__msg[data-hl="true"] .ch__plate {
+  background: color-mix(in srgb, var(--accent) 10%, var(--plate));
+  box-shadow:
+    inset calc(6 * var(--u)) 0 0 var(--accent),
+    0 0 0 1px rgb(12 14 20 / 0.08),
+    0 calc(6 * var(--u)) calc(22 * var(--u)) rgb(12 14 20 / 0.2);
+}
+
+.ch__msg[data-highlight],
+.ch__msg[data-hl="true"] {
+  padding-left: calc(28 * var(--u));
+}
+
+/* One line of chat: dot, user, platform, then the text running on. */
+.ch__line {
+  position: relative;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  margin: 0;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  font-family: var(--font-body);
+  font-size: calc(26 * var(--u));
+  font-weight: 400;
+  line-height: 1.32;
+}
+
+.ch__dot {
+  display: inline-block;
+  width: calc(12 * var(--u));
+  height: calc(12 * var(--u));
+  margin: 0 calc(10 * var(--u)) 0 0;
+  vertical-align: 0.12em;
+  border-radius: 50%;
+  color: var(--accent);
+  background: currentColor;
+}
+
+.ch__user {
+  margin-right: calc(12 * var(--u));
+  font-family: var(--font-heading);
+  font-weight: 700;
+}
+
+.ch__platform {
+  display: inline-block;
+  margin-right: calc(12 * var(--u));
+  padding: calc(2 * var(--u)) calc(7 * var(--u));
+  vertical-align: 0.15em;
+  border-radius: calc(var(--radius) / 2);
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+  color: var(--secondary);
+  font-family: var(--font-heading);
+  font-size: calc(13 * var(--u));
+  font-weight: 700;
+  line-height: 1.3;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.ch__user:empty,
+.ch__user[data-empty],
+.ch__platform:empty,
+.ch__platform[data-empty],
+.ch__text:empty,
+.ch__text[data-empty] {
+  display: none;
+}
+
+/* In: the title pops, the messages expand in turn; the newest one's bar fills. */
+.ch[data-state="in"] .ch__head {
+  animation: ch-pop calc(320ms * var(--speed)) var(--ease) both;
+}
+
+.ch[data-state="in"] .ch__plate {
+  animation: ch-expand calc(440ms * var(--speed)) var(--snap) calc((60ms + min(var(--i), 8) * 50ms) * var(--speed)) both;
+}
+
+.ch[data-state="in"] .ch__line {
+  animation: ch-slide calc(360ms * var(--speed)) var(--ease) calc((160ms + min(var(--i), 8) * 50ms) * var(--speed)) both;
+}
+
+.ch[data-state="in"] .ch__msg:last-child .ch__plate::after {
+  animation: ch-bar var(--bar) cubic-bezier(0.3, 0, 0.2, 1) calc(420ms * var(--speed)) both;
+}
+
+/* With an auto-out (the renderer's --auto-out-ms) the bar is its countdown: full at the take, it
+   drains linearly to empty as the graphic leaves; it stays empty while it plays out. */
+@container style(--auto-out-ms) {
+  .ch[data-state="in"] .ch__msg:last-child .ch__plate::after {
+    animation: ch-drain var(--bar) linear both;
+  }
+
+  .ch[data-state="out"] .ch__msg:last-child .ch__plate::after {
+    transform: scaleX(0);
+  }
+}
+
+/* A message added on air plays in on its own (its row index is the newest). */
+.ch[data-state="in"] .ch__msg[data-row="in"] .ch__plate {
+  animation-delay: 0ms;
+}
+
+.ch[data-state="in"] .ch__msg[data-row="in"] .ch__line {
+  animation-delay: calc(100ms * var(--speed));
+}
+
+.ch__msg[data-row="out"] {
+  animation: ch-fade-out calc(200ms * var(--speed)) var(--ease-in) forwards;
+}
+
+.ch[data-state="out"] {
+  animation: ch-out calc(320ms * var(--speed)) var(--ease-in) forwards;
+}
+
+.ch[data-state="out"] .ch__line {
+  animation: ch-fade-out calc(140ms * var(--speed)) var(--ease-in) forwards;
+}
+
+.ch[data-state="out"] .ch__plate {
+  animation: ch-fold calc(260ms * var(--speed)) var(--ease-in) calc(60ms * var(--speed)) forwards;
+}
+
+@keyframes ch-expand {
+  from {
+    opacity: 0;
+    transform: scaleX(0.04);
+  }
+  20% {
+    opacity: 1;
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes ch-fold {
+  to {
+    opacity: 0;
+    transform: scaleX(0.04);
+  }
+}
+
+@keyframes ch-bar {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: none;
+  }
+}
+
+@keyframes ch-drain {
+  from {
+    transform: none;
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+
+@keyframes ch-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes ch-slide {
+  from {
+    opacity: 0;
+    transform: translateX(calc(-14 * var(--u)));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes ch-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes ch-out {
+  0%,
+  45% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}

@@ -1,0 +1,278 @@
+/* Chat, Swiss style: one white panel on the right of the safe area: the accent square and the
+   title over a 1px rule, then the messages flush left, separated by hairlines, newest at the
+   bottom. Each message: a square in the user's colour (else the accent), the user, the platform
+   as a small grey tag, then the text. Highlighted ones (row mark _highlight, or highlighted =
+   "true") stand on a field of accent. Older messages leave over the top; at most 8 show.
+   Sizing: one unit --u, 1px at 1080p; a smaller layer box scales the panel to fill it.
+   The renderer sets data-state="in" | "out" on the root (.ch); rows get --i and data-row.
+   Motion: a hard mask wipe, then the messages step in. Transform and opacity only,
+   durations × --speed.
+   Variables: --accent, --secondary (platform), --text, --plate, --font-heading (title),
+   --font-body, --radius (px), --speed (duration factor). */
+
+:host {
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --wipe: cubic-bezier(0.7, 0, 0.2, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+}
+
+.ch {
+  position: absolute;
+  inset: 0;
+  container-type: size;
+}
+
+.ch__safe {
+  --u: 1px;
+  position: absolute;
+  top: 10cqh;
+  right: 5cqw;
+  bottom: 9cqh;
+  width: calc(600 * var(--u));
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+
+@supports (width: 1cqmin) {
+  .ch__safe {
+    --u: max(100cqmin / 1080, 100cqw / 1920);
+  }
+}
+
+@container (orientation: portrait) {
+  .ch__safe {
+    top: 42cqh;
+    left: 5cqw;
+    bottom: 17cqh;
+    width: auto;
+  }
+}
+
+@container ((max-width: 999px) and (max-height: 999px)) or (min-aspect-ratio: 2/1) {
+  .ch__safe {
+    --u: min(100cqw / 640, 100cqh / 560);
+    inset: calc(14 * var(--u));
+    width: auto;
+  }
+}
+
+.ch__wipe {
+  display: flex;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: var(--radius);
+}
+
+.ch__panel {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--plate);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 10%, transparent);
+  border-radius: var(--radius);
+  color: var(--text);
+  line-height: normal;
+  -webkit-font-smoothing: antialiased;
+}
+
+.ch__head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  column-gap: calc(14 * var(--u));
+  margin: 0 calc(26 * var(--u));
+  padding: calc(20 * var(--u)) 0 calc(16 * var(--u));
+  border-bottom: max(1px, calc(1.2 * var(--u))) solid var(--text);
+  overflow: hidden;
+  white-space: nowrap;
+  font-family: var(--font-heading);
+  font-size: calc(22 * var(--u));
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.ch__head::before {
+  content: "";
+  flex: none;
+  width: calc(12 * var(--u));
+  height: calc(12 * var(--u));
+  background: var(--accent);
+}
+
+.ch__head:empty,
+.ch__head[data-empty],
+.ch__list[data-empty] {
+  display: none;
+}
+
+.ch__list {
+  flex: 0 1 auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  min-height: 0;
+  overflow: clip;
+  padding: calc(4 * var(--u)) 0;
+}
+
+.ch__msg {
+  position: relative;
+  flex: none;
+  padding: calc(16 * var(--u)) calc(26 * var(--u)) calc(18 * var(--u));
+}
+
+.ch__msg + .ch__msg::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: calc(26 * var(--u));
+  right: calc(26 * var(--u));
+  height: 1px;
+  background: color-mix(in srgb, var(--text) 14%, transparent);
+}
+
+.ch__msg:nth-last-child(n + 9) {
+  display: none;
+}
+
+/* Highlighted: a field of accent, the text in the plate colour. */
+.ch__msg[data-highlight],
+.ch__msg[data-hl="true"] {
+  margin: 0 calc(10 * var(--u));
+  padding-inline: calc(16 * var(--u));
+  background: var(--accent);
+  color: var(--plate);
+}
+
+.ch__msg[data-highlight]::before,
+.ch__msg[data-hl="true"]::before,
+.ch__msg[data-highlight] + .ch__msg::before,
+.ch__msg[data-hl="true"] + .ch__msg::before {
+  display: none;
+}
+
+.ch__meta {
+  display: flex;
+  align-items: center;
+  column-gap: calc(12 * var(--u));
+  min-width: 0;
+  margin-bottom: calc(6 * var(--u));
+  white-space: nowrap;
+  font-family: var(--font-body);
+  line-height: 1.2;
+}
+
+.ch__dot {
+  flex: none;
+  width: calc(12 * var(--u));
+  height: calc(12 * var(--u));
+  color: var(--accent);
+  background: currentColor;
+}
+
+.ch__msg[data-highlight] .ch__dot,
+.ch__msg[data-hl="true"] .ch__dot {
+  outline: max(1px, calc(1.5 * var(--u))) solid var(--plate);
+}
+
+.ch__user {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: calc(21 * var(--u));
+  font-weight: 600;
+}
+
+.ch__platform {
+  flex: none;
+  margin-left: auto;
+  color: var(--secondary);
+  font-size: calc(15 * var(--u));
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.ch__msg[data-highlight] .ch__platform,
+.ch__msg[data-hl="true"] .ch__platform {
+  color: inherit;
+  opacity: 0.8;
+}
+
+.ch__text {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  font-family: var(--font-body);
+  font-size: calc(25 * var(--u));
+  font-weight: 400;
+  line-height: 1.3;
+}
+
+.ch__user:empty,
+.ch__user[data-empty],
+.ch__platform:empty,
+.ch__platform[data-empty],
+.ch__text:empty,
+.ch__text[data-empty] {
+  display: none;
+}
+
+/* In: the wipe, the title, the messages one after the other (newest last). A message added on
+   air steps in on its own; a removed one fades. */
+.ch[data-state="in"] .ch__wipe {
+  animation: ch-mask calc(520ms * var(--speed)) var(--wipe) both;
+}
+
+.ch[data-state="in"] .ch__panel {
+  animation: ch-unmask calc(520ms * var(--speed)) var(--wipe) both;
+}
+
+.ch[data-state="in"] .ch__head {
+  animation: ch-in calc(340ms * var(--speed)) var(--ease) calc(300ms * var(--speed)) both;
+}
+
+.ch[data-state="in"] .ch__msg {
+  animation: ch-in calc(360ms * var(--speed)) var(--ease) calc((340ms + min(var(--i), 8) * 40ms) * var(--speed)) both;
+}
+
+.ch[data-state="in"] .ch__msg[data-row="in"] {
+  animation: ch-rise calc(380ms * var(--speed)) var(--ease) both;
+}
+
+.ch__msg[data-row="out"] {
+  animation: ch-fade-out calc(200ms * var(--speed)) var(--ease-in) forwards;
+}
+
+/* Out: the panel wipes off; the root animation's end is the end of the layer. */
+.ch[data-state="out"] {
+  animation: ch-out calc(380ms * var(--speed)) linear forwards;
+}
+
+.ch[data-state="out"] .ch__wipe {
+  animation: ch-mask-out calc(360ms * var(--speed)) var(--wipe) forwards;
+}
+
+.ch[data-state="out"] .ch__panel {
+  animation: ch-unmask-out calc(360ms * var(--speed)) var(--wipe) forwards;
+}
+
+@keyframes ch-mask { from { transform: translateX(101%); } to { transform: none; } }
+
+@keyframes ch-unmask { from { transform: translateX(-101%); } to { transform: none; } }
+
+@keyframes ch-mask-out { to { transform: translateX(101%); } }
+
+@keyframes ch-unmask-out { to { transform: translateX(-101%); } }
+
+@keyframes ch-in { from { opacity: 0; transform: translateX(calc(-14 * var(--u))); } to { opacity: 1; transform: none; } }
+
+@keyframes ch-rise { from { opacity: 0; transform: translateY(calc(16 * var(--u))); } to { opacity: 1; transform: none; } }
+
+@keyframes ch-fade-out { to { opacity: 0; } }
+
+@keyframes ch-out { 0%, 90% { opacity: 1; } 100% { opacity: 0; } }

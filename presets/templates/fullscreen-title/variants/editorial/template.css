@@ -1,0 +1,204 @@
+/* Full-screen title, Editorial style: a cover page on the dark plate. Centred: an optional logo,
+   the kicker in tracked small caps in the accent between two fine rules, the title as a large serif
+   headline and the subtitle as an italic serif standfirst. Missing parts collapse (data-empty, or
+   an empty src / text).
+   Sizing: one unit --u, 1px at 1080p on the frame's short side (16:9 and 9:16 alike).
+   Motion: the plate fades up, the kicker comes first and its rules draw outwards, then the title
+   and the standfirst stagger in. Transform and opacity only, durations × --speed.
+   Variables: --accent (kicker), --secondary (subtitle), --text, --plate (background),
+   --font-heading (title, subtitle), --font-body (kicker), --radius (unused: no corners),
+   --speed (duration factor). */
+
+:host {
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+}
+
+.ft {
+  position: absolute;
+  inset: 0;
+  container-type: size;
+}
+
+.ft__bg {
+  position: absolute;
+  inset: 0;
+  background: var(--plate);
+}
+
+.ft__stage {
+  --u: 1px;
+  position: absolute;
+  inset: 8cqh 8cqw;
+  display: grid;
+  place-items: center;
+}
+
+@supports (width: 1cqmin) {
+  .ft__stage {
+    --u: calc(100cqmin / 1080);
+  }
+}
+
+@container (orientation: portrait) {
+  .ft__stage {
+    inset: 10cqh 7cqw;
+  }
+}
+
+/* A layer box smaller than a frame (or a wide bar): no title-safe margins, a small inset, and
+   the unit scales the block (1550 × 552 at 1px: a block with room, plus the inset) to the box. */
+@container ((max-width: 999px) and (max-height: 999px)) or (min-aspect-ratio: 2/1) {
+  .ft__stage {
+    --u: min(100cqw / 1598, 100cqh / 600);
+    inset: calc(24 * var(--u));
+  }
+}
+
+
+
+.ft__block {
+  box-sizing: border-box;
+  width: min(100%, calc(1560 * var(--u)));
+  text-align: center;
+  color: var(--text);
+  line-height: normal;
+  -webkit-font-smoothing: antialiased;
+}
+
+.ft__logo {
+  display: block;
+  width: auto;
+  max-width: calc(360 * var(--u));
+  height: calc(76 * var(--u));
+  margin: 0 auto calc(56 * var(--u));
+  object-fit: contain;
+}
+
+.ft__kicker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  column-gap: calc(28 * var(--u));
+  margin-bottom: calc(34 * var(--u));
+}
+
+.ft__ktext {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--accent);
+  font-family: var(--font-body);
+  font-size: calc(28 * var(--u));
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0.24em;
+  margin-right: -0.24em;
+  text-transform: uppercase;
+}
+
+.ft__rule {
+  flex: none;
+  width: calc(120 * var(--u));
+  height: 1px;
+  background: color-mix(in srgb, var(--text) 35%, transparent);
+  transform-origin: right center;
+}
+
+.ft__rule + .ft__ktext + .ft__rule {
+  transform-origin: left center;
+}
+
+.ft__title {
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+  font-family: var(--font-heading);
+  font-size: calc(124 * var(--u));
+  font-weight: 600;
+  line-height: 1.04;
+  letter-spacing: -0.015em;
+}
+
+.ft__subtitle {
+  max-width: calc(1200 * var(--u));
+  margin: calc(36 * var(--u)) auto 0;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+  color: var(--secondary);
+  font-family: var(--font-heading);
+  font-size: calc(44 * var(--u));
+  font-style: italic;
+  font-weight: 400;
+  line-height: 1.3;
+}
+
+@container (orientation: portrait) {
+  .ft__title {
+    font-size: calc(108 * var(--u));
+  }
+
+  .ft__rule {
+    width: calc(60 * var(--u));
+  }
+}
+
+.ft__ktext:empty,
+.ft__title:empty,
+.ft__subtitle:empty,
+.ft__kicker:has(> .ft__ktext[data-empty]),
+.ft__title[data-empty],
+.ft__subtitle[data-empty],
+.ft__logo[src=""],
+.ft__logo[data-empty] {
+  display: none;
+}
+
+/* In: the plate, the logo, the kicker first with its rules drawing outwards, then title and
+   standfirst. */
+.ft[data-state="in"] .ft__bg {
+  animation: ft-fade calc(460ms * var(--speed)) var(--ease) both;
+}
+
+.ft[data-state="in"] .ft__logo {
+  animation: ft-fade calc(500ms * var(--speed)) var(--ease) calc(120ms * var(--speed)) both;
+}
+
+.ft[data-state="in"] .ft__ktext {
+  animation: ft-rise calc(460ms * var(--speed)) var(--ease) calc(180ms * var(--speed)) both;
+}
+
+.ft[data-state="in"] .ft__rule {
+  animation: ft-draw calc(700ms * var(--speed)) var(--ease) calc(260ms * var(--speed)) both;
+}
+
+.ft[data-state="in"] .ft__title {
+  animation: ft-rise calc(600ms * var(--speed)) var(--ease) calc(340ms * var(--speed)) both;
+}
+
+.ft[data-state="in"] .ft__subtitle {
+  animation: ft-rise calc(560ms * var(--speed)) var(--ease) calc(480ms * var(--speed)) both;
+}
+
+/* Out: the text first, then the plate with the root, whose animation end is the end of the
+   layer. */
+.ft[data-state="out"] {
+  animation: ft-out calc(380ms * var(--speed)) var(--ease-in) forwards;
+}
+
+.ft[data-state="out"] .ft__block {
+  animation: ft-fade-out calc(180ms * var(--speed)) var(--ease-in) forwards;
+}
+
+@keyframes ft-fade { from { opacity: 0; } to { opacity: 1; } }
+
+@keyframes ft-rise { from { opacity: 0; transform: translateY(calc(26 * var(--u))); } to { opacity: 1; transform: none; } }
+
+@keyframes ft-draw { from { transform: scaleX(0); } to { transform: none; } }
+
+@keyframes ft-fade-out { to { opacity: 0; } }
+
+@keyframes ft-out { 0%, 40% { opacity: 1; } 100% { opacity: 0; } }

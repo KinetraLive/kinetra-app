@@ -1,0 +1,236 @@
+/* Corner bug, Pill style: a small white capsule: the logo on an ink capsule at its left end (or,
+   without a logo, an accent dot) and a short tag ("LIVE"). Sizing: --u, 1px at 1080p; a smaller
+   layer box scales the bug to fill it. Motion: the dot/logo pops in (scale), the capsule expands
+   to the right (scaleX from its left), then the tag. data-state on the root (.bug); transform
+   and opacity only; durations × --speed. Capsule ends: --radius × 40.
+   Variables: --position, --accent, --ink (text, logo capsule), --plate, --font-heading,
+   --radius (px), --speed. */
+
+:host {
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --pop: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --snap: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+}
+
+.bug {
+  --cap: calc(var(--radius) * 40);
+  position: absolute;
+  inset: 0;
+  container-type: size;
+}
+
+.bug__stage {
+  --u: 1px;
+  position: absolute;
+  inset: 6cqh 5cqw;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  grid-template-rows: auto 1fr auto;
+  grid-template-areas:
+    "top-left . top-right"
+    ". . ."
+    "bottom-left . bottom-right";
+}
+
+@supports (width: 1cqmin) {
+  .bug__stage {
+    --u: max(100cqmin / 1080, 100cqw / 1920);
+  }
+}
+
+@container ((max-width: 999px) and (max-height: 999px)) or (min-aspect-ratio: 2/1) {
+  /* The bug fills the largest box of the design's aspect (240:75) in its corner: the plate takes
+     that box and the content scales contain-wise with the look's own extent (224×68 at 1080p). */
+  .bug__stage {
+    --fw: min(100cqw, 320cqh);
+    --fh: min(100cqh, 100cqw / 3.2);
+    --u: min(var(--fw) / 224, var(--fh) / 68);
+    inset: 0;
+  }
+
+  .bug__stage > .bug__box {
+    width: var(--fw);
+    height: var(--fh);
+    max-width: none;
+    min-height: 0;
+  }
+}
+
+.bug__box {
+  grid-area: var(--position);
+  position: relative;
+  display: flex;
+  align-items: center;
+  column-gap: calc(14 * var(--u));
+  max-width: calc(520 * var(--u));
+  min-width: 0;
+  min-height: calc(68 * var(--u));
+  box-sizing: border-box;
+  padding: calc(7 * var(--u)) calc(26 * var(--u)) calc(7 * var(--u)) calc(7 * var(--u));
+  color: var(--ink);
+  line-height: normal;
+  -webkit-font-smoothing: antialiased;
+}
+
+.bug__pill {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--cap);
+  background: var(--plate);
+  box-shadow:
+    0 0 0 1px rgb(20 16 40 / 0.07),
+    0 calc(6 * var(--u)) calc(22 * var(--u)) rgb(20 16 40 / 0.22);
+  transform-origin: left center;
+}
+
+/* The logo on an ink capsule; without a logo, an accent dot. */
+.bug__dot {
+  position: relative;
+  flex: none;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  padding: 0 calc(20 * var(--u));
+  border-radius: var(--cap);
+  background: var(--ink);
+}
+
+.bug__dot:has(> .bug__logo[data-empty]),
+.bug__dot:has(> .bug__logo[src=""]) {
+  align-self: center;
+  width: calc(18 * var(--u));
+  height: calc(18 * var(--u));
+  margin-left: calc(16 * var(--u));
+  padding: 0;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 calc(5 * var(--u)) color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.bug__logo {
+  display: block;
+  width: auto;
+  max-width: calc(200 * var(--u));
+  height: calc(32 * var(--u));
+  object-fit: contain;
+}
+
+.bug__text {
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-family: var(--font-heading);
+  font-size: calc(24 * var(--u));
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.bug__box:has(> .bug__text[data-empty]) {
+  padding-right: calc(7 * var(--u));
+}
+
+.bug__text:empty,
+.bug__text[data-empty],
+.bug__logo[src=""],
+.bug__logo[data-empty] {
+  display: none;
+}
+
+.bug[data-state="in"] .bug__dot {
+  animation: bug-pop calc(440ms * var(--speed)) var(--pop) both;
+}
+
+.bug[data-state="in"] .bug__pill {
+  animation: bug-expand calc(460ms * var(--speed)) var(--snap) calc(110ms * var(--speed)) both;
+}
+
+.bug[data-state="in"] .bug__text {
+  animation: bug-slide calc(360ms * var(--speed)) var(--ease) calc(240ms * var(--speed)) both;
+}
+
+.bug[data-state="out"] {
+  animation: bug-out calc(340ms * var(--speed)) var(--ease-in) forwards;
+}
+
+.bug[data-state="out"] .bug__text {
+  animation: bug-fade-out calc(120ms * var(--speed)) var(--ease-in) forwards;
+}
+
+.bug[data-state="out"] .bug__pill {
+  animation: bug-fold calc(220ms * var(--speed)) var(--ease-in) calc(40ms * var(--speed)) forwards;
+}
+
+.bug[data-state="out"] .bug__dot {
+  animation: bug-shrink calc(180ms * var(--speed)) var(--ease-in) calc(150ms * var(--speed)) forwards;
+}
+
+@keyframes bug-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.2);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes bug-expand {
+  from {
+    opacity: 0;
+    transform: scaleX(0.1);
+  }
+  15% {
+    opacity: 1;
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes bug-fold {
+  to {
+    opacity: 0;
+    transform: scaleX(0.1);
+  }
+}
+
+@keyframes bug-shrink {
+  to {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+}
+
+@keyframes bug-slide {
+  from {
+    opacity: 0;
+    transform: translateX(calc(-10 * var(--u)));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes bug-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes bug-out {
+  0%,
+  60% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}

@@ -1,0 +1,140 @@
+/* Sponsor wall, Classic: a full-frame backdrop, a spaced uppercase title and equal tiles with the
+   logos contained (on --tile with the logo background on). The grid balances its lines by count,
+   tiers (main, partner, the rest) get lines of their own and larger tiles, and a row without a logo has no
+   tile. A slideshow source's current sponsor (data-current) gets a ring. The renderer sets
+   data-state on .sw, data-count / --n on the grid, --i and data-row on rows. Transform and
+   opacity only; durations × --speed. Variables: --accent (ring), --text, --plate (backdrop),
+   --tile, --font-heading, --radius, --speed. */
+
+:host {
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+}
+
+/* -- Layout (the same in every look): container units of the safe area (.sw__area). --u is a
+   unit of line height (main 1.5, partner 1.2, rest 1); tiles never outgrow the tier before. */
+.sw{position:absolute;inset:0;container-type:size;-webkit-font-smoothing:antialiased}
+.sw__area{position:absolute;inset:8cqh 6cqw;container-type:size}
+.sw__block{--g:2.2cqmin;--ar:1.5;--th:calc(var(--tf) * 2);--cap:min(36cqh, 60cqw / var(--ar));height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.sw__block:has(.sw__title[data-empty]){--th:0px}
+.sw__title{max-width:calc(100cqw - 2 * var(--pad));margin-bottom:calc(var(--tf) * 0.8);overflow:hidden;white-space:nowrap;text-overflow:ellipsis;text-align:center;font-size:var(--tf);line-height:1.2}
+.sw__title:empty,.sw__title[data-empty]{display:none}
+.sw__grid{
+  --c:4;--r:2;--pm:0;--lm:0;--cm:1;--pp:0;--lp:0;--cp:1;--dl:0;--dc:1;--cr:var(--c);--lr:var(--r);
+  --W:calc(100cqw - 2 * var(--pad));
+  --u:calc((100cqh - var(--th) - 2 * var(--pad) - (var(--lm) + var(--lp) + var(--lr)) * var(--g)) / (1.5 * var(--lm) + 1.2 * var(--lp) + var(--lr)));
+  --hm:min(1.5 * var(--u), (var(--W) - (var(--cm) - 1) * var(--g)) / var(--cm) / var(--ar), var(--cap));
+  --hp:min(1.2 * var(--u), (var(--W) - (var(--cp) - 1) * var(--g)) / var(--cp) / var(--ar), var(--cap), var(--pm) * var(--hm) + (1 - var(--pm)) * var(--cap));
+  --hr:min(var(--u), (var(--W) - (var(--cr) - 1) * var(--g)) / var(--cr) / var(--ar), var(--cap), var(--pp) * var(--hp) + (1 - var(--pp)) * (var(--pm) * var(--hm) + (1 - var(--pm)) * var(--cap)));
+  display:flex;flex-wrap:wrap;justify-content:center;align-content:center;column-gap:var(--g);
+  width:calc(max(var(--pm) * (var(--cm) * var(--hm) * var(--ar) + (var(--cm) - 1) * var(--g)), var(--pp) * (var(--cp) * var(--hp) * var(--ar) + (var(--cp) - 1) * var(--g)), var(--cr) * var(--hr) * var(--ar) + (var(--cr) - 1) * var(--g)) + 1px);
+}
+/* Columns (--c) and lines (--r) by the renderer's row count: balanced, 7 → 4+3, 9 → 3+3+3. */
+.sw__grid[data-count="1"]{--c:1;--r:1}
+.sw__grid[data-count="2"]{--c:2;--r:1}
+.sw__grid[data-count="3"]{--c:3;--r:1}
+.sw__grid[data-count="4"]{--c:4;--r:1}
+.sw__grid:is([data-count="5"],[data-count="6"]){--c:3;--r:2}
+.sw__grid:is([data-count="7"],[data-count="8"]){--c:4;--r:2}
+.sw__grid[data-count="9"]{--c:3;--r:3}
+.sw__grid[data-count="10"]{--c:5;--r:2}
+.sw__grid:is([data-count="11"],[data-count="12"]){--c:4;--r:3}
+.sw__grid:is([data-count="13"],[data-count="14"],[data-count="15"]){--c:5;--r:3}
+.sw__grid[data-count="16"]{--c:4;--r:4}
+.sw__grid:is([data-count="17"],[data-count="18"]){--c:6;--r:3}
+.sw__grid:is([data-count="19"],[data-count="20"]){--c:5;--r:4}
+.sw__grid[data-count="21"]{--c:7;--r:3}
+.sw__grid:is([data-count="22"],[data-count="23"],[data-count="24"]){--c:6;--r:4}
+@container (orientation: portrait){
+  .sw__grid[data-count="2"]{--c:1;--r:2}
+  .sw__grid[data-count="3"]{--c:1;--r:3}
+  .sw__grid[data-count="4"]{--c:2;--r:2}
+  .sw__grid:is([data-count="5"],[data-count="6"]){--c:2;--r:3}
+  .sw__grid:is([data-count="7"],[data-count="8"]){--c:2;--r:4}
+  .sw__grid:is([data-count="9"],[data-count="10"]){--c:2;--r:5}
+  .sw__grid:is([data-count="11"],[data-count="12"]){--c:2;--r:6}
+  .sw__grid[data-count="13"]{--c:2;--r:7}
+  .sw__grid:is([data-count="14"],[data-count="15"]){--c:3;--r:5}
+  .sw__grid[data-count="16"]{--c:4;--r:4}
+  .sw__grid:is([data-count="17"],[data-count="18"]){--c:3;--r:6}
+  .sw__grid[data-count="19"]{--c:4;--r:5}
+  .sw__grid:is([data-count="20"],[data-count="21"]){--c:3;--r:7}
+  .sw__grid[data-count="22"]{--c:4;--r:6}
+  .sw__grid:is([data-count="23"],[data-count="24"]){--c:3;--r:8}
+}
+/* A strip (3:1 or wider): up to 12 a line; (n + 11) / 12 never undercounts the lines. */
+@container (min-aspect-ratio: 3/1){
+  .sw__block{--cap:100cqh}
+  .sw__grid[data-count]{--c:min(var(--n), 12);--r:calc((var(--n) + 11) / 12)}
+}
+/* Tiers (data-tier, any case), lines of their own: main (4 a line), partner (6), the rest (8). */
+.sw__grid:has(> [data-tier=main i], > [data-tier=partner i]){--cr:var(--dc);--lr:var(--dl)}
+.sw__grid:has(> [data-tier=main i]){--pm:1;--lm:1}
+.sw__grid:has(> :nth-child(2 of [data-tier=main i])){--cm:2}
+.sw__grid:has(> :nth-child(3 of [data-tier=main i])){--cm:3}
+.sw__grid:has(> :nth-child(4 of [data-tier=main i])){--cm:4}
+.sw__grid:has(> :nth-child(5 of [data-tier=main i])){--lm:2}
+.sw__grid:has(> :nth-child(9 of [data-tier=main i])){--lm:3}
+.sw__grid:has(> [data-tier=partner i]){--pp:1;--lp:1}
+.sw__grid:has(> :nth-child(2 of [data-tier=partner i])){--cp:2}
+.sw__grid:has(> :nth-child(3 of [data-tier=partner i])){--cp:3}
+.sw__grid:has(> :nth-child(4 of [data-tier=partner i])){--cp:4}
+.sw__grid:has(> :nth-child(5 of [data-tier=partner i])){--cp:5}
+.sw__grid:has(> :nth-child(6 of [data-tier=partner i])){--cp:6}
+.sw__grid:has(> :nth-child(7 of [data-tier=partner i])){--lp:2}
+.sw__grid:has(> :nth-child(13 of [data-tier=partner i])){--lp:3}
+.sw__grid:has(> :not([data-tier=main i],[data-tier=partner i])){--dl:1}
+.sw__grid:has(> :nth-child(2 of :not([data-tier=main i],[data-tier=partner i]))){--dc:2}
+.sw__grid:has(> :nth-child(3 of :not([data-tier=main i],[data-tier=partner i]))){--dc:3}
+.sw__grid:has(> :nth-child(4 of :not([data-tier=main i],[data-tier=partner i]))){--dc:4}
+.sw__grid:has(> :nth-child(5 of :not([data-tier=main i],[data-tier=partner i]))){--dc:5}
+.sw__grid:has(> :nth-child(6 of :not([data-tier=main i],[data-tier=partner i]))){--dc:6}
+.sw__grid:has(> :nth-child(7 of :not([data-tier=main i],[data-tier=partner i]))){--dc:7}
+.sw__grid:has(> :nth-child(8 of :not([data-tier=main i],[data-tier=partner i]))){--dc:8}
+.sw__grid:has(> :nth-child(9 of :not([data-tier=main i],[data-tier=partner i]))){--dl:2}
+.sw__grid:has(> :nth-child(17 of :not([data-tier=main i],[data-tier=partner i]))){--dl:3}
+/* Line breaks between the tiers. */
+.sw__grid::before,.sw__grid::after{content:"";display:none;flex-basis:100%;height:0;order:2}
+.sw__grid::after{order:4}
+.sw__grid:has(> [data-tier=main i]):has(> :not([data-tier=main i]))::before,
+.sw__grid:has(> [data-tier=partner i]):has(> :not([data-tier=main i],[data-tier=partner i]))::after{display:block}
+.sw__tile{--t:var(--hr);--d:200ms;position:relative;flex:none;order:5;display:grid;place-items:center;width:calc(var(--t) * var(--ar));height:var(--t);margin:calc(var(--g) / 2) 0;box-sizing:border-box;padding:calc(var(--t) * 0.16) calc(var(--t) * 0.24);border-radius:var(--radius);transition:opacity 500ms var(--ease),transform 500ms var(--ease)}
+.sw__tile[data-tier=main i]{--t:var(--hm);--d:0ms;order:1}
+.sw__tile[data-tier=partner i]{--t:var(--hp);--d:100ms;order:3}
+/* Logo background (--logo-bg): off (the default), the logos sit on the backdrop as they are,
+   transparency kept; on, each on a tile (--tile). */
+@container style(--logo-bg: on){.sw__tile{background:var(--tile)}}
+/* No logo: no tile. */
+.sw__tile:has(> .sw__logo[data-empty]){display:none}
+.sw__logo{display:block;width:100%;height:100%;object-fit:contain}
+/* The slideshow source's current sponsor stands out; the others step back. */
+.sw__grid:has(> [data-current="true"]) > .sw__tile:not([data-current="true"]){opacity:0.66}
+/* -- Look -- */
+.sw__bg{position:absolute;inset:0;background:var(--plate)}
+.sw__block{--pad:0px;--tf:min(4.4cqh, 3.2cqw)}
+.sw__title{color:var(--text);font-family:var(--font-heading);font-weight:600;letter-spacing:0.14em;text-transform:uppercase}
+
+/* The ring sits just outside the current tile. */
+.sw__tile::after{content:"";position:absolute;inset:calc(var(--g) * -0.36);border:calc(var(--g) * 0.18) solid var(--accent);border-radius:calc(var(--radius) + var(--g) * 0.36);opacity:0;transform:scale(0.97);transition:opacity 500ms var(--ease),transform 500ms var(--ease)}
+.sw__tile[data-current="true"]{transform:scale(1.04)}
+.sw__tile[data-current="true"]::after{opacity:1;transform:none}
+
+/* In: backdrop, title, then the tiles one after another (main first). */
+.sw[data-state="in"] .sw__bg{animation:sw-fade calc(420ms * var(--speed)) var(--ease) both}
+.sw[data-state="in"] .sw__title{animation:sw-drop calc(440ms * var(--speed)) var(--ease) calc(120ms * var(--speed)) both}
+.sw[data-state="in"] .sw__tile[data-row="in"]{animation:sw-tile-in calc(460ms * var(--speed)) var(--ease) calc((var(--d) + 180ms + min(var(--i), 16) * 45ms) * var(--speed)) backwards}
+.sw[data-state="in"] .sw__tile[data-row="out"]{animation:sw-tile-out calc(260ms * var(--speed)) var(--ease-in) forwards}
+
+/* Out: the tiles drop away in turn, then the root fades (its animation ends the layer). */
+.sw[data-state="out"] {
+  animation: sw-out calc(360ms * var(--speed)) var(--ease-in) forwards;
+}
+
+.sw[data-state="out"] .sw__tile{animation:sw-tile-out calc(220ms * var(--speed)) var(--ease-in) calc(min(var(--i), 8) * 12ms * var(--speed)) forwards}
+
+@keyframes sw-fade { from { opacity: 0; } }
+@keyframes sw-drop { from { opacity: 0; transform: translateY(-0.4em); } }
+/* No `to` frame: tiles end at their own opacity and scale (dimmed or highlighted). */
+@keyframes sw-tile-in { from { opacity: 0; transform: translateY(calc(var(--t) * 0.12)) scale(0.94); } }
+@keyframes sw-tile-out { to { opacity: 0; transform: scale(0.9); } }
+@keyframes sw-out { 0%, 40% { opacity: 1; } 100% { opacity: 0; } }

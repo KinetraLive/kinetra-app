@@ -1,0 +1,197 @@
+/* Scoreboard, Editorial style: a compact dark strap: each team with a fine edge in its colour, the
+   name in tracked small caps and the score in serif lining figures, divided by hairlines; then the
+   period as a kicker in the accent and the game clock.
+   Sizing: one unit --u, 1px at 1080p; a smaller layer box scales the bug to fill it.
+   Motion: the plate settles, then the teams and the clock stagger in. Transform and opacity only;
+   durations × --speed.
+   Variables: --position (top-left | top-center | top-right), --home_color, --away_color, --accent
+   (period), --text, --plate, --font-heading (scores), --font-body, --radius (px),
+   --speed (duration factor). */
+
+:host {
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+}
+
+.sb {
+  position: absolute;
+  inset: 0;
+  container-type: size;
+}
+
+.sb__stage {
+  --u: 1px;
+  position: absolute;
+  inset: 6cqh 5cqw auto;
+  display: grid;
+  grid-template-columns: auto 1fr auto 1fr auto;
+  grid-template-areas: "top-left . top-center . top-right";
+  align-items: start;
+}
+
+@supports (width: 1cqmin) {
+  .sb__stage {
+    --u: max(100cqmin / 1080, 100cqw / 1920);
+  }
+}
+
+@container ((max-width: 999px) and (max-height: 999px)) or (min-aspect-ratio: 2/1) {
+  /* The bug fills the largest box of the design's aspect (700:68) in its place: the plate takes
+     that box and the content scales contain-wise with the look's own extent (760×68 at 1080p). */
+  .sb__stage {
+    --fw: min(100cqw, 100cqh * 700 / 68);
+    --fh: min(100cqh, 100cqw * 68 / 700);
+    --u: min(var(--fw) / 760, var(--fh) / 68);
+    inset: 0;
+  }
+
+  .sb__stage > .sb__box {
+    width: var(--fw);
+    height: var(--fh);
+  }
+}
+
+.sb__box {
+  grid-area: var(--position);
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  height: calc(68 * var(--u));
+  min-width: 0;
+  color: var(--text);
+  line-height: normal;
+  -webkit-font-smoothing: antialiased;
+}
+
+.sb__plate {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius);
+  background: var(--plate);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 7%, transparent);
+}
+
+.sb__team {
+  position: relative;
+  display: flex;
+  align-items: center;
+  column-gap: calc(18 * var(--u));
+  padding: 0 calc(22 * var(--u)) 0 calc(26 * var(--u));
+}
+
+.sb__team::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: calc(16 * var(--u));
+  bottom: calc(16 * var(--u));
+  width: max(2px, calc(3 * var(--u)));
+  background: var(--home_color);
+}
+
+.sb__team--away::before {
+  background: var(--away_color);
+}
+
+.sb__team + .sb__team,
+.sb__game {
+  border-left: 1px solid color-mix(in srgb, var(--text) 16%, transparent);
+}
+
+.sb__team + .sb__team::before {
+  left: calc(10 * var(--u));
+}
+
+.sb__team + .sb__team {
+  padding-left: calc(34 * var(--u));
+}
+
+.sb__name {
+  width: calc(170 * var(--u));
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-family: var(--font-body);
+  font-size: calc(21 * var(--u));
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.sb__score {
+  min-width: 1.2ch;
+  text-align: right;
+  font-family: var(--font-heading);
+  font-size: calc(42 * var(--u));
+  font-weight: 600;
+  line-height: 1;
+  font-variant-numeric: lining-nums tabular-nums;
+}
+
+.sb__game {
+  position: relative;
+  display: flex;
+  align-items: center;
+  column-gap: calc(18 * var(--u));
+  padding: 0 calc(28 * var(--u)) 0 calc(24 * var(--u));
+  white-space: nowrap;
+  font-family: var(--font-body);
+  font-variant-numeric: tabular-nums;
+}
+
+.sb__period {
+  color: var(--accent);
+  font-size: calc(18 * var(--u));
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.sb__time {
+  min-width: 5ch;
+  font-size: calc(30 * var(--u));
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+.sb__period:empty,
+.sb__period[data-empty] {
+  display: none;
+}
+
+/* In: the plate settles, then the teams and the clock. */
+.sb[data-state="in"] .sb__plate {
+  animation: sb-plate calc(400ms * var(--speed)) var(--ease) both;
+}
+
+.sb[data-state="in"] .sb__team--home {
+  animation: sb-rise calc(440ms * var(--speed)) var(--ease) calc(120ms * var(--speed)) both;
+}
+
+.sb[data-state="in"] .sb__team--away {
+  animation: sb-rise calc(440ms * var(--speed)) var(--ease) calc(200ms * var(--speed)) both;
+}
+
+.sb[data-state="in"] .sb__game {
+  animation: sb-rise calc(440ms * var(--speed)) var(--ease) calc(280ms * var(--speed)) both;
+}
+
+/* Out: content first; the root animation's end is the layer's end. */
+.sb[data-state="out"] {
+  animation: sb-out calc(320ms * var(--speed)) var(--ease-in) forwards;
+}
+
+.sb[data-state="out"] .sb__team,
+.sb[data-state="out"] .sb__game {
+  animation: sb-fade-out calc(140ms * var(--speed)) var(--ease-in) forwards;
+}
+
+@keyframes sb-plate { from { opacity: 0; transform: translateY(calc(-8 * var(--u))); } to { opacity: 1; transform: none; } }
+
+@keyframes sb-rise { from { opacity: 0; transform: translateY(calc(10 * var(--u))); } to { opacity: 1; transform: none; } }
+
+@keyframes sb-fade-out { to { opacity: 0; } }
+
+@keyframes sb-out { 0%, 45% { opacity: 1; } 100% { opacity: 0; } }

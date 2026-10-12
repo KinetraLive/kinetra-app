@@ -1,0 +1,132 @@
+/* Test lower third. Renders inside a Shadow DOM on a 1920x1080 stage.
+   The renderer sets data-state="in" | "out" on the root (.lt).
+   Only transform and opacity animate. */
+
+:host {
+  --accent: #22b8cf;
+  --text: #fff;
+  --text-muted: rgba(255, 255, 255, 0.78);
+  --panel: rgba(10, 12, 16, 0.82);
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --radius: 4px;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+}
+
+.lt {
+  position: absolute;
+  left: 154px; /* ~8% of 1920 */
+  bottom: 96px; /* ~9% of 1080 */
+  box-sizing: border-box;
+  min-width: 560px;
+  max-width: 1200px;
+  padding: 26px 44px 28px 40px;
+  font-family: var(--font);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+}
+
+.lt__bg {
+  position: absolute;
+  inset: 0;
+  background: var(--panel);
+  border-radius: var(--radius);
+  transform-origin: left center;
+}
+
+.lt__bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 6px;
+  background: var(--accent);
+  border-radius: var(--radius) var(--radius) 0 0;
+  transform-origin: left center;
+}
+
+.lt__text {
+  position: relative;
+}
+
+.lt__name,
+.lt__title {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  /* overflow: hidden clips at the line box, which is shorter than descenders (g, j, p, y) and
+     accented capitals (Å, Ø, É). Pad the clip box and cancel the padding with a negative margin:
+     glyphs get room, layout stays the same. */
+  padding-block: 0.2em;
+  margin-block: -0.2em;
+}
+
+.lt__name {
+  font-size: 56px;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+}
+
+.lt__title {
+  margin-top: calc(6px - 0.2em); /* 6px gap; see the clip padding above */
+  font-size: 30px;
+  font-weight: 400;
+  line-height: 1.2;
+  letter-spacing: 0.01em;
+  color: var(--text-muted);
+}
+
+/* In: the bar wipes in, the panel follows, then name and title slide in with a stagger.
+   `both` keeps the start frame during the delay and the end frame afterwards. */
+.lt[data-state="in"] .lt__bar {
+  animation: lt-wipe 340ms var(--ease) both;
+}
+
+.lt[data-state="in"] .lt__bg {
+  animation: lt-wipe 400ms var(--ease) 60ms both;
+}
+
+.lt[data-state="in"] .lt__name {
+  animation: lt-text-in 320ms var(--ease) 140ms both;
+}
+
+.lt[data-state="in"] .lt__title {
+  animation: lt-text-in 320ms var(--ease) 200ms both;
+}
+
+/* Out: one animation on the root, so its animationend marks the end of the layer. */
+.lt[data-state="out"] {
+  animation: lt-out 300ms var(--ease-in) forwards;
+}
+
+@keyframes lt-wipe {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+@keyframes lt-text-in {
+  from {
+    opacity: 0;
+    transform: translateX(-24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes lt-out {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(-32px);
+  }
+}

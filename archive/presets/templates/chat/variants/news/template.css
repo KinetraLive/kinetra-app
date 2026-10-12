@@ -1,0 +1,275 @@
+/* Chat, News style: a stack of messages on the right of the safe area, newest at the bottom, under
+   the title as an accent tag. Each message is a navy name tag (the user's colour as a square, the
+   user in caps, the platform dimmed) over a white bar with the text. The newest message carries an
+   accent rule at its left; highlighted ones (row mark _highlight, or highlighted = "true") get an
+   accent name tag. Older messages leave over the top edge; at most 7 show.
+   Sizing: one unit --u, 1px at 1080p; a smaller layer box scales the stack to fill it.
+   The renderer sets data-state="in" | "out" on the root (.ch); rows get --i and data-row.
+   Motion: the title tag drops in, messages slide in from the right. Transform and opacity only,
+   every duration × --speed.
+   Variables: --accent, --secondary (navy), --text (ink), --plate (white), --font-heading (users),
+   --font-body, --radius (px), --speed. */
+
+:host {
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+}
+
+.ch {
+  position: absolute;
+  inset: 0;
+  container-type: size;
+}
+
+.ch__safe {
+  --u: 1px;
+  position: absolute;
+  top: 10cqh;
+  right: 5cqw;
+  bottom: 9cqh;
+  width: calc(600 * var(--u));
+}
+
+@supports (width: 1cqmin) {
+  .ch__safe {
+    --u: max(100cqmin / 1080, 100cqw / 1920);
+  }
+}
+
+@container (orientation: portrait) {
+  .ch__safe {
+    top: 42cqh;
+    left: 5cqw;
+    bottom: 17cqh;
+    width: auto;
+  }
+}
+
+@container ((max-width: 999px) and (max-height: 999px)) or (min-aspect-ratio: 2/1) {
+  .ch__safe {
+    --u: min(100cqw / 600, (100cqh - 6px) / 491);
+    inset: 0;
+    width: auto;
+  }
+}
+
+.ch__panel {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  height: 100%;
+  line-height: normal;
+  -webkit-font-smoothing: antialiased;
+}
+
+.ch__tags {
+  flex: none;
+  display: flex;
+  margin-bottom: calc(18 * var(--u));
+  overflow: hidden;
+}
+
+.ch__head {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  padding: calc(7 * var(--u)) calc(18 * var(--u)) calc(6 * var(--u));
+  border-radius: var(--radius);
+  background: var(--accent);
+  color: var(--plate);
+  font-family: var(--font-body);
+  font-size: calc(20 * var(--u));
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.ch__head:empty,
+.ch__head[data-empty],
+.ch__tags:has(> .ch__head:empty),
+.ch__tags:has(> .ch__head[data-empty]) {
+  display: none;
+}
+
+/* The messages: bottom-aligned; what does not fit is clipped at the top. */
+.ch__list {
+  flex: 0 1 auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  row-gap: calc(14 * var(--u));
+  min-height: 0;
+  overflow: clip;
+}
+
+.ch__msg {
+  position: relative;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.ch__msg:nth-last-child(n + 8) {
+  display: none;
+}
+
+.ch__meta {
+  display: flex;
+  align-items: center;
+  column-gap: calc(10 * var(--u));
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: calc(6 * var(--u)) calc(14 * var(--u)) calc(5 * var(--u));
+  border-radius: var(--radius) var(--radius) 0 0;
+  background: var(--secondary);
+  color: var(--plate);
+  white-space: nowrap;
+  font-family: var(--font-heading);
+  line-height: 1.2;
+}
+
+.ch__msg[data-highlight] .ch__meta,
+.ch__msg[data-hl="true"] .ch__meta {
+  background: var(--accent);
+}
+
+/* The user's colour (an invalid or empty colour leaves the accent). */
+.ch__dot {
+  flex: none;
+  width: calc(10 * var(--u));
+  height: calc(10 * var(--u));
+  color: var(--accent);
+  background: currentColor;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--plate) 50%, transparent);
+}
+
+.ch__user {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: calc(18 * var(--u));
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.ch__platform {
+  flex: none;
+  color: color-mix(in srgb, var(--plate) 62%, transparent);
+  font-family: var(--font-body);
+  font-size: calc(14 * var(--u));
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.ch__platform::before {
+  content: "·";
+  margin-right: calc(10 * var(--u));
+}
+
+.ch__text {
+  align-self: stretch;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  padding: calc(12 * var(--u)) calc(20 * var(--u)) calc(13 * var(--u));
+  border-radius: 0 var(--radius) var(--radius) var(--radius);
+  background: var(--plate);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: calc(25 * var(--u));
+  font-weight: 400;
+  line-height: 1.3;
+}
+
+/* The newest message: an accent rule down its left edge. */
+.ch__msg:last-child .ch__text {
+  box-shadow: inset calc(6 * var(--u)) 0 0 var(--accent);
+  padding-left: calc(26 * var(--u));
+}
+
+.ch__user:empty,
+.ch__user[data-empty],
+.ch__platform:empty,
+.ch__platform[data-empty],
+.ch__text:empty,
+.ch__text[data-empty] {
+  display: none;
+}
+
+/* In: the title tag drops, the messages slide in from the right; one added on air does the same,
+   a removed one fades. */
+.ch[data-state="in"] .ch__head {
+  animation: ch-drop calc(340ms * var(--speed)) var(--ease) both;
+}
+
+.ch[data-state="in"] .ch__msg {
+  animation: ch-slide calc(380ms * var(--speed)) var(--ease) calc((100ms + min(var(--i), 7) * 40ms) * var(--speed)) both;
+}
+
+.ch[data-state="in"] .ch__msg[data-row="in"] {
+  animation-delay: 0ms;
+}
+
+.ch__msg[data-row="out"] {
+  animation: ch-fade-out calc(200ms * var(--speed)) var(--ease-in) forwards;
+}
+
+.ch[data-state="out"] {
+  animation: ch-out calc(320ms * var(--speed)) var(--ease-in) forwards;
+}
+
+.ch[data-state="out"] .ch__msg {
+  animation: ch-leave calc(260ms * var(--speed)) var(--ease-in) forwards;
+}
+
+@keyframes ch-drop {
+  from {
+    opacity: 0;
+    transform: translateY(-100%);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes ch-slide {
+  from {
+    opacity: 0;
+    transform: translateX(calc(48 * var(--u)));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes ch-leave {
+  to {
+    opacity: 0;
+    transform: translateX(calc(32 * var(--u)));
+  }
+}
+
+@keyframes ch-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes ch-out {
+  0%,
+  40% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}

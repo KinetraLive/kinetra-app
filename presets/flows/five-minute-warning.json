@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "id": "five-minute-warning",
+  "name": "Five-minute warning",
+  "description": "5 min before the next item, writes \"Next: <title> at <start>, <location>\" and takes it.",
+  "category": "schedule",
+  "slots": [
+    {"key":"schedule","label":"Run of show","kind":"scheduleSource"},
+    {"key":"text","label":"Warning text field","kind":"field","prefer":{"template":"news-strap"}}
+  ],
+  "flows": [
+    {
+      "armed": false,
+      "nodes": [
+        {"id":"before","position":{"x":0,"y":0},"type":"trigger.beforeNext","config":{"sourceId":"{{schedule}}","minutes":5}},
+        {"id":"set","position":{"x":260,"y":0},"type":"action.setFields","config":{"screenId":"{{text.screenId}}","layerId":"{{text.layerId}}","fields":{"{{text.key}}":""}}},
+        {"id":"take","position":{"x":520,"y":0},"type":"action.take","config":{"screenId":"{{text.screenId}}","layerId":"{{text.layerId}}"}},
+        {"id":"format","position":{"x":260,"y":160},"type":"data.format","config":{"pattern":"Next: {a} at {b}, {c}"}},
+        {"id":"next","position":{"x":0,"y":160},"type":"data.scheduleItem","config":{"sourceId":"{{schedule}}","which":"next"}}
+      ],
+      "edges": [
+        {"id":"e1","from":{"node":"before","port":"fired"},"to":{"node":"set","port":"in"},"kind":"event"},
+        {"id":"e2","from":{"node":"set","port":"done"},"to":{"node":"take","port":"in"},"kind":"event"},
+        {"id":"d1","from":{"node":"next","port":"title"},"to":{"node":"format","port":"a"},"kind":"data"},
+        {"id":"d2","from":{"node":"next","port":"start"},"to":{"node":"format","port":"b"},"kind":"data"},
+        {"id":"d3","from":{"node":"next","port":"location"},"to":{"node":"format","port":"c"},"kind":"data"},
+        {"id":"d4","from":{"node":"format","port":"text"},"to":{"node":"set","port":"{{text.key}}"},"kind":"data"}
+      ]
+    }
+  ]
+}

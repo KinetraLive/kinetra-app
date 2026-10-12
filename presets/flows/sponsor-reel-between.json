@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "id": "sponsor-reel-between",
+  "name": "Sponsor reel between items",
+  "description": "Runs the sponsor reel when an item ends and pauses it off air when the next one starts.",
+  "category": "sponsors",
+  "slots": [
+    {"key":"schedule","label":"Run of show","kind":"scheduleSource"},
+    {"key":"slides","label":"Sponsor slideshow source","kind":"textSource"},
+    {"key":"reel","label":"Sponsor reel layer","kind":"layer","prefer":{"template":"sponsor-slideshow"}}
+  ],
+  "flows": [
+    {
+      "suffix": "start", "armed": false,
+      "nodes": [
+        {"id":"status","position":{"x":0,"y":0},"type":"trigger.itemStatus","config":{"sourceId":"{{schedule}}","status":"previous"}},
+        {"id":"resume","position":{"x":260,"y":0},"type":"action.pauseSource","config":{"sourceId":"{{slides}}","mode":"resume"}},
+        {"id":"take","position":{"x":520,"y":0},"type":"action.take","config":{"screenId":"{{reel.screenId}}","layerId":"{{reel.layerId}}"}}
+      ],
+      "edges": [
+        {"id":"e1","from":{"node":"status","port":"fired"},"to":{"node":"resume","port":"in"},"kind":"event"},
+        {"id":"e2","from":{"node":"resume","port":"done"},"to":{"node":"take","port":"in"},"kind":"event"}
+      ]
+    },
+    {
+      "suffix": "end", "armed": false,
+      "nodes": [
+        {"id":"status","position":{"x":0,"y":0},"type":"trigger.itemStatus","config":{"sourceId":"{{schedule}}","status":"now"}},
+        {"id":"clear","position":{"x":260,"y":0},"type":"action.clear","config":{"screenId":"{{reel.screenId}}","layerId":"{{reel.layerId}}"}},
+        {"id":"pause","position":{"x":520,"y":0},"type":"action.pauseSource","config":{"sourceId":"{{slides}}","mode":"pause"}}
+      ],
+      "edges": [
+        {"id":"e1","from":{"node":"status","port":"fired"},"to":{"node":"clear","port":"in"},"kind":"event"},
+        {"id":"e2","from":{"node":"clear","port":"done"},"to":{"node":"pause","port":"in"},"kind":"event"}
+      ]
+    }
+  ]
+}

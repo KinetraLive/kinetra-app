@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <script>
+      // Apply an explicit theme choice before first paint. "system" (or nothing) leaves
+      // data-theme unset so the prefers-color-scheme media query decides.
+      try {
+        var t = localStorage.getItem("kinetra.theme");
+        if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
+      } catch (e) {}
+    </script>
+    <style>
+      /* First-paint background before app.css loads; keep in sync with --bg in app.css.
+         Dark is the default; light when the OS prefers it (unless dark was chosen) or chosen. */
+      html { background: #141518; color-scheme: dark; }
+      @media (prefers-color-scheme: light) {
+        html:not([data-theme="dark"]) { background: #ededeb; color-scheme: light; }
+      }
+      html[data-theme="light"] { background: #ededeb; color-scheme: light; }
+    </style>
+    <link rel="icon" href="%sveltekit.assets%/favicon.svg" type="image/svg+xml" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Kinetra</title>
+    %sveltekit.head%
+  </head>
+  <body data-sveltekit-preload-data="hover">
+    <div style="display: contents">%sveltekit.body%</div>
+  </body>
+</html>

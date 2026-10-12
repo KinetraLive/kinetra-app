@@ -1,0 +1,21 @@
+<div class="ss">
+  <div class="ss__stage">
+    <div class="ss__card">
+      <div class="ss__plate"></div>
+      <span class="ss__br" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+      <div class="ss__label">{{label}}</div>
+      <div class="ss__slides">
+        <div class="ss__slide" data-each="slides" data-limit="100" data-tier="{{.tier}}" data-secs="{{.duration}}">
+          <div class="ss__media">
+            <img class="ss__logo" src="{{.logo}}" alt="">
+          </div>
+          <div class="ss__caption">
+            <div class="ss__name" data-fit data-fit-lines="2" data-fit-min="0.6">{{.name}}</div>
+            <div class="ss__tagline" data-fit data-fit-lines="2" data-fit-min="0.7">{{.tagline}}</div>
+          </div>
+          <div class="ss__bar"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

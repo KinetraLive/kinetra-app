@@ -1,0 +1,246 @@
+/* Corner bug, News style: the logo in a navy box with an accent rule along its foot, and the
+   text ("LIVE") as an accent tag in heavy caps beside it, led by a small dot. Either part may be
+   missing: the other stands alone.
+   Sizing: one unit --u, 1px at 1080p; a smaller layer box scales the bug to fill it.
+   Motion: the logo box wipes in, its rule follows, the tag drops in. Transform and opacity only,
+   every duration × --speed.
+   Variables: --position (top-left | top-right | bottom-left | bottom-right), --accent (tag,
+   rule), --secondary (logo box), --ink (tag text), --font-body, --radius (px), --speed. */
+
+:host {
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --wipe: cubic-bezier(0.7, 0, 0.2, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+}
+
+.bug {
+  position: absolute;
+  inset: 0;
+  container-type: size;
+}
+
+.bug__stage {
+  --u: 1px;
+  position: absolute;
+  inset: 6cqh 5cqw;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  grid-template-rows: auto 1fr auto;
+  grid-template-areas:
+    "top-left . top-right"
+    ". . ."
+    "bottom-left . bottom-right";
+}
+
+@supports (width: 1cqmin) {
+  .bug__stage {
+    --u: max(100cqmin / 1080, 100cqw / 1920);
+  }
+}
+
+@container ((max-width: 999px) and (max-height: 999px)) or (min-aspect-ratio: 2/1) {
+  /* The bug fills the largest box of the design's aspect (240:75) in its corner: the plate takes
+     that box and the content scales contain-wise with the look's own extent (273×76 at 1080p). */
+  .bug__stage {
+    --fw: min(100cqw, 320cqh);
+    --fh: min(100cqh, 100cqw / 3.2);
+    --u: min(var(--fw) / 273, var(--fh) / 76);
+    inset: 0;
+  }
+
+  .bug__stage > .bug__box {
+    width: var(--fw);
+    height: var(--fh);
+    max-width: none;
+  }
+
+  .bug__box > .bug__tags,
+  .bug__tags > .bug__text {
+    flex: 1;
+  }
+}
+
+.bug__box {
+  grid-area: var(--position);
+  display: flex;
+  align-items: stretch;
+  height: calc(76 * var(--u));
+  max-width: calc(560 * var(--u));
+  min-width: 0;
+  line-height: normal;
+  -webkit-font-smoothing: antialiased;
+}
+
+.bug__logobox {
+  position: relative;
+  flex: none;
+  display: flex;
+  align-items: center;
+  padding: 0 calc(22 * var(--u)) calc(4 * var(--u));
+  border-radius: var(--radius) 0 0 var(--radius);
+}
+
+.bug__fill {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--secondary);
+  transform-origin: left center;
+}
+
+.bug__rule {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: calc(6 * var(--u));
+  background: var(--accent);
+  transform-origin: left center;
+}
+
+.bug__logo {
+  position: relative;
+  display: block;
+  width: auto;
+  max-width: calc(240 * var(--u));
+  height: calc(44 * var(--u));
+  object-fit: contain;
+}
+
+/* The tag: clipped by its cell, so it drops in from the top edge. */
+.bug__tags {
+  display: flex;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.bug__text {
+  display: flex;
+  align-items: center;
+  column-gap: calc(12 * var(--u));
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  padding: 0 calc(22 * var(--u)) 0 calc(20 * var(--u));
+  border-radius: 0 var(--radius) var(--radius) 0;
+  background: var(--accent);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: calc(28 * var(--u));
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.bug__text::before {
+  content: "";
+  flex: none;
+  width: calc(12 * var(--u));
+  height: calc(12 * var(--u));
+  border-radius: 50%;
+  background: currentColor;
+}
+
+/* Alone: round both ends. */
+.bug__logobox:has(> .bug__logo[src=""]) + .bug__tags > .bug__text,
+.bug__logobox:has(> .bug__logo[data-empty]) + .bug__tags > .bug__text {
+  border-radius: var(--radius);
+}
+
+.bug__logobox:has(+ .bug__tags > .bug__text:empty),
+.bug__logobox:has(+ .bug__tags > .bug__text[data-empty]) {
+  border-radius: var(--radius);
+}
+
+.bug__text:empty,
+.bug__text[data-empty],
+.bug__tags:has(> .bug__text:empty),
+.bug__tags:has(> .bug__text[data-empty]),
+.bug__logobox:has(> .bug__logo[src=""]),
+.bug__logobox:has(> .bug__logo[data-empty]) {
+  display: none;
+}
+
+/* In: the logo box wipes in, the rule follows, then the tag drops. */
+.bug[data-state="in"] .bug__fill {
+  animation: bug-wipe calc(360ms * var(--speed)) var(--wipe) both;
+}
+
+.bug[data-state="in"] .bug__rule {
+  animation: bug-wipe calc(320ms * var(--speed)) var(--wipe) calc(160ms * var(--speed)) both;
+}
+
+.bug[data-state="in"] .bug__logo {
+  animation: bug-fade calc(300ms * var(--speed)) var(--ease) calc(200ms * var(--speed)) both;
+}
+
+.bug[data-state="in"] .bug__text {
+  animation: bug-drop calc(340ms * var(--speed)) var(--ease) calc(260ms * var(--speed)) both;
+}
+
+.bug[data-state="out"] {
+  animation: bug-out calc(320ms * var(--speed)) var(--ease-in) forwards;
+}
+
+.bug[data-state="out"] .bug__logo,
+.bug[data-state="out"] .bug__text {
+  animation: bug-fade-out calc(140ms * var(--speed)) var(--ease-in) forwards;
+}
+
+.bug[data-state="out"] .bug__fill,
+.bug[data-state="out"] .bug__rule {
+  transform-origin: right center;
+  animation: bug-wipe-out calc(220ms * var(--speed)) var(--wipe) calc(80ms * var(--speed)) forwards;
+}
+
+@keyframes bug-wipe {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: none;
+  }
+}
+
+@keyframes bug-wipe-out {
+  to {
+    transform: scaleX(0);
+  }
+}
+
+@keyframes bug-drop {
+  from {
+    opacity: 0;
+    transform: translateY(-100%);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes bug-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes bug-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes bug-out {
+  0%,
+  55% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}

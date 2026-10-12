@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "id": "next-guest",
+  "name": "Next guest",
+  "description": "Takes the lower third off, steps the guest list and brings it back for 8 s.",
+  "category": "show",
+  "slots": [
+    {"key":"lower","label":"Lower third layer","kind":"layer","prefer":{"template":"classic-bar"}},
+    {"key":"guests","label":"Guest list source","kind":"textSource"}
+  ],
+  "flows": [
+    {
+      "armed": "cue",
+      "nodes": [
+        {"id":"cue","position":{"x":0,"y":0},"type":"trigger.cue","config":{"label":"Next guest"}},
+        {"id":"clear","position":{"x":260,"y":0},"type":"action.clear","config":{"screenId":"{{lower.screenId}}","layerId":"{{lower.layerId}}"}},
+        {"id":"wait","position":{"x":520,"y":0},"type":"logic.delay","config":{"ms":1000}},
+        {"id":"step","position":{"x":780,"y":0},"type":"action.stepSource","config":{"sourceId":"{{guests}}","step":{"to":"by","delta":1}}},
+        {"id":"take","position":{"x":1040,"y":0},"type":"action.take","config":{"screenId":"{{lower.screenId}}","layerId":"{{lower.layerId}}","forMs":8000}}
+      ],
+      "edges": [
+        {"id":"e1","from":{"node":"cue","port":"fired"},"to":{"node":"clear","port":"in"},"kind":"event"},
+        {"id":"e2","from":{"node":"clear","port":"done"},"to":{"node":"wait","port":"in"},"kind":"event"},
+        {"id":"e3","from":{"node":"wait","port":"out"},"to":{"node":"step","port":"in"},"kind":"event"},
+        {"id":"e4","from":{"node":"step","port":"done"},"to":{"node":"take","port":"in"},"kind":"event"}
+      ]
+    }
+  ]
+}

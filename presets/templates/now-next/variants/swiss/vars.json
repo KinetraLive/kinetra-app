@@ -1,0 +1,11 @@
+{
+  "accent": "#e2231a",
+  "secondary": "#6b6b6b",
+  "text": "#111111",
+  "plate": "#ffffff",
+  "font-heading": "Instrument Sans",
+  "font-body": "Instrument Sans",
+  "radius": "0",
+  "speed": "1",
+  "warning": "#d46b00"
+}

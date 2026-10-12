@@ -1,0 +1,90 @@
+{
+  "comment": "Test-only keys (seeds are public). Machine = fingerprint(\"00000000-0000-0000-0000-000000000000\").",
+  "keyset": {
+    "iat": 0,
+    "keys": [
+      {
+        "kid": "test-k1",
+        "public_key": "iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w",
+        "status": "active"
+      },
+      {
+        "kid": "test-revoked",
+        "public_key": "7UkoxijRwsbq6QM4kFmVYSlZJzpcY_k2NsFGFKyHN9E",
+        "status": "revoked"
+      }
+    ]
+  },
+  "machine": "857a78b7a23b14cd718a9cbf9b90b0577225543ddcce5ed21854a4985f25ee27",
+  "now": 1791676800,
+  "vectors": [
+    {
+      "name": "valid",
+      "status": "active",
+      "token": "kntr1.test-k1.eyJ0eXAiOiJsaWNlbnNlIiwidiI6MSwibGlkIjoiMDFhMTIyNTktMDAwMC03MDAwLTgwMDAtMDAwMDAwMDAwMDAxIiwiYWlkIjoiMDFhMTIyNTktMDAwMC03MDAwLTgwMDAtMDAwMDAwMDAwMDAyIiwic3ViIjoiMDFhMTIyNTktMDAwMC03MDAwLTgwMDAtMDAwMDAwMDAwMDAzIiwicGxhbiI6InByb195ZWFybHkiLCJlbnQiOlsiY29yZS5hcHAiLCJwcm8uYWkiLCJwcm8ucG9sbHMiXSwibWFjaGluZSI6Ijg1N2E3OGI3YTIzYjE0Y2Q3MThhOWNiZjliOTBiMDU3NzIyNTU0M2RkY2NlNWVkMjE4NTRhNDk4NWYyNWVlMjciLCJzbG90IjoibWFpbiIsImlhdCI6MTc5MTU5MDQwMCwiZ3JhY2UiOjE3OTQxODI0MDAsInJlZHVjZWQiOjE3OTUzOTIwMDAsImVuZHNfYXQiOjE4MjMxMjY0MDAsIm5vbmNlIjoibjBuY2UifQ.z6WtGLcXC89cX6YiH2cYnn-emdlJOn-VMuaRm57K4UyVb2YCPF_eODBt1ns8ZuOJ8HYBmSVkz4nONrzShIPjCQ",
+      "verify": "ok"
+    },
+    {
+      "name": "expired",
+      "now": 1791763200,
+      "status": "expired",
+      "token": "kntr1.test-k1.eyJ0eXAiOiJsaWNlbnNlIiwidiI6MSwibGlkIjoiMDFhMTIyNTktMDAwMC03MDAwLTgwMDAtMDAwMDAwMDAwMDAxIiwiYWlkIjoiMDFhMTIyNTktMDAwMC03MDAwLTgwMDAtMDAwMDAwMDAwMDAyIiwic3ViIjoiMDFhMTIyNTktMDAwMC03MDAwLTgwMDAtMDAwMDAwMDAwMDAzIiwicGxhbiI6InByb195ZWFybHkiLCJlbnQiOlsiY29yZS5hcHAiLCJwcm8uYWkiLCJwcm8ucG9sbHMiXSwibWFjaGluZSI6Ijg1N2E3OGI3YTIzYjE0Y2Q3MThhOWNiZjliOTBiMDU3NzIyNTU0M2RkY2NlNWVkMjE4NTRhNDk4NWYyNWVlMjciLCJzbG90IjoibWFpbiIsImlhdCI6MTc5MTU5MDQwMCwiZ3JhY2UiOjE3OTQxODI0MDAsInJlZHVjZWQiOjE3OTUzOTIwMDAsImVuZHNfYXQiOjE3OTE2NzY4MDAsIm5vbmNlIjoibjBuY2UifQ.oi8MbNDb1ESWFRbTnR0d3c3hk8hzWhfyW5vVF-xy0HksoeA_Hh-mOxH7L9d8qMY_mA5KQAipdpssCo0LCoQHDA",
+      "verify": "ok"
+    },
+    {
+      "app_release_date": 1791590400,
+      "name": "perpetual_covered",
+      "status": "active",
+      "token": "kntr1.test-k1.eyJ0eXAiOiJsaWNlbnNlIiwidiI6MSwibGlkIjoiMDFhMTIyNTktMDAwMC03MDAwLTgwMDAtMDAwMDAwMDAwMDAxIiwiYWlkIjoiMDFhMTIyNTktMDAwMC03MDAwLTgwMDAtMDAwMDAwMDAwMDAyIiwic3ViIjoiMDFhMTIyNTktMDAwMC03MDAwLTgwMDAtMDAwMDAwMDAwMDAzIiwicGxhbiI6InBlcnBldHVhbCIsImVudCI6WyJjb3JlLmFwcCIsInByby5haSIsInByby5wb2xscyJdLCJtYWNoaW5lIjoiODU3YTc4YjdhMjNiMTRjZDcxOGE5Y2JmOWI5MGIwNTc3MjI1NTQzZGRjY2U1ZWQyMTg1NGE0OTg1ZjI1ZWUyNyIsInNsb3QiOiJtYWluIiwiaWF0IjoxNzkxNTkwNDAwLCJncmFjZSI6MTc5NDE4MjQwMCwicmVkdWNlZCI6MTc5NTM5MjAwMCwidXBkYXRlc191bnRpbCI6MTgyMzEyNjQwMCwibm9uY2UiOiJuMG5jZSJ9.MVFY79oMTjugC7DjTAgp3ZJv7HLSX6pq8PzfeEM09Nr4XMh5grvJun7IuLodBr2x5jv8Q4GdPifLrZtomRx2DQ",
+      "verify": "ok"
+    },
+    {
+      "app_release_date": 1826150400,
+      "name": "perpetual_newer_app",
+      "status": "not_covered",
+      "token": "kntr1.test-k1.eyJ0eXAiOiJsaWNlbnNlIiwidiI6MSwibGlkIjoiMDFhMTIyNTktMDAwMC03MDAwLTgwMDAtMDAwMDAwMDAwMDAxIiwiYWlkIjoiMDFhMTIyNTktMDAwMC03MDAwLTgwMDAtMDAwMDAwMDAwMDAyIiwic3ViIjoiMDFhMTIyNTktMDAwMC03MDAwLTgwMDAtMDAwMDAwMDAwMDAzIiwicGxhbiI6InBlcnBldHVhbCIsImVudCI6WyJjb3JlLmFwcCIsInByby5haSIsInByby5wb2xscyJdLCJtYWNoaW5lIjoiODU3YTc4YjdhMjNiMTRjZDcxOGE5Y2JmOWI5MGIwNTc3MjI1NTQzZGRjY2U1ZWQyMTg1NGE0OTg1ZjI1ZWUyNyIsInNsb3QiOiJtYWluIiwiaWF0IjoxNzkxNTkwNDAwLCJncmFjZSI6MTc5NDE4MjQwMCwicmVkdWNlZCI6MTc5NTM5MjAwMCwidXBkYXRlc191bnRpbCI6MTgyMzEyNjQwMCwibm9uY2UiOiJuMG5jZSJ9.MVFY79oMTjugC7DjTAgp3ZJv7HLSX6pq8PzfeEM09Nr4XMh5grvJun7IuLodBr2x5jv8Q4GdPifLrZtomRx2DQ",
+      "verify": "ok"
+    },
+    {
+      "name": "wrong_kid",
+      "token": "kntr1.test-k2.eyJ0eXAiOiJsaWNlbnNlIiwidiI6MSwibGlkIjoiMDFhMTIyNTktMDAwMC03MDAwLTgwMDAtMDAwMDAwMDAwMDAxIiwiYWlkIjoiMDFhMTIyNTktMDAwMC03MDAwLTgwMDAtMDAwMDAwMDAwMDAyIiwic3ViIjoiMDFhMTIyNTktMDAwMC03MDAwLTgwMDAtMDAwMDAwMDAwMDAzIiwicGxhbiI6InByb195ZWFybHkiLCJlbnQiOlsiY29yZS5hcHAiLCJwcm8uYWkiLCJwcm8ucG9sbHMiXSwibWFjaGluZSI6Ijg1N2E3OGI3YTIzYjE0Y2Q3MThhOWNiZjliOTBiMDU3NzIyNTU0M2RkY2NlNWVkMjE4NTRhNDk4NWYyNWVlMjciLCJzbG90IjoibWFpbiIsImlhdCI6MTc5MTU5MDQwMCwiZ3JhY2UiOjE3OTQxODI0MDAsInJlZHVjZWQiOjE3OTUzOTIwMDAsImVuZHNfYXQiOjE4MjMxMjY0MDAsIm5vbmNlIjoibjBuY2UifQ.1-FZi05NhA8O4YgiTqGwDYb3qxRJenaq1ItvxMR41c_RhAGcvGN8RWTXIBn5bJxWSGL4rA4_OSSDdrwQmp4wCg",
+      "verify": "unknown_key"
+    },
+    {
+      "name": "revoked_kid",
+      "token": "kntr1.test-revoked.eyJ0eXAiOiJsaWNlbnNlIiwidiI6MSwibGlkIjoiMDFhMTIyNTktMDAwMC03MDAwLTgwMDAtMDAwMDAwMDAwMDAxIiwiYWlkIjoiMDFhMTIyNTktMDAwMC03MDAwLTgwMDAtMDAwMDAwMDAwMDAyIiwic3ViIjoiMDFhMTIyNTktMDAwMC03MDAwLTgwMDAtMDAwMDAwMDAwMDAzIiwicGxhbiI6InByb195ZWFybHkiLCJlbnQiOlsiY29yZS5hcHAiLCJwcm8uYWkiLCJwcm8ucG9sbHMiXSwibWFjaGluZSI6Ijg1N2E3OGI3YTIzYjE0Y2Q3MThhOWNiZjliOTBiMDU3NzIyNTU0M2RkY2NlNWVkMjE4NTRhNDk4NWYyNWVlMjciLCJzbG90IjoibWFpbiIsImlhdCI6MTc5MTU5MDQwMCwiZ3JhY2UiOjE3OTQxODI0MDAsInJlZHVjZWQiOjE3OTUzOTIwMDAsImVuZHNfYXQiOjE4MjMxMjY0MDAsIm5vbmNlIjoibjBuY2UifQ.upkcwB0WW-yrKb7_Qu4rECUtbs6XTqFKMod7RmPbtJabKqhnvqNJfrCyHm7cTU2tdlqTYfzQcyOJ8oQU5RMDAA",
+      "verify": "revoked_key"
+    },
+    {
+      "name": "kid_swapped",
+      "token": "kntr1.test-revoked.eyJ0eXAiOiJsaWNlbnNlIiwidiI6MSwibGlkIjoiMDFhMTIyNTktMDAwMC03MDAwLTgwMDAtMDAwMDAwMDAwMDAxIiwiYWlkIjoiMDFhMTIyNTktMDAwMC03MDAwLTgwMDAtMDAwMDAwMDAwMDAyIiwic3ViIjoiMDFhMTIyNTktMDAwMC03MDAwLTgwMDAtMDAwMDAwMDAwMDAzIiwicGxhbiI6InByb195ZWFybHkiLCJlbnQiOlsiY29yZS5hcHAiLCJwcm8uYWkiLCJwcm8ucG9sbHMiXSwibWFjaGluZSI6Ijg1N2E3OGI3YTIzYjE0Y2Q3MThhOWNiZjliOTBiMDU3NzIyNTU0M2RkY2NlNWVkMjE4NTRhNDk4NWYyNWVlMjciLCJzbG90IjoibWFpbiIsImlhdCI6MTc5MTU5MDQwMCwiZ3JhY2UiOjE3OTQxODI0MDAsInJlZHVjZWQiOjE3OTUzOTIwMDAsImVuZHNfYXQiOjE4MjMxMjY0MDAsIm5vbmNlIjoibjBuY2UifQ.z6WtGLcXC89cX6YiH2cYnn-emdlJOn-VMuaRm57K4UyVb2YCPF_eODBt1ns8ZuOJ8HYBmSVkz4nONrzShIPjCQ",
+      "verify": "revoked_key"
+    },
+    {
+      "name": "tampered_payload",
+      "token": "kntr1.test-k1.eyJ0eXAiOiJsaWNlbnNlIiwidiI6MSwibGlkIjoiMDFhMTIyNTktMDAwMC03MDAwLTgwMDAtMDAwMDAwMDAwMDAxIiwiYWlkIjoiMDFhMTIyNTktMDAwMC03MDAwLTgwMDAtMDAwMDAwMDAwMDAyIiwic3ViIjoiMDFhMTIyNTktMDAwMC03MDAwLTgwMDAtMDAwMDAwMDAwMDAzIiwicGxhbiI6InByb195ZWFybHkiLCJlbnQiOlsiY29yZS5hcHAiLCJwcm8uYAkiLCJwcm8ucG9sbHMiXSwibWFjaGluZSI6Ijg1N2E3OGI3YTIzYjE0Y2Q3MThhOWNiZjliOTBiMDU3NzIyNTU0M2RkY2NlNWVkMjE4NTRhNDk4NWYyNWVlMjciLCJzbG90IjoibWFpbiIsImlhdCI6MTc5MTU5MDQwMCwiZ3JhY2UiOjE3OTQxODI0MDAsInJlZHVjZWQiOjE3OTUzOTIwMDAsImVuZHNfYXQiOjE4MjMxMjY0MDAsIm5vbmNlIjoibjBuY2UifQ.z6WtGLcXC89cX6YiH2cYnn-emdlJOn-VMuaRm57K4UyVb2YCPF_eODBt1ns8ZuOJ8HYBmSVkz4nONrzShIPjCQ",
+      "verify": "bad_signature"
+    },
+    {
+      "name": "tampered_signature",
+      "token": "kntr1.test-k1.eyJ0eXAiOiJsaWNlbnNlIiwidiI6MSwibGlkIjoiMDFhMTIyNTktMDAwMC03MDAwLTgwMDAtMDAwMDAwMDAwMDAxIiwiYWlkIjoiMDFhMTIyNTktMDAwMC03MDAwLTgwMDAtMDAwMDAwMDAwMDAyIiwic3ViIjoiMDFhMTIyNTktMDAwMC03MDAwLTgwMDAtMDAwMDAwMDAwMDAzIiwicGxhbiI6InByb195ZWFybHkiLCJlbnQiOlsiY29yZS5hcHAiLCJwcm8uYWkiLCJwcm8ucG9sbHMiXSwibWFjaGluZSI6Ijg1N2E3OGI3YTIzYjE0Y2Q3MThhOWNiZjliOTBiMDU3NzIyNTU0M2RkY2NlNWVkMjE4NTRhNDk4NWYyNWVlMjciLCJzbG90IjoibWFpbiIsImlhdCI6MTc5MTU5MDQwMCwiZ3JhY2UiOjE3OTQxODI0MDAsInJlZHVjZWQiOjE3OTUzOTIwMDAsImVuZHNfYXQiOjE4MjMxMjY0MDAsIm5vbmNlIjoibjBuY2UifQ.z6WtGLcXC8AcX6YiH2cYnn-emdlJOn-VMuaRm57K4UyVb2YCPF_eODBt1ns8ZuOJ8HYBmSVkz4nONrzShIPjCQ",
+      "verify": "bad_signature"
+    },
+    {
+      "machine": "0000000000000000000000000000000000000000000000000000000000000000",
+      "name": "wrong_machine",
+      "token": "kntr1.test-k1.eyJ0eXAiOiJsaWNlbnNlIiwidiI6MSwibGlkIjoiMDFhMTIyNTktMDAwMC03MDAwLTgwMDAtMDAwMDAwMDAwMDAxIiwiYWlkIjoiMDFhMTIyNTktMDAwMC03MDAwLTgwMDAtMDAwMDAwMDAwMDAyIiwic3ViIjoiMDFhMTIyNTktMDAwMC03MDAwLTgwMDAtMDAwMDAwMDAwMDAzIiwicGxhbiI6InByb195ZWFybHkiLCJlbnQiOlsiY29yZS5hcHAiLCJwcm8uYWkiLCJwcm8ucG9sbHMiXSwibWFjaGluZSI6Ijg1N2E3OGI3YTIzYjE0Y2Q3MThhOWNiZjliOTBiMDU3NzIyNTU0M2RkY2NlNWVkMjE4NTRhNDk4NWYyNWVlMjciLCJzbG90IjoibWFpbiIsImlhdCI6MTc5MTU5MDQwMCwiZ3JhY2UiOjE3OTQxODI0MDAsInJlZHVjZWQiOjE3OTUzOTIwMDAsImVuZHNfYXQiOjE4MjMxMjY0MDAsIm5vbmNlIjoibjBuY2UifQ.z6WtGLcXC89cX6YiH2cYnn-emdlJOn-VMuaRm57K4UyVb2YCPF_eODBt1ns8ZuOJ8HYBmSVkz4nONrzShIPjCQ",
+      "verify": "wrong_machine"
+    },
+    {
+      "name": "other_version",
+      "token": "kntr2.test-k1.eyJ0eXAiOiJsaWNlbnNlIiwidiI6MSwibGlkIjoiMDFhMTIyNTktMDAwMC03MDAwLTgwMDAtMDAwMDAwMDAwMDAxIiwiYWlkIjoiMDFhMTIyNTktMDAwMC03MDAwLTgwMDAtMDAwMDAwMDAwMDAyIiwic3ViIjoiMDFhMTIyNTktMDAwMC03MDAwLTgwMDAtMDAwMDAwMDAwMDAzIiwicGxhbiI6InByb195ZWFybHkiLCJlbnQiOlsiY29yZS5hcHAiLCJwcm8uYWkiLCJwcm8ucG9sbHMiXSwibWFjaGluZSI6Ijg1N2E3OGI3YTIzYjE0Y2Q3MThhOWNiZjliOTBiMDU3NzIyNTU0M2RkY2NlNWVkMjE4NTRhNDk4NWYyNWVlMjciLCJzbG90IjoibWFpbiIsImlhdCI6MTc5MTU5MDQwMCwiZ3JhY2UiOjE3OTQxODI0MDAsInJlZHVjZWQiOjE3OTUzOTIwMDAsImVuZHNfYXQiOjE4MjMxMjY0MDAsIm5vbmNlIjoibjBuY2UifQ.z6WtGLcXC89cX6YiH2cYnn-emdlJOn-VMuaRm57K4UyVb2YCPF_eODBt1ns8ZuOJ8HYBmSVkz4nONrzShIPjCQ",
+      "verify": "unsupported_version"
+    },
+    {
+      "name": "garbage",
+      "token": "not a token",
+      "verify": "malformed"
+    }
+  ]
+}

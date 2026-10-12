@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "now-next-on-item",
+  "name": "Now & Next on new item",
+  "description": "Shows Now & Next for 10 s whenever a new item starts.",
+  "category": "schedule",
+  "slots": [
+    {"key":"schedule","label":"Run of show","kind":"scheduleSource"},
+    {"key":"nownext","label":"Now & Next layer","kind":"layer","prefer":{"template":"now-next"}}
+  ],
+  "flows": [
+    {
+      "armed": false,
+      "nodes": [
+        {"id":"status","position":{"x":0,"y":0},"type":"trigger.itemStatus","config":{"sourceId":"{{schedule}}","status":"now"}},
+        {"id":"take","position":{"x":260,"y":0},"type":"action.take","config":{"screenId":"{{nownext.screenId}}","layerId":"{{nownext.layerId}}","forMs":10000}}
+      ],
+      "edges": [
+        {"id":"e1","from":{"node":"status","port":"fired"},"to":{"node":"take","port":"in"},"kind":"event"}
+      ]
+    }
+  ]
+}

@@ -1,0 +1,354 @@
+/* Sponsor slideshow, Editorial style: a dark corner card: the label as a kicker (tracked small caps
+   in the accent) between two fine rules, a logo stage (without a logo, the name as a large serif),
+   the name in a serif, the tagline as an italic standfirst and a hairline that fills in the accent
+   over the slide's duration (the progress).
+   Every slide is in the DOM in one grid cell; the source marks the showing one data-current="true"
+   and moving the mark crossfades (CSS transitions). No current slide (a preview): the first shows.
+   Sizing: --u, 1px at 1080p; a smaller layer box scales the card to fill it. data-state on .ss;
+   rows get --i, data-row, data-current, data-duration. Motion: the plate settles, the kicker
+   first, then the slide. Transform and opacity only; in/out durations × --speed. Variables:
+   --position, --progress (block | none), --interval (s per slide without a source duration),
+   --accent, --secondary, --text, --plate, --font-heading, --font-body, --radius (px), --speed. */
+
+:host {
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+}
+
+.ss {
+  position: absolute;
+  inset: 0;
+  container-type: size;
+}
+
+.ss__stage {
+  --u: 1px;
+  position: absolute;
+  inset: 8cqh 6cqw;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  grid-template-rows: auto 1fr auto;
+  grid-template-areas:
+    "top-left . top-right"
+    ". . ."
+    "bottom-left . bottom-right";
+}
+
+@supports (width: 1cqmin) {
+  .ss__stage {
+    --u: max(100cqmin / 1080, 100cqw / 1920);
+  }
+}
+
+@container (orientation: portrait) {
+  .ss__stage {
+    inset: 8cqh 5cqw 17cqh;
+  }
+}
+
+@container (max-width: 999px) and (max-height: 999px) {
+  .ss__stage {
+    --u: min(100cqw / 520, 100cqh / 420);
+    inset: calc(14 * var(--u));
+  }
+}
+
+.ss__card {
+  grid-area: var(--position);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: calc(480 * var(--u));
+  color: var(--text);
+  text-align: center;
+  line-height: normal;
+  -webkit-font-smoothing: antialiased;
+}
+
+.ss__plate {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius);
+  background: var(--plate);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 7%, transparent);
+}
+
+.ss__kicker {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  column-gap: calc(16 * var(--u));
+  padding: calc(24 * var(--u)) calc(28 * var(--u)) 0;
+}
+
+.ss__label {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--accent);
+  font-family: var(--font-body);
+  font-size: calc(17 * var(--u));
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0.22em;
+  margin-right: -0.22em;
+  text-transform: uppercase;
+}
+
+.ss__rule {
+  flex: 0 1 calc(44 * var(--u));
+  height: 1px;
+  background: color-mix(in srgb, var(--text) 30%, transparent);
+}
+
+.ss__label:empty,
+.ss__kicker:has(> .ss__label[data-empty]),
+.ss__slides[data-empty] {
+  display: none;
+}
+
+.ss__slides {
+  position: relative;
+  display: grid;
+}
+
+.ss__slide {
+  --dur: var(--interval);
+  grid-area: 1 / 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  opacity: 0;
+  transform: translateY(calc(8 * var(--u)));
+}
+
+.ss__slide[data-current="true"] {
+  opacity: 1;
+  transform: none;
+}
+
+.ss__slides:not(:has(> [data-current="true"])) > .ss__slide:first-child {
+  opacity: 1;
+  transform: none;
+}
+
+.ss__media {
+  display: grid;
+  place-items: center;
+  height: calc(168 * var(--u));
+  box-sizing: border-box;
+  padding: calc(26 * var(--u)) calc(48 * var(--u)) calc(18 * var(--u));
+}
+
+.ss__logo {
+  grid-area: 1 / 1;
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.ss__big {
+  grid-area: 1 / 1;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+  font-family: var(--font-heading);
+  font-size: calc(54 * var(--u));
+  font-weight: 600;
+  line-height: 1.05;
+}
+
+.ss__logo:not([src=""]):not([data-empty]) + .ss__big,
+.ss__slide:has(.ss__logo[data-empty]) .ss__name,
+.ss__slide:has(.ss__logo[src=""]) .ss__name,
+.ss__logo[src=""],
+.ss__logo[data-empty] {
+  display: none;
+}
+
+.ss__caption {
+  padding: calc(2 * var(--u)) calc(28 * var(--u)) 0;
+}
+
+.ss__name {
+  font-family: var(--font-heading);
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+  font-size: calc(28 * var(--u));
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.ss__tagline {
+  margin-top: calc(2 * var(--u));
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+  color: var(--secondary);
+  font-family: var(--font-heading);
+  font-size: calc(22 * var(--u));
+  font-style: italic;
+  font-weight: 400;
+  line-height: 1.3;
+}
+
+.ss__name:empty,
+.ss__name[data-empty],
+.ss__tagline:empty,
+.ss__tagline[data-empty] {
+  display: none;
+}
+
+/* Progress: a hairline that fills in the accent. */
+.ss__bar {
+  display: var(--progress);
+  position: relative;
+  height: max(1px, calc(2 * var(--u)));
+  margin: calc(22 * var(--u)) calc(110 * var(--u)) calc(24 * var(--u));
+}
+
+.ss__bar::before,
+.ss__bar::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+
+.ss__bar::before {
+  background: color-mix(in srgb, var(--text) 16%, transparent);
+}
+
+.ss__bar::after {
+  background: var(--accent);
+  transform: scaleX(0);
+  transform-origin: left center;
+}
+
+.ss[data-state="in"] .ss__slide[data-current="true"] .ss__bar::after {
+  animation: ss-progress var(--dur) linear both;
+}
+
+/* In: the plate settles, the kicker first, then the slide. */
+.ss[data-state="in"] .ss__plate {
+  animation: ss-plate calc(420ms * var(--speed)) var(--ease) both;
+}
+
+.ss[data-state="in"] .ss__kicker {
+  animation: ss-rise calc(440ms * var(--speed)) var(--ease) calc(140ms * var(--speed)) both;
+}
+
+.ss[data-state="in"] .ss__slides {
+  animation: ss-rise calc(520ms * var(--speed)) var(--ease) calc(260ms * var(--speed)) both;
+}
+
+/* Out: content first, then the plate; the root animation ends the layer. */
+.ss[data-state="out"] {
+  animation: ss-out calc(340ms * var(--speed)) var(--ease-in) forwards;
+}
+
+.ss[data-state="out"] .ss__kicker,
+.ss[data-state="out"] .ss__slides {
+  animation: ss-fade-out calc(160ms * var(--speed)) var(--ease-in) forwards;
+}
+
+@keyframes ss-plate { from { opacity: 0; transform: translateY(calc(10 * var(--u))); } }
+
+@keyframes ss-rise { from { opacity: 0; transform: translateY(calc(14 * var(--u))); } }
+
+@keyframes ss-progress { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+
+@keyframes ss-fade-out { to { opacity: 0; } }
+
+@keyframes ss-out { 0%, 45% { opacity: 1; } 100% { opacity: 0; } }
+
+/* Logo background (--logo-bg): off, the logo sits on the card (transparency kept); on, a tile. */
+@container style(--logo-bg: on) {
+  .ss__media {
+    position: relative;
+    isolation: isolate;
+  }
+
+  .ss__media::before {
+    content: "";
+    position: absolute;
+    z-index: -1;
+    inset: calc(16 * var(--u)) calc(32 * var(--u)) calc(8 * var(--u));
+    border-radius: calc(var(--radius) * 0.6);
+    background: var(--text);
+  }
+}
+
+/* Slide change: --motion over --motion-ms. */
+.ss__slide{--t:var(--motion-ms);--half:calc(var(--t) / 2);--te:cubic-bezier(0.2, 0, 0, 1);transition:opacity var(--half) var(--ease-in),transform var(--t) var(--te)}
+.ss__slide[data-current="true"]{transition:opacity var(--half) var(--te) var(--half),transform var(--t) var(--te)}
+@container not style(--motion: fade){.ss__slide,.ss__slide[data-current="true"]{transition:opacity var(--t) var(--te),transform var(--t) var(--te)}}
+@container style(--motion: slide){.ss__slides{overflow:clip}.ss__slide{transform:translateX(-100%)}.ss__slide[data-current="true"] ~ .ss__slide{transform:translateX(100%)}}
+@container style(--motion: zoom){.ss__slide{transform:scale(1.15)}.ss__slide[data-current="true"] ~ .ss__slide{transform:scale(0.85)}}
+
+/* Per-slide durations sent by the source (whole seconds). */
+.ss__slide[data-duration="1"]{--dur:1s}
+.ss__slide[data-duration="2"]{--dur:2s}
+.ss__slide[data-duration="3"]{--dur:3s}
+.ss__slide[data-duration="4"]{--dur:4s}
+.ss__slide[data-duration="5"]{--dur:5s}
+.ss__slide[data-duration="6"]{--dur:6s}
+.ss__slide[data-duration="7"]{--dur:7s}
+.ss__slide[data-duration="8"]{--dur:8s}
+.ss__slide[data-duration="9"]{--dur:9s}
+.ss__slide[data-duration="10"]{--dur:10s}
+.ss__slide[data-duration="11"]{--dur:11s}
+.ss__slide[data-duration="12"]{--dur:12s}
+.ss__slide[data-duration="13"]{--dur:13s}
+.ss__slide[data-duration="14"]{--dur:14s}
+.ss__slide[data-duration="15"]{--dur:15s}
+.ss__slide[data-duration="16"]{--dur:16s}
+.ss__slide[data-duration="17"]{--dur:17s}
+.ss__slide[data-duration="18"]{--dur:18s}
+.ss__slide[data-duration="19"]{--dur:19s}
+.ss__slide[data-duration="20"]{--dur:20s}
+.ss__slide[data-duration="21"]{--dur:21s}
+.ss__slide[data-duration="22"]{--dur:22s}
+.ss__slide[data-duration="23"]{--dur:23s}
+.ss__slide[data-duration="24"]{--dur:24s}
+.ss__slide[data-duration="25"]{--dur:25s}
+.ss__slide[data-duration="26"]{--dur:26s}
+.ss__slide[data-duration="27"]{--dur:27s}
+.ss__slide[data-duration="28"]{--dur:28s}
+.ss__slide[data-duration="29"]{--dur:29s}
+.ss__slide[data-duration="30"]{--dur:30s}
+.ss__slide[data-duration="31"]{--dur:31s}
+.ss__slide[data-duration="32"]{--dur:32s}
+.ss__slide[data-duration="33"]{--dur:33s}
+.ss__slide[data-duration="34"]{--dur:34s}
+.ss__slide[data-duration="35"]{--dur:35s}
+.ss__slide[data-duration="36"]{--dur:36s}
+.ss__slide[data-duration="37"]{--dur:37s}
+.ss__slide[data-duration="38"]{--dur:38s}
+.ss__slide[data-duration="39"]{--dur:39s}
+.ss__slide[data-duration="40"]{--dur:40s}
+.ss__slide[data-duration="41"]{--dur:41s}
+.ss__slide[data-duration="42"]{--dur:42s}
+.ss__slide[data-duration="43"]{--dur:43s}
+.ss__slide[data-duration="44"]{--dur:44s}
+.ss__slide[data-duration="45"]{--dur:45s}
+.ss__slide[data-duration="46"]{--dur:46s}
+.ss__slide[data-duration="47"]{--dur:47s}
+.ss__slide[data-duration="48"]{--dur:48s}
+.ss__slide[data-duration="49"]{--dur:49s}
+.ss__slide[data-duration="50"]{--dur:50s}
+.ss__slide[data-duration="51"]{--dur:51s}
+.ss__slide[data-duration="52"]{--dur:52s}
+.ss__slide[data-duration="53"]{--dur:53s}
+.ss__slide[data-duration="54"]{--dur:54s}
+.ss__slide[data-duration="55"]{--dur:55s}
+.ss__slide[data-duration="56"]{--dur:56s}
+.ss__slide[data-duration="57"]{--dur:57s}
+.ss__slide[data-duration="58"]{--dur:58s}
+.ss__slide[data-duration="59"]{--dur:59s}
+.ss__slide[data-duration="60"]{--dur:60s}
+.ss__slide[data-duration="75"]{--dur:75s}
+.ss__slide[data-duration="90"]{--dur:90s}
+.ss__slide[data-duration="120"]{--dur:120s}

@@ -1,0 +1,50 @@
+# Dry run: everything a release does (version, tests, builds, signing when the secrets exist,
+# checksums, manifests) for the chosen channel, but uploads nothing. The installers and the
+# assembled release stay as workflow artifacts for 7 days. docs/RELEASING.md.
+name: Dry run
+
+on:
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: Channel
+        type: choice
+        options: [canary, stable]
+        default: canary
+
+permissions:
+  contents: read
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with: { node-version: "24" }
+      - id: v
+        env:
+          CHANNEL: ${{ inputs.channel }}
+          RUN: ${{ github.run_number }}
+        run: node .github/scripts/release.mjs version --channel "$CHANNEL" --run "$RUN" --dry-run
+
+  build:
+    needs: version
+    uses: ./.github/workflows/build.yml
+    with:
+      channel: ${{ inputs.channel }}
+      version: ${{ needs.version.outputs.version }}
+      suite: ${{ inputs.channel == 'stable' && 'full' || 'fast' }}
+    secrets: inherit
+
+  assemble:
+    needs: [version, build]
+    uses: ./.github/workflows/publish.yml
+    with:
+      channel: ${{ inputs.channel }}
+      version: ${{ needs.version.outputs.version }}
+      dry_run: true
+    # No secrets: assembling needs none, and nothing is uploaded.

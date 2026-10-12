@@ -1,0 +1,11 @@
+{
+  "previousDefaults": {
+    "motion": ["0"],
+    "text": ["#0b0e13"],
+    "secondary": ["#b3bac5"],
+    "plate": ["#0c0d11d9"],
+    "font-heading": ["Space Grotesk"],
+    "font-body": ["IBM Plex Sans"]
+  },
+  "removed": ["panel", "font", "scale"]
+}

@@ -1,0 +1,152 @@
+/* Corner bug: a small tag (channel, event, "LIVE") in one of the four corners.
+   The renderer sets data-state="in" | "out" on the root (.bug). Only transform and opacity animate.
+   Variables: --position (top-left | top-right | bottom-left | bottom-right), --accent, --panel,
+   --ink (text colour), --font, --scale (unitless), --radius (px). */
+
+:host {
+  /* One scaled pixel; --scale resizes the bug while it stays in its corner. */
+  --u: calc(1px * var(--scale));
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+}
+
+/* The root fills the layer box and is its size container; .bug__safe holds the layout. */
+.bug {
+  position: absolute;
+  inset: 0;
+  container-type: size;
+}
+
+/* The stage inside the safe area (8%) is a 3x3 grid whose corner cells are named after the
+   --position values, so the select places the bug with grid-area alone. */
+.bug__safe {
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+  padding: 86px 154px;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  grid-template-rows: auto 1fr auto;
+  grid-template-areas:
+    "top-left . top-right"
+    ". . ."
+    "bottom-left . bottom-right";
+}
+
+/* A layer box smaller than a frame (or a wide bar): the graphic scales to fill it. */
+@container ((max-width: 999px) and (max-height: 999px)) or (min-aspect-ratio: 2/1) {
+  /* The bug fills the largest box of the design's aspect (240:75) in its corner: the plate takes
+     that box and the content scales contain-wise with the look's own extent (105×49 at 1080p). */
+  .bug__safe {
+    --fw: min(100cqw, 320cqh);
+    --fh: min(100cqh, 100cqw / 3.2);
+    --u: calc(min(var(--fw) / 105, var(--fh) / 49) * var(--scale));
+    padding: 0;
+  }
+
+  .bug__safe > .bug__box {
+    box-sizing: border-box;
+    width: var(--fw);
+    height: var(--fh);
+    max-width: none;
+    justify-content: center;
+  }
+}
+
+.bug__box {
+  grid-area: var(--position);
+  display: flex;
+  align-items: center;
+  column-gap: calc(12 * var(--u));
+  max-width: calc(640 * var(--u));
+  padding: calc(10 * var(--u)) calc(18 * var(--u)) calc(10 * var(--u)) calc(14 * var(--u));
+  background: var(--panel);
+  border-radius: calc(var(--radius) * var(--scale));
+  color: var(--ink);
+  font-family: var(--font);
+  line-height: normal;
+  -webkit-font-smoothing: antialiased;
+}
+
+.bug__mark {
+  flex: none;
+  width: calc(6 * var(--u));
+  height: calc(26 * var(--u));
+  background: var(--accent);
+  border-radius: calc(1 * var(--u));
+  transform-origin: center bottom;
+}
+
+.bug__text {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  /* Room for descenders and accented capitals inside the clip; the margin cancels it. */
+  padding-block: 0.2em;
+  margin-block: -0.2em;
+  font-size: calc(24 * var(--u));
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.bug__text:empty {
+  display: none;
+}
+
+/* In: the box fades up, the mark grows, the text follows. Subtle: it stays on air for long. */
+.bug[data-state="in"] .bug__box {
+  animation: bug-in 450ms var(--ease) both;
+}
+
+.bug[data-state="in"] .bug__mark {
+  animation: bug-grow 350ms var(--ease) 150ms both;
+}
+
+.bug[data-state="in"] .bug__text {
+  animation: bug-text-in 400ms var(--ease) 200ms both;
+}
+
+/* Out: one animation on the root, so its animationend marks the end of the layer. */
+.bug[data-state="out"] {
+  animation: bug-out 300ms var(--ease-in) forwards;
+}
+
+@keyframes bug-in {
+  from {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes bug-grow {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+
+@keyframes bug-text-in {
+  from {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes bug-out {
+  to {
+    opacity: 0;
+  }
+}

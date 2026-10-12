@@ -1,0 +1,297 @@
+/* Countdown, News style: the frame covered in deep navy; centred, an optional logo, the title as
+   an accent tag, the digits in the News clock box (white, an accent rule along its top, heavy
+   tabular figures in Archivo 800) and the subtitle in caps on a navy bar.
+   Sizing: one unit --u, 1px at 1080p on the frame's short side (16:9 and 9:16 alike; a smaller
+   layer box scales the whole block). The digits also stay within the frame's width, so an hour
+   counter fits a vertical frame. Motion: the background fades, the tag drops in, the clock box
+   wipes in, its rule and digits follow, the subtitle bar last. Transform and opacity only, every
+   duration × --speed.
+   Variables: --accent (tag, rule), --secondary (navy), --text (digits), --plate (clock box; text on
+   accent and navy), --font-heading, --font-body, --radius (px), --speed. */
+
+:host {
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --wipe: cubic-bezier(0.7, 0, 0.2, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+}
+
+.cd {
+  position: absolute;
+  inset: 0;
+  container-type: size;
+}
+
+.cd__bg {
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, color-mix(in srgb, var(--secondary) 55%, #000) 96%, transparent);
+}
+
+.cd__stage {
+  --u: 1px;
+  position: absolute;
+  inset: 8cqh 7cqw;
+  display: grid;
+  place-items: center;
+}
+
+@supports (width: 1cqmin) {
+  .cd__stage {
+    --u: calc(100cqmin / 1080);
+  }
+}
+
+@container (orientation: portrait) {
+  .cd__stage {
+    inset: 10cqh 6cqw;
+  }
+}
+
+/* A layer box smaller than a frame (or a wide bar): no title-safe margins, a small inset, and
+   the unit scales the block (830 × 606 at 1px: a block with room, plus the inset) to the box. */
+@container ((max-width: 999px) and (max-height: 999px)) or (min-aspect-ratio: 2/1) {
+  .cd__stage {
+    --u: min(100cqw / 878, 100cqh / 654);
+    inset: calc(24 * var(--u));
+  }
+}
+
+
+
+.cd__block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  max-width: 100%;
+  min-width: 0;
+  line-height: normal;
+  -webkit-font-smoothing: antialiased;
+}
+
+.cd__logo {
+  display: block;
+  width: auto;
+  max-width: calc(360 * var(--u));
+  height: calc(72 * var(--u));
+  margin-bottom: calc(44 * var(--u));
+  object-fit: contain;
+}
+
+.cd__tags {
+  display: flex;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.cd__title {
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+  white-space: nowrap;
+  padding: calc(10 * var(--u)) calc(26 * var(--u)) calc(9 * var(--u));
+  border-radius: var(--radius) var(--radius) 0 0;
+  background: var(--accent);
+  color: var(--plate);
+  font-family: var(--font-body);
+  font-size: calc(32 * var(--u));
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* The clock box. */
+.cd__clock {
+  position: relative;
+  max-width: 100%;
+  min-width: calc(560 * var(--u));
+  box-sizing: border-box;
+  padding: calc(20 * var(--u)) calc(56 * var(--u)) calc(10 * var(--u));
+  border-radius: var(--radius);
+  text-align: center;
+}
+
+.cd__fill {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  transform-origin: left center;
+}
+
+.cd__clock > .cd__fill {
+  background: var(--plate);
+}
+
+.cd__rule {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: calc(10 * var(--u));
+  border-radius: var(--radius) var(--radius) 0 0;
+  background: var(--accent);
+  transform-origin: left center;
+}
+
+.cd__time {
+  position: relative;
+  display: block;
+  white-space: nowrap;
+  color: var(--text);
+  font-family: var(--font-heading);
+  font-size: min(calc(250 * var(--u)), 18cqw);
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.cd__bar {
+  position: relative;
+  max-width: 100%;
+}
+
+.cd__bar > .cd__fill {
+  border-radius: 0 0 var(--radius) var(--radius);
+  background: var(--secondary);
+}
+
+.cd__sub {
+  position: relative;
+  max-width: calc(1100 * var(--u));
+  padding: calc(14 * var(--u)) calc(36 * var(--u)) calc(15 * var(--u));
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+  text-align: center;
+  color: var(--plate);
+  font-family: var(--font-body);
+  font-size: calc(32 * var(--u));
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.cd__title:empty,
+.cd__title[data-empty],
+.cd__tags:has(> .cd__title:empty),
+.cd__tags:has(> .cd__title[data-empty]),
+.cd__bar:has(> .cd__sub:empty),
+.cd__bar:has(> .cd__sub[data-empty]),
+.cd__logo[src=""],
+.cd__logo[data-empty] {
+  display: none;
+}
+
+/* In: background, logo, the tag drops, the clock box wipes in, rule and digits, subtitle bar. */
+.cd[data-state="in"] .cd__bg {
+  animation: cd-fade calc(360ms * var(--speed)) var(--ease) both;
+}
+
+.cd[data-state="in"] .cd__logo {
+  animation: cd-fade calc(360ms * var(--speed)) var(--ease) calc(120ms * var(--speed)) both;
+}
+
+.cd[data-state="in"] .cd__title {
+  animation: cd-drop calc(360ms * var(--speed)) var(--ease) calc(160ms * var(--speed)) both;
+}
+
+.cd[data-state="in"] .cd__clock > .cd__fill {
+  animation: cd-wipe calc(460ms * var(--speed)) var(--wipe) calc(240ms * var(--speed)) both;
+}
+
+.cd[data-state="in"] .cd__rule {
+  animation: cd-wipe calc(380ms * var(--speed)) var(--wipe) calc(380ms * var(--speed)) both;
+}
+
+.cd[data-state="in"] .cd__time {
+  animation: cd-digits calc(420ms * var(--speed)) var(--ease) calc(440ms * var(--speed)) both;
+}
+
+.cd[data-state="in"] .cd__bar > .cd__fill {
+  animation: cd-wipe calc(400ms * var(--speed)) var(--wipe) calc(420ms * var(--speed)) both;
+}
+
+.cd[data-state="in"] .cd__sub {
+  animation: cd-fade calc(360ms * var(--speed)) var(--ease) calc(560ms * var(--speed)) both;
+}
+
+.cd[data-state="out"] {
+  animation: cd-out calc(380ms * var(--speed)) var(--ease-in) forwards;
+}
+
+.cd[data-state="out"] .cd__time,
+.cd[data-state="out"] .cd__sub,
+.cd[data-state="out"] .cd__title,
+.cd[data-state="out"] .cd__logo {
+  animation: cd-fade-out calc(140ms * var(--speed)) var(--ease-in) forwards;
+}
+
+.cd[data-state="out"] .cd__fill,
+.cd[data-state="out"] .cd__rule {
+  transform-origin: right center;
+  animation: cd-wipe-out calc(240ms * var(--speed)) var(--wipe) calc(80ms * var(--speed)) forwards;
+}
+
+@keyframes cd-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes cd-drop {
+  from {
+    opacity: 0;
+    transform: translateY(-100%);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes cd-wipe {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: none;
+  }
+}
+
+@keyframes cd-wipe-out {
+  to {
+    transform: scaleX(0);
+  }
+}
+
+@keyframes cd-digits {
+  from {
+    opacity: 0;
+    transform: translateY(calc(16 * var(--u)));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes cd-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes cd-out {
+  0%,
+  50% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}

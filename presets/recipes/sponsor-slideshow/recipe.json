@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "id": "sponsor-slideshow",
+  "name": "Sponsor slideshow",
+  "description": "A corner card cycling through your sponsors.",
+  "panel": "slideshow",
+  "version": 1,
+  "source": {
+    "kind": "text",
+    "name": "Sponsors",
+    "columns": [
+      { "key": "logo", "label": "Logo", "kind": "image" },
+      { "key": "name", "label": "Name" },
+      { "key": "tagline", "label": "Tagline" },
+      { "key": "tier", "label": "Tier" },
+      { "key": "duration", "label": "Duration" }
+    ],
+    "rows": [
+      { "logo": "/assets/northwind-audio.svg", "name": "[Sponsor 1]", "tagline": "Sound for every stage" },
+      { "logo": "/assets/polaris-networks.svg", "name": "[Sponsor 2]", "tagline": "Connections that never lag" },
+      { "logo": "/assets/fjord-energy.svg", "name": "[Sponsor 3]", "tagline": "Powering the night" },
+      { "logo": "/assets/kite-and-key.svg", "name": "[Sponsor 4]", "tagline": "Keyboards built to last" }
+    ],
+    "auto": { "everyMs": 6000, "loop": true, "transition": "update" }
+  },
+  "screen": { "name": "Sponsors", "width": 1920, "height": 1080 },
+  "layers": [
+    {
+      "name": "Sponsor slideshow",
+      "preset": "sponsor-slideshow",
+      "fields": { "label": "Presented by" },
+      "vars": { "interval": "6" },
+      "bindings": {
+        "slides": { "sourceId": "$source", "column": "" }
+      }
+    }
+  ],
+  "rules": [
+    {
+      "name": "Pause the slideshow when it goes off air",
+      "enabled": false,
+      "when": { "on": "layer", "screenId": "$screen", "layerId": "$layer:0", "onAir": false },
+      "then": [{ "do": "pauseSource", "sourceId": "$source", "paused": true }]
+    },
+    {
+      "name": "Resume the slideshow when it goes on air",
+      "enabled": false,
+      "when": { "on": "layer", "screenId": "$screen", "layerId": "$layer:0", "onAir": true },
+      "then": [{ "do": "pauseSource", "sourceId": "$source", "paused": false }]
+    }
+  ]
+}

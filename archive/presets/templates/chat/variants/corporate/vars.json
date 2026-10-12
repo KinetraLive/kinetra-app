@@ -1,0 +1,10 @@
+{
+  "accent": "#2563eb",
+  "secondary": "#16202e",
+  "text": "#16202e",
+  "plate": "#ffffff",
+  "font-heading": "IBM Plex Sans",
+  "font-body": "IBM Plex Sans",
+  "radius": "8",
+  "speed": "1"
+}

@@ -1,0 +1,269 @@
+/* Chat, Elegant style: a stack of messages on the right of the safe area, newest at the bottom,
+   under the title in tracked caps with a thin accent rule. Each message is a translucent plate:
+   a small dot in the user's colour, the user in italic serif, the platform in tracked caps, then
+   the text. Highlighted ones (row mark _highlight, or highlighted = "true") get a fine accent
+   frame. Older messages leave over the top edge; at most 7 show.
+   Sizing: one unit --u, 1px at 1080p; a smaller layer box scales the stack to fill it.
+   The renderer sets data-state="in" | "out" on the root (.ch); rows get --i and data-row.
+   Motion: slow fades, the rule extends from the title. Transform and opacity only, every
+   duration × --speed.
+   Variables: --accent, --secondary (platform), --text, --plate, --font-heading (users),
+   --font-body, --radius (px), --speed. */
+
+:host {
+  --soft: cubic-bezier(0.33, 0, 0.2, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+}
+
+.ch {
+  position: absolute;
+  inset: 0;
+  container-type: size;
+}
+
+.ch__safe {
+  --u: 1px;
+  position: absolute;
+  top: 10cqh;
+  right: 5cqw;
+  bottom: 9cqh;
+  width: calc(580 * var(--u));
+}
+
+@supports (width: 1cqmin) {
+  .ch__safe {
+    --u: max(100cqmin / 1080, 100cqw / 1920);
+  }
+}
+
+@container (orientation: portrait) {
+  .ch__safe {
+    top: 42cqh;
+    left: 5cqw;
+    bottom: 17cqh;
+    width: auto;
+  }
+}
+
+@container ((max-width: 999px) and (max-height: 999px)) or (min-aspect-ratio: 2/1) {
+  .ch__safe {
+    --u: min(100cqw / 620, 100cqh / 560);
+    inset: calc(14 * var(--u));
+    width: auto;
+  }
+}
+
+.ch__panel {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  height: 100%;
+  color: var(--text);
+  line-height: normal;
+  -webkit-font-smoothing: antialiased;
+}
+
+.ch__line {
+  flex: none;
+  display: flex;
+  align-items: center;
+  column-gap: calc(18 * var(--u));
+  margin-bottom: calc(20 * var(--u));
+}
+
+.ch__head {
+  flex: none;
+  max-width: 80%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--accent);
+  font-family: var(--font-body);
+  font-size: calc(16 * var(--u));
+  font-weight: 500;
+  line-height: 1.3;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  filter: drop-shadow(0 0 2px rgb(0 0 0 / 0.5));
+}
+
+.ch__rule {
+  flex: 1 1 auto;
+  height: max(1px, calc(1.5 * var(--u)));
+  background: var(--accent);
+  transform-origin: left center;
+}
+
+.ch__line:has(> .ch__head:empty),
+.ch__line:has(> .ch__head[data-empty]) {
+  display: none;
+}
+
+.ch__list {
+  flex: 0 1 auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  row-gap: calc(12 * var(--u));
+  min-height: 0;
+  overflow: clip;
+}
+
+.ch__msg {
+  position: relative;
+  flex: none;
+  padding: calc(16 * var(--u)) calc(26 * var(--u)) calc(18 * var(--u));
+}
+
+.ch__msg:nth-last-child(n + 8) {
+  display: none;
+}
+
+.ch__plate {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius);
+  background: var(--plate);
+}
+
+.ch__msg[data-highlight] .ch__plate,
+.ch__msg[data-hl="true"] .ch__plate {
+  box-shadow: inset 0 0 0 max(1px, calc(1.5 * var(--u))) var(--accent);
+}
+
+.ch__meta {
+  position: relative;
+  display: flex;
+  align-items: center;
+  column-gap: calc(12 * var(--u));
+  min-width: 0;
+  margin-bottom: calc(6 * var(--u));
+  white-space: nowrap;
+}
+
+.ch__dot {
+  flex: none;
+  width: calc(8 * var(--u));
+  height: calc(8 * var(--u));
+  border-radius: 50%;
+  color: var(--accent);
+  background: currentColor;
+}
+
+.ch__user {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--accent);
+  font-family: var(--font-heading);
+  font-size: calc(24 * var(--u));
+  font-style: italic;
+  font-weight: 400;
+  line-height: 1.25;
+}
+
+.ch__platform {
+  flex: none;
+  margin-left: auto;
+  color: var(--secondary);
+  font-family: var(--font-body);
+  font-size: calc(12 * var(--u));
+  font-weight: 500;
+  letter-spacing: 0.26em;
+  text-transform: uppercase;
+}
+
+.ch__text {
+  position: relative;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  font-family: var(--font-body);
+  font-size: calc(24 * var(--u));
+  font-weight: 400;
+  line-height: 1.4;
+}
+
+.ch__user:empty,
+.ch__user[data-empty],
+.ch__platform:empty,
+.ch__platform[data-empty],
+.ch__text:empty,
+.ch__text[data-empty] {
+  display: none;
+}
+
+/* In: the title fades, the rule extends, the messages fade up one after the other; one added on
+   air fades up on its own, a removed one fades. */
+.ch[data-state="in"] .ch__head {
+  animation: ch-fade calc(800ms * var(--speed)) var(--soft) both;
+}
+
+.ch[data-state="in"] .ch__rule {
+  animation: ch-extend calc(1000ms * var(--speed)) var(--soft) calc(200ms * var(--speed)) both;
+}
+
+.ch[data-state="in"] .ch__msg {
+  animation: ch-rise calc(800ms * var(--speed)) var(--soft) calc((150ms + min(var(--i), 7) * 70ms) * var(--speed)) both;
+}
+
+.ch[data-state="in"] .ch__msg[data-row="in"] {
+  animation-delay: 0ms;
+}
+
+.ch__msg[data-row="out"] {
+  animation: ch-fade-out calc(300ms * var(--speed)) var(--ease-in) forwards;
+}
+
+.ch[data-state="out"] {
+  animation: ch-out calc(400ms * var(--speed)) var(--ease-in) forwards;
+}
+
+@keyframes ch-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes ch-extend {
+  from {
+    opacity: 0;
+    transform: scaleX(0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes ch-rise {
+  from {
+    opacity: 0;
+    transform: translateY(calc(10 * var(--u)));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes ch-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes ch-out {
+  0%,
+  20% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}

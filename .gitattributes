@@ -1,0 +1,45 @@
+# Line endings: every checkout matches the repository (LF), whatever core.autocrlf says. Windows
+# checkouts (GitHub's runners, or a local core.autocrlf=true) would otherwise write CRLF, which
+# inflates the presets' measured sizes (the 12 KB look budget) and would ship CRLF files in the
+# release build. After changing this file: `git add --renormalize .`
+* text=auto eol=lf
+
+# Source, templates and data: always text, LF.
+*.rs text eol=lf
+*.ts text eol=lf
+*.mts text eol=lf
+*.js text eol=lf
+*.mjs text eol=lf
+*.cjs text eol=lf
+*.svelte text eol=lf
+*.html text eol=lf
+*.css text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.svg text eol=lf
+*.toml text eol=lf
+*.lock text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.sh text eol=lf
+*.txt text eol=lf
+.gitattributes text eol=lf
+.gitignore text eol=lf
+LICENSE text eol=lf
+
+# Images, fonts and video: binary (no conversion, no text diff).
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.avif binary
+*.ico binary
+*.icns binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.mp4 binary
+*.webm binary
+*.mov binary

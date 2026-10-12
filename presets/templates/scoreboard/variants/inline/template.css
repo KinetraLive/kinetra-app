@@ -1,0 +1,321 @@
+/* Scoreboard, Inline style: the whole game on one white strap: the home team (its colour as a
+   dot), both scores on an ink chip, the away team (dot after the name), then a hairline divider,
+   the period in accent capitals and the game clock. A thin accent bar runs along the bottom.
+   Sizing: --u, 1px at 1080p; a smaller layer box scales the strap to fill it.
+   Motion: the strap expands from the left (scaleX), the parts follow, the bar fills.
+   data-state on the root (.sb); transform and opacity only; durations × --speed.
+   Variables: --position (top-left | top-center | top-right), --home_color, --away_color,
+   --accent, --text, --plate, --font-heading, --font-body, --radius (px), --speed. */
+
+:host {
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --snap: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+}
+
+.sb {
+  --bar: var(--auto-out-ms, calc(1200ms * var(--speed)));
+  position: absolute;
+  inset: 0;
+  container-type: size;
+}
+
+.sb__stage {
+  --u: 1px;
+  position: absolute;
+  inset: 6cqh 5cqw auto;
+  display: grid;
+  grid-template-columns: auto 1fr auto 1fr auto;
+  grid-template-areas: "top-left . top-center . top-right";
+  align-items: start;
+}
+
+@supports (width: 1cqmin) {
+  .sb__stage {
+    --u: max(100cqmin / 1080, 100cqw / 1920);
+  }
+}
+
+@container ((max-width: 999px) and (max-height: 999px)) or (min-aspect-ratio: 2/1) {
+  /* The bug fills the largest box of the design's aspect (700:68) in its place: the plate takes
+     that box and the content scales contain-wise with the look's own extent (672×64 at 1080p). */
+  .sb__stage {
+    --fw: min(100cqw, 100cqh * 700 / 68);
+    --fh: min(100cqh, 100cqw * 68 / 700);
+    --u: min(var(--fw) / 672, var(--fh) / 64);
+    inset: 0;
+  }
+
+  .sb__stage > .sb__box {
+    width: var(--fw);
+    height: var(--fh);
+  }
+}
+
+.sb__box {
+  grid-area: var(--position);
+  position: relative;
+  display: flex;
+  align-items: center;
+  column-gap: calc(18 * var(--u));
+  height: calc(64 * var(--u));
+  min-width: 0;
+  box-sizing: border-box;
+  padding: calc(8 * var(--u)) calc(26 * var(--u)) calc(11 * var(--u));
+  color: var(--text);
+  line-height: normal;
+  -webkit-font-smoothing: antialiased;
+}
+
+.sb__plate {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: var(--radius);
+  background: var(--plate);
+  box-shadow:
+    0 0 0 1px rgb(12 14 20 / 0.08),
+    0 calc(6 * var(--u)) calc(22 * var(--u)) rgb(12 14 20 / 0.22);
+  transform-origin: left center;
+}
+
+.sb__plate::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: max(2px, calc(4 * var(--u)));
+  background: var(--accent);
+  transform-origin: left center;
+}
+
+/* Team names with their colour as a dot (before home, after away). */
+.sb__name {
+  position: relative;
+  display: flex;
+  align-items: center;
+  column-gap: calc(12 * var(--u));
+  max-width: calc(220 * var(--u));
+  overflow: hidden;
+  white-space: nowrap;
+  font-family: var(--font-heading);
+  font-size: calc(26 * var(--u));
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.sb__name::before {
+  content: "";
+  flex: none;
+  width: calc(14 * var(--u));
+  height: calc(14 * var(--u));
+  border-radius: 50%;
+  background: var(--home_color);
+}
+
+.sb__name--away {
+  flex-direction: row-reverse;
+}
+
+.sb__name--away::before {
+  background: var(--away_color);
+}
+
+/* The scores on an ink chip, split by a hairline. */
+.sb__scores {
+  position: relative;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  border-radius: calc(var(--radius) * 0.6);
+  background: var(--text);
+  color: var(--plate);
+  font-family: var(--font-heading);
+  font-size: calc(32 * var(--u));
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.sb__score {
+  min-width: calc(52 * var(--u));
+  box-sizing: border-box;
+  padding: 0 calc(10 * var(--u));
+  text-align: center;
+}
+
+.sb__score + .sb__score {
+  border-left: max(1px, calc(2 * var(--u))) solid color-mix(in srgb, var(--plate) 22%, transparent);
+}
+
+/* Period and clock after a hairline divider. */
+.sb__game {
+  position: relative;
+  display: flex;
+  align-items: baseline;
+  column-gap: calc(14 * var(--u));
+  padding-left: calc(20 * var(--u));
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.sb__game::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: max(1px, calc(2 * var(--u)));
+  background: color-mix(in srgb, var(--text) 20%, transparent);
+}
+
+.sb__period {
+  color: var(--accent);
+  font-family: var(--font-heading);
+  font-size: calc(20 * var(--u));
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.sb__time {
+  min-width: 4.6ch;
+  font-family: var(--font-body);
+  font-size: calc(28 * var(--u));
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.sb__period:empty,
+.sb__period[data-empty] {
+  display: none;
+}
+
+.sb[data-state="in"] .sb__plate {
+  animation: sb-expand calc(460ms * var(--speed)) var(--snap) both;
+}
+
+.sb[data-state="in"] .sb__plate::after {
+  animation: sb-bar var(--bar) cubic-bezier(0.3, 0, 0.2, 1) calc(380ms * var(--speed)) both;
+}
+
+/* With an auto-out (the renderer's --auto-out-ms) the bar is its countdown: full at the take, it
+   drains linearly to empty as the graphic leaves; it stays empty while it plays out. */
+@container style(--auto-out-ms) {
+  .sb[data-state="in"] .sb__plate::after {
+    animation: sb-drain var(--bar) linear both;
+  }
+
+  .sb[data-state="out"] .sb__plate::after {
+    transform: scaleX(0);
+  }
+}
+
+.sb[data-state="in"] .sb__name--home {
+  animation: sb-slide calc(360ms * var(--speed)) var(--ease) calc(130ms * var(--speed)) both;
+}
+
+.sb[data-state="in"] .sb__scores {
+  animation: sb-pop calc(340ms * var(--speed)) var(--ease) calc(190ms * var(--speed)) both;
+}
+
+.sb[data-state="in"] .sb__name--away {
+  animation: sb-slide calc(360ms * var(--speed)) var(--ease) calc(240ms * var(--speed)) both;
+}
+
+.sb[data-state="in"] .sb__game {
+  animation: sb-slide calc(360ms * var(--speed)) var(--ease) calc(300ms * var(--speed)) both;
+}
+
+.sb[data-state="out"] {
+  animation: sb-out calc(320ms * var(--speed)) var(--ease-in) forwards;
+}
+
+.sb[data-state="out"] .sb__box > :not(.sb__plate) {
+  animation: sb-fade-out calc(140ms * var(--speed)) var(--ease-in) forwards;
+}
+
+.sb[data-state="out"] .sb__plate {
+  animation: sb-fold calc(260ms * var(--speed)) var(--ease-in) calc(60ms * var(--speed)) forwards;
+}
+
+@keyframes sb-expand {
+  from {
+    opacity: 0;
+    transform: scaleX(0.04);
+  }
+  20% {
+    opacity: 1;
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes sb-fold {
+  to {
+    opacity: 0;
+    transform: scaleX(0.04);
+  }
+}
+
+@keyframes sb-bar {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: none;
+  }
+}
+
+@keyframes sb-drain {
+  from {
+    transform: none;
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+
+@keyframes sb-slide {
+  from {
+    opacity: 0;
+    transform: translateX(calc(-12 * var(--u)));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes sb-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes sb-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes sb-out {
+  0%,
+  45% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}

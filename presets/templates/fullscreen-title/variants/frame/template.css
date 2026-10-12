@@ -1,0 +1,289 @@
+/* Full-screen title, Frame style: the frame dimmed by the plate colour, a centred title block held
+   by large accent corner brackets (the Kinetra viewfinder): optional logo, a mono kicker, the title
+   and a subtitle. Missing parts collapse (data-empty, or an empty src / text).
+   Sizing: one unit --u, 1px at 1080p on the frame's short side (16:9 and 9:16 alike; a smaller
+   layer box scales the whole card). The renderer sets data-state="in" | "out" on the root (.ft).
+   Only transform and opacity animate; every duration is multiplied by --speed.
+   Variables: --accent, --secondary (subtitle), --text, --plate (background), --font-heading,
+   --font-body, --radius (px), --speed (duration factor). */
+
+:host {
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --snap: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+}
+
+.ft {
+  position: absolute;
+  inset: 0;
+  container-type: size;
+}
+
+.ft__bg {
+  position: absolute;
+  inset: 0;
+  background: var(--plate);
+}
+
+/* Title safe: the block stays inside 86% × 84% of the frame. */
+.ft__stage {
+  --u: 1px;
+  position: absolute;
+  inset: 8cqh 7cqw;
+  display: grid;
+  place-items: center;
+}
+
+@supports (width: 1cqmin) {
+  .ft__stage {
+    --u: calc(100cqmin / 1080);
+  }
+}
+
+@container (orientation: portrait) {
+  .ft__stage {
+    inset: 10cqh 6cqw;
+  }
+}
+
+/* A layer box smaller than a frame (or a wide bar): no title-safe margins, a small inset, and
+   the unit scales the block (1660 × 672 at 1px: a block with room, plus the inset) to the box. */
+@container ((max-width: 999px) and (max-height: 999px)) or (min-aspect-ratio: 2/1) {
+  .ft__stage {
+    --u: min(100cqw / 1708, 100cqh / 720);
+    inset: calc(24 * var(--u));
+  }
+}
+
+
+
+.ft__block {
+  --gap: 0px;
+  --arm: calc(72 * var(--u));
+  --bw: max(2px, calc(4 * var(--u)));
+  --fly: calc(64 * var(--u));
+  position: relative;
+  box-sizing: border-box;
+  max-width: min(100%, calc(1680 * var(--u)));
+  padding: calc(84 * var(--u)) calc(112 * var(--u));
+  text-align: center;
+  color: var(--text);
+  line-height: normal;
+  -webkit-font-smoothing: antialiased;
+}
+
+@container (orientation: portrait) {
+  .ft__block {
+    padding: calc(84 * var(--u)) calc(64 * var(--u));
+  }
+}
+
+/* Viewfinder brackets on the block's corners. */
+.ft__br {
+  position: absolute;
+  inset: calc(-1 * var(--gap));
+  pointer-events: none;
+}
+
+.ft__br > i {
+  position: absolute;
+  box-sizing: border-box;
+  width: var(--arm);
+  height: var(--arm);
+  border: 0 solid var(--accent);
+}
+
+.ft__br > i:nth-child(1) {
+  --x: -1;
+  --y: -1;
+  left: 0;
+  top: 0;
+  border-width: var(--bw) 0 0 var(--bw);
+  border-top-left-radius: var(--radius);
+}
+
+.ft__br > i:nth-child(2) {
+  --x: 1;
+  --y: -1;
+  right: 0;
+  top: 0;
+  border-width: var(--bw) var(--bw) 0 0;
+  border-top-right-radius: var(--radius);
+}
+
+.ft__br > i:nth-child(3) {
+  --x: -1;
+  --y: 1;
+  left: 0;
+  bottom: 0;
+  border-width: 0 0 var(--bw) var(--bw);
+  border-bottom-left-radius: var(--radius);
+}
+
+.ft__br > i:nth-child(4) {
+  --x: 1;
+  --y: 1;
+  right: 0;
+  bottom: 0;
+  border-width: 0 var(--bw) var(--bw) 0;
+  border-bottom-right-radius: var(--radius);
+}
+
+.ft__logo {
+  display: block;
+  width: auto;
+  max-width: calc(420 * var(--u));
+  height: calc(88 * var(--u));
+  margin: 0 auto calc(40 * var(--u));
+  object-fit: contain;
+}
+
+.ft__kicker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  column-gap: calc(16 * var(--u));
+  margin-bottom: calc(26 * var(--u));
+  overflow: hidden;
+  white-space: nowrap;
+  color: var(--accent);
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: calc(30 * var(--u));
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+}
+
+.ft__kicker::before {
+  content: "";
+  flex: none;
+  width: calc(10 * var(--u));
+  height: calc(10 * var(--u));
+  background: var(--accent);
+}
+
+/* Title and subtitle wrap; line breaks typed in the field are kept. */
+.ft__title {
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+  font-family: var(--font-heading);
+  font-size: calc(116 * var(--u));
+  font-weight: 600;
+  line-height: 1.02;
+  letter-spacing: -0.02em;
+}
+
+.ft__subtitle {
+  margin-top: calc(32 * var(--u));
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+  color: var(--secondary);
+  font-family: var(--font-body);
+  font-size: calc(40 * var(--u));
+  font-weight: 400;
+  line-height: 1.3;
+}
+
+.ft__kicker:empty,
+.ft__title:empty,
+.ft__subtitle:empty,
+.ft__kicker[data-empty],
+.ft__title[data-empty],
+.ft__subtitle[data-empty],
+.ft__logo[src=""],
+.ft__logo[data-empty] {
+  display: none;
+}
+
+/* In: the background dims, the brackets snap in from outside, then logo, kicker, title, subtitle. */
+.ft[data-state="in"] .ft__bg {
+  animation: ft-fade calc(420ms * var(--speed)) var(--ease) both;
+}
+
+.ft[data-state="in"] .ft__br > i {
+  animation: ft-snap calc(460ms * var(--speed)) var(--snap) calc(80ms * var(--speed)) both;
+}
+
+.ft[data-state="in"] .ft__logo,
+.ft[data-state="in"] .ft__kicker {
+  animation: ft-rise calc(420ms * var(--speed)) var(--ease) calc(200ms * var(--speed)) both;
+}
+
+.ft[data-state="in"] .ft__title {
+  animation: ft-rise calc(480ms * var(--speed)) var(--ease) calc(260ms * var(--speed)) both;
+}
+
+.ft[data-state="in"] .ft__subtitle {
+  animation: ft-rise calc(440ms * var(--speed)) var(--ease) calc(340ms * var(--speed)) both;
+}
+
+/* Out: text first, the brackets fly back out, the background fades with the root, whose
+   animation end is the end of the layer. */
+.ft[data-state="out"] {
+  animation: ft-out calc(360ms * var(--speed)) var(--ease-in) forwards;
+}
+
+.ft[data-state="out"] .ft__block > :not(.ft__br) {
+  animation: ft-fade-out calc(160ms * var(--speed)) var(--ease-in) forwards;
+}
+
+.ft[data-state="out"] .ft__br > i {
+  animation: ft-snap-out calc(240ms * var(--speed)) var(--ease-in) calc(60ms * var(--speed)) forwards;
+}
+
+@keyframes ft-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes ft-snap {
+  from {
+    opacity: 0;
+    transform: translate(calc(var(--x) * var(--fly)), calc(var(--y) * var(--fly)));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes ft-snap-out {
+  to {
+    opacity: 0;
+    transform: translate(calc(var(--x) * var(--fly) * 0.5), calc(var(--y) * var(--fly) * 0.5));
+  }
+}
+
+@keyframes ft-rise {
+  from {
+    opacity: 0;
+    transform: translateY(calc(20 * var(--u)));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes ft-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes ft-out {
+  0%,
+  40% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}

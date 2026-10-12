@@ -1,0 +1,28 @@
+<div class="sch">
+  <div class="sch__safe">
+    <div class="sch__box">
+      <div class="sch__head">
+        <div class="sch__heading">
+          <div class="sch__title">{{title}}</div>
+          <div class="sch__day">{{day}}</div>
+        </div>
+        <div class="sch__clock">{{clock}}</div>
+      </div>
+      <ol class="sch__rows">
+        <li class="sch__row" data-each="items" data-limit="30">
+          <span class="sch__time">
+            <span class="sch__new">{{.new_start}}</span>
+            <span class="sch__start">{{.start}}</span>
+            <span class="sch__end">{{.end}}</span>
+          </span>
+          <span class="sch__what">
+            <span class="sch__name">{{.title}}</span>
+            <span class="sch__sub">{{.subtitle}}</span>
+          </span>
+          <span class="sch__where">{{.location}}</span>
+          <span class="sch__badge">{{.label}}</span>
+        </li>
+      </ol>
+    </div>
+  </div>
+</div>

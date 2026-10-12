@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "name": "Schedule board",
+  "description": "The run of show with every item's status.",
+  "preset": { "id": "schedule-board", "version": 3 },
+  "fields": [
+    { "key": "title", "label": "Title", "type": "text", "default": "" },
+    { "key": "day", "label": "Day", "type": "text", "default": "" },
+    { "key": "clock", "label": "Time", "type": "clock", "default": "", "format": "HH:mm" },
+    {
+      "key": "items",
+      "label": "Items",
+      "type": "list",
+      "columns": [
+        { "key": "start", "label": "Start" },
+        { "key": "end", "label": "End" },
+        { "key": "new_start", "label": "New start" },
+        { "key": "title", "label": "Title" },
+        { "key": "subtitle", "label": "Subtitle" },
+        { "key": "location", "label": "Location" },
+        { "key": "label", "label": "Status label" }
+      ],
+      "default": "[]"
+    }
+  ],
+  "variables": [
+    {
+      "key": "layout",
+      "label": "Layout",
+      "type": "select",
+      "options": [
+        { "value": "full", "label": "Full screen" },
+        { "value": "side", "label": "Side panel" }
+      ],
+      "default": "full"
+    },
+    {
+      "key": "past",
+      "label": "Finished items",
+      "type": "select",
+      "options": [
+        { "value": "grid", "label": "Show (dimmed)" },
+        { "value": "none", "label": "Hide" }
+      ],
+      "default": "grid"
+    },
+    { "key": "accent", "label": "Now", "type": "color", "default": "#ff4f64" },
+    { "key": "next", "label": "Up next", "type": "color", "default": "#4cc9f0" },
+    { "key": "warning", "label": "Delayed", "type": "color", "default": "#ffb020" },
+    { "key": "ink", "label": "Text on badges", "type": "color", "default": "#0b0e13" },
+    { "key": "panel", "label": "Background", "type": "color", "default": "#0b0e13eb" },
+    { "key": "text", "label": "Text", "type": "color", "default": "#ffffff" },
+    { "key": "font", "label": "Font", "type": "font", "default": "Barlow" },
+    { "key": "scale", "label": "Size", "type": "range", "min": 0.5, "max": 1.5, "step": 0.05, "unit": "", "default": "1" },
+    { "key": "radius", "label": "Corner radius", "type": "range", "min": 0, "max": 24, "step": 1, "unit": "px", "default": "8" }
+  ],
+  "autoOutMs": null,
+  "design": { "w": 1636, "h": 664, "x": 142, "y": 74, "sizing": "reflow" },
+  "updatedAt": ""
+}

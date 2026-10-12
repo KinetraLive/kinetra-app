@@ -1,0 +1,332 @@
+/* Countdown, Inline style: the frame dimmed with the ink colour and one white card in the middle,
+   read on one line: the info (an optional logo on an ink chip, the title in accent capitals, the
+   subtitle) | a hairline divider | the digits, large and with tabular figures so they never
+   jitter. A thin accent bar runs along the bottom. Vertical frames stack the info above the
+   digits. Sizing: --u, 1px at 1080p on the frame's short side; the digits also stay within the
+   frame's width. Motion: the card expands from the left (scaleX), the info and digits follow,
+   the bar fills. data-state on the root (.cd); transform and opacity only; durations × --speed.
+   Variables: --accent, --secondary (subtitle), --text (digits, ink), --plate (card),
+   --font-heading, --font-body, --radius (px), --speed. */
+
+:host {
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --snap: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+}
+
+.cd {
+  --bar: var(--auto-out-ms, calc(1400ms * var(--speed)));
+  position: absolute;
+  inset: 0;
+  container-type: size;
+}
+
+.cd__bg {
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--text) 62%, transparent);
+}
+
+.cd__stage {
+  --u: 1px;
+  position: absolute;
+  inset: 8cqh 7cqw;
+  display: grid;
+  place-items: center;
+}
+
+@supports (width: 1cqmin) {
+  .cd__stage {
+    --u: calc(100cqmin / 1080);
+  }
+}
+
+@container (orientation: portrait) {
+  .cd__stage {
+    inset: 10cqh 5cqw;
+  }
+}
+
+/* A layer box smaller than a frame (or a wide bar): no title-safe margins, a small inset, and
+   the unit scales the block (1181 × 387 at 1px: a block with room, plus the inset) to the box. */
+@container ((max-width: 999px) and (max-height: 999px)) or (min-aspect-ratio: 2/1) {
+  .cd__stage {
+    --u: min(100cqw / 1229, 100cqh / 435);
+    inset: calc(24 * var(--u));
+  }
+}
+
+
+
+.cd__card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  max-width: min(100%, calc(1640 * var(--u)));
+  box-sizing: border-box;
+  padding: calc(44 * var(--u)) calc(64 * var(--u)) calc(52 * var(--u));
+  column-gap: calc(56 * var(--u));
+  color: var(--text);
+  line-height: normal;
+  -webkit-font-smoothing: antialiased;
+}
+
+.cd__plate {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: calc(var(--radius) * 1.5);
+  background: var(--plate);
+  box-shadow:
+    0 0 0 1px rgb(12 14 20 / 0.08),
+    0 calc(18 * var(--u)) calc(60 * var(--u)) rgb(12 14 20 / 0.3);
+  transform-origin: left center;
+}
+
+.cd__plate::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: max(3px, calc(8 * var(--u)));
+  background: var(--accent);
+  transform-origin: left center;
+}
+
+.cd__info {
+  position: relative;
+  flex: 0 1 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  row-gap: calc(14 * var(--u));
+  min-width: 0;
+  max-width: calc(620 * var(--u));
+}
+
+.cd__chip {
+  display: flex;
+  align-items: center;
+  margin-bottom: calc(8 * var(--u));
+  padding: calc(10 * var(--u)) calc(18 * var(--u));
+  border-radius: calc(var(--radius) * 0.75);
+  background: var(--text);
+}
+
+.cd__logo {
+  display: block;
+  width: auto;
+  max-width: calc(260 * var(--u));
+  height: calc(44 * var(--u));
+  object-fit: contain;
+}
+
+.cd__title {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+  color: var(--accent);
+  font-family: var(--font-heading);
+  font-size: calc(34 * var(--u));
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.cd__sub {
+  max-width: 100%;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+  color: var(--secondary);
+  font-family: var(--font-body);
+  font-size: calc(32 * var(--u));
+  font-weight: 400;
+  line-height: 1.3;
+}
+
+/* The digits after a hairline divider (only when the info shows). */
+.cd__time {
+  position: relative;
+  flex: none;
+  white-space: nowrap;
+  font-family: var(--font-heading);
+  font-size: min(calc(220 * var(--u)), 15cqw);
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+
+.cd__info + .cd__time {
+  padding-left: calc(56 * var(--u));
+}
+
+.cd__info + .cd__time::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.12em;
+  bottom: 0.12em;
+  width: max(1px, calc(3 * var(--u)));
+  background: color-mix(in srgb, var(--text) 16%, transparent);
+}
+
+/* Vertical frames: the info above the digits. */
+@container (orientation: portrait) {
+  .cd__card {
+    width: 100%;
+    flex-direction: column;
+    align-items: flex-start;
+    row-gap: calc(28 * var(--u));
+    padding: calc(52 * var(--u)) calc(52 * var(--u)) calc(60 * var(--u));
+  }
+  .cd__info {
+    max-width: 100%;
+  }
+  .cd__time {
+    font-size: min(calc(230 * var(--u)), 19cqw);
+  }
+  .cd__info + .cd__time {
+    padding: calc(24 * var(--u)) 0 0;
+  }
+  .cd__info + .cd__time::before {
+    left: 0;
+    right: 0;
+    top: 0;
+    bottom: auto;
+    width: auto;
+    height: max(1px, calc(3 * var(--u)));
+  }
+}
+
+.cd__title:empty,
+.cd__sub:empty,
+.cd__title[data-empty],
+.cd__sub[data-empty],
+.cd__chip:has(> .cd__logo[src=""]),
+.cd__chip:has(> .cd__logo[data-empty]),
+.cd__info:has(> .cd__title[data-empty]):has(> .cd__sub[data-empty]):has(> .cd__chip > .cd__logo[data-empty]) {
+  display: none;
+}
+
+.cd[data-state="in"] .cd__bg {
+  animation: cd-fade calc(380ms * var(--speed)) var(--ease) both;
+}
+
+.cd[data-state="in"] .cd__plate {
+  animation: cd-expand calc(520ms * var(--speed)) var(--snap) calc(60ms * var(--speed)) both;
+}
+
+.cd[data-state="in"] .cd__plate::after {
+  animation: cd-bar var(--bar) cubic-bezier(0.3, 0, 0.2, 1) calc(480ms * var(--speed)) both;
+}
+
+/* With an auto-out (the renderer's --auto-out-ms) the bar is its countdown: full at the take, it
+   drains linearly to empty as the graphic leaves; it stays empty while it plays out. */
+@container style(--auto-out-ms) {
+  .cd[data-state="in"] .cd__plate::after {
+    animation: cd-drain var(--bar) linear both;
+  }
+
+  .cd[data-state="out"] .cd__plate::after {
+    transform: scaleX(0);
+  }
+}
+
+.cd[data-state="in"] .cd__info {
+  animation: cd-slide calc(420ms * var(--speed)) var(--ease) calc(220ms * var(--speed)) both;
+}
+
+.cd[data-state="in"] .cd__time {
+  animation: cd-slide calc(460ms * var(--speed)) var(--ease) calc(300ms * var(--speed)) both;
+}
+
+.cd[data-state="out"] {
+  animation: cd-out calc(360ms * var(--speed)) var(--ease-in) forwards;
+}
+
+.cd[data-state="out"] .cd__card > :not(.cd__plate) {
+  animation: cd-fade-out calc(140ms * var(--speed)) var(--ease-in) forwards;
+}
+
+.cd[data-state="out"] .cd__plate {
+  animation: cd-fold calc(280ms * var(--speed)) var(--ease-in) calc(60ms * var(--speed)) forwards;
+}
+
+@keyframes cd-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes cd-expand {
+  from {
+    opacity: 0;
+    transform: scaleX(0.04);
+  }
+  20% {
+    opacity: 1;
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes cd-fold {
+  to {
+    opacity: 0;
+    transform: scaleX(0.04);
+  }
+}
+
+@keyframes cd-bar {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: none;
+  }
+}
+
+@keyframes cd-drain {
+  from {
+    transform: none;
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+
+@keyframes cd-slide {
+  from {
+    opacity: 0;
+    transform: translateX(calc(-24 * var(--u)));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes cd-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes cd-out {
+  0%,
+  40% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}

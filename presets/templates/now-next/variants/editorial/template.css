@@ -1,0 +1,294 @@
+/* Now & Next, Editorial style: a dark plate with two rows, like a contents page: the tag as a
+   kicker (tracked small caps; NOW in the accent, NEXT in grey), the title in a serif (NOW
+   semibold, NEXT regular), then location and times in a quiet sans. A fine rule between the rows.
+   The next row carries data-status from `next_status`: "delayed" turns its tag and new start to
+   --warning (the original start is struck through when a new start is set). A row whose title is
+   empty is hidden. Vertical frames stack each row's title under its tag.
+   Sizing: one unit --u, 1px at 1080p; a smaller layer box scales the strap to fill it.
+   Motion: the plate settles, then each row's kicker first, its title and meta after. Transform and
+   opacity only, durations × --speed.
+   Variables: --accent, --secondary (meta, NEXT), --text, --plate, --warning (delayed),
+   --font-heading (titles), --font-body, --radius (px), --speed (duration factor). */
+
+:host {
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+}
+
+.nn {
+  position: absolute;
+  inset: 0;
+  container-type: size;
+}
+
+.nn__safe {
+  --u: 1px;
+  position: absolute;
+  left: 6cqw;
+  right: 6cqw;
+  bottom: 9cqh;
+  display: flex;
+}
+
+@supports (width: 1cqmin) {
+  .nn__safe {
+    --u: max(100cqmin / 1080, 100cqw / 1920);
+  }
+}
+
+@container (orientation: portrait) {
+  .nn__safe {
+    left: 5cqw;
+    right: 5cqw;
+    bottom: 17cqh;
+  }
+}
+
+@container ((max-width: 999px) and (max-height: 999px)) or (min-aspect-ratio: 2/1) {
+  .nn__safe {
+    --u: min(100cqw / 1260, 100cqh / 260);
+    left: calc(14 * var(--u));
+    right: calc(14 * var(--u));
+    bottom: calc(14 * var(--u));
+  }
+}
+
+.nn__box {
+  position: relative;
+  flex: 0 1 calc(1280 * var(--u));
+  min-width: 0;
+  padding: calc(6 * var(--u)) calc(40 * var(--u));
+  color: var(--text);
+  line-height: normal;
+  -webkit-font-smoothing: antialiased;
+}
+
+.nn__plate {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius);
+  background: var(--plate);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 7%, transparent);
+}
+
+.nn__row {
+  --tone: var(--accent);
+  position: relative;
+  display: grid;
+  grid-template-columns: calc(170 * var(--u)) minmax(0, 1fr) auto;
+  grid-template-areas: "tag title meta";
+  align-items: baseline;
+  column-gap: calc(26 * var(--u));
+  padding: calc(22 * var(--u)) 0;
+}
+
+.nn__row--next {
+  --tone: var(--secondary);
+}
+
+.nn__row--next[data-status="delayed"] {
+  --tone: var(--warning);
+}
+
+.nn__row--now + .nn__row--next {
+  border-top: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
+}
+
+.nn__row:has(> .nn__title:empty),
+.nn__row:has(> .nn__title[data-empty]) {
+  display: none;
+}
+
+.nn__tag {
+  grid-area: tag;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--tone);
+  font-family: var(--font-body);
+  font-size: calc(18 * var(--u));
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.nn__title {
+  grid-area: title;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  padding-block: 0.12em;
+  margin-block: -0.12em;
+  font-family: var(--font-heading);
+  font-size: calc(40 * var(--u));
+  font-weight: 600;
+  line-height: 1.15;
+}
+
+.nn__row--next .nn__title {
+  font-size: calc(34 * var(--u));
+  font-weight: 400;
+}
+
+.nn__meta {
+  grid-area: meta;
+  display: flex;
+  align-items: baseline;
+  column-gap: calc(20 * var(--u));
+  min-width: 0;
+  white-space: nowrap;
+  color: var(--secondary);
+  font-family: var(--font-body);
+  font-size: calc(22 * var(--u));
+  font-weight: 400;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+
+.nn__loc {
+  overflow: hidden;
+  max-width: calc(300 * var(--u));
+  text-overflow: ellipsis;
+}
+
+.nn__until::before {
+  content: "until ";
+}
+
+.nn__when {
+  display: inline-flex;
+  align-items: baseline;
+  column-gap: calc(10 * var(--u));
+  color: var(--text);
+  font-weight: 500;
+}
+
+.nn__at {
+  order: 1;
+}
+
+.nn__new {
+  order: 2;
+  color: var(--tone);
+  font-weight: 600;
+}
+
+.nn__new:not(:empty):not([data-empty]) + .nn__at {
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+  color: var(--secondary);
+  font-weight: 400;
+}
+
+.nn__in {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.nn__row--next[data-status="delayed"] .nn__in {
+  color: var(--warning);
+}
+
+.nn__in::before {
+  content: "in ";
+  color: var(--secondary);
+  font-weight: 400;
+}
+
+.nn__tag:empty,
+.nn__tag[data-empty],
+.nn__loc:empty,
+.nn__loc[data-empty],
+.nn__until:empty,
+.nn__until[data-empty],
+.nn__new:empty,
+.nn__new[data-empty],
+.nn__at:empty,
+.nn__at[data-empty] {
+  display: none;
+}
+
+@container (orientation: portrait) {
+  .nn__box {
+    padding: calc(6 * var(--u)) calc(30 * var(--u));
+  }
+
+  .nn__row {
+    grid-template-columns: minmax(0, auto) minmax(0, 1fr);
+    grid-template-areas:
+      "tag meta"
+      "title title";
+    row-gap: calc(10 * var(--u));
+    padding: calc(24 * var(--u)) 0;
+  }
+
+  .nn__meta {
+    justify-content: flex-end;
+  }
+
+  .nn__title {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+}
+
+/* In: the plate settles; each row's kicker first, then its title and meta; NOW before NEXT. */
+.nn[data-state="in"] .nn__plate {
+  animation: nn-plate calc(420ms * var(--speed)) var(--ease) both;
+}
+
+.nn[data-state="in"] .nn__row--now .nn__tag {
+  animation: nn-rise calc(420ms * var(--speed)) var(--ease) calc(120ms * var(--speed)) both;
+}
+
+.nn[data-state="in"] .nn__row--now > :not(.nn__tag) {
+  animation: nn-rise calc(500ms * var(--speed)) var(--ease) calc(220ms * var(--speed)) both;
+}
+
+.nn[data-state="in"] .nn__row--next .nn__tag {
+  animation: nn-rise calc(420ms * var(--speed)) var(--ease) calc(300ms * var(--speed)) both;
+}
+
+.nn[data-state="in"] .nn__row--next > :not(.nn__tag) {
+  animation: nn-rise calc(500ms * var(--speed)) var(--ease) calc(380ms * var(--speed)) both;
+}
+
+/* Out: the text first, then the plate; the root animation's end is the end of the layer. */
+.nn[data-state="out"] {
+  animation: nn-out calc(340ms * var(--speed)) var(--ease-in) forwards;
+}
+
+.nn[data-state="out"] .nn__row {
+  animation: nn-fade-out calc(160ms * var(--speed)) var(--ease-in) forwards;
+}
+
+@keyframes nn-plate { from { opacity: 0; transform: translateY(calc(10 * var(--u))); } to { opacity: 1; transform: none; } }
+
+@keyframes nn-rise { from { opacity: 0; transform: translateY(calc(14 * var(--u))); } to { opacity: 1; transform: none; } }
+
+@keyframes nn-fade-out { to { opacity: 0; } }
+
+@keyframes nn-out { 0%, 45% { opacity: 1; } 100% { opacity: 0; } }
+
+/* Box case, landscape: the graphic IS the box. The strap takes the design's aspect (its own extent at
+   u = 1 is 1360 × 188), scaled to fit the box and anchored bottom left, and its plate fills it. */
+@container (((max-width: 999px) and (max-height: 999px)) or (min-aspect-ratio: 2/1)) and (orientation: landscape) {
+  .nn__safe {
+    --u: min(100cqw / 1360, 100cqh / 188);
+    left: 0;
+    right: auto;
+    bottom: 0;
+    width: min(100cqw, calc(100cqh * 1360 / 188));
+    height: min(100cqh, calc(100cqw * 188 / 1360));
+  }
+
+  .nn__box {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+}

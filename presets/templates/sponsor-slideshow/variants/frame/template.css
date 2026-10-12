@@ -1,0 +1,372 @@
+/* Sponsor slideshow, Frame style: a corner card held by accent corner brackets: a mono label, the
+   logo contained and centred, name and tagline below (hidden when empty), a progress hairline.
+   All slides share one grid cell; the source marks the showing one data-current="true" and
+   moving the mark plays the --motion transition. No current slide (a preview): the first shows.
+   A slide without a logo never shows (the card steps away while it is current). Sizing: --u, 1px
+   at 1080p; a box under 1000 px (a corner layer, the 520×400 design box) scales the card to fill
+   it. data-state on .ss; rows get --i, data-row, data-current, data-duration. */
+
+:host {
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --snap: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+}
+
+.ss {
+  position: absolute;
+  inset: 0;
+  container-type: size;
+}
+
+/* Safe area: four corner cells named after the --position values. */
+.ss__stage {
+  --u: 1px;
+  position: absolute;
+  inset: 8cqh 6cqw;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  grid-template-rows: auto 1fr auto;
+  grid-template-areas:
+    "top-left . top-right"
+    ". . ."
+    "bottom-left . bottom-right";
+}
+
+@supports (width: 1cqmin) {
+  .ss__stage {
+    --u: max(100cqmin / 1080, 100cqw / 1920);
+  }
+}
+
+@container (orientation: portrait) {
+  .ss__stage {
+    inset: 8cqh 5cqw 17cqh;
+  }
+}
+
+/* A layer box smaller than a frame: the card fills the box. */
+@container (max-width: 999px) and (max-height: 999px) {
+  .ss__stage {
+    --u: min(100cqw / 520, 100cqh / 400);
+    inset: calc(14 * var(--u));
+  }
+}
+
+.ss__card {
+  --gap: calc(10 * var(--u));
+  --arm: calc(24 * var(--u));
+  --bw: max(2px, calc(3 * var(--u)));
+  --fly: calc(30 * var(--u));
+  grid-area: var(--position);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: calc(480 * var(--u));
+  color: var(--text);
+  line-height: normal;
+  -webkit-font-smoothing: antialiased;
+  transition: opacity 300ms var(--ease);
+}
+
+.ss__card:has(.ss__slide[data-current="true"] .ss__logo[data-empty]) {
+  opacity: 0;
+}
+
+.ss__plate {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius);
+  background: var(--plate);
+}
+
+/* Viewfinder brackets just outside the plate. */
+.ss__br {
+  position: absolute;
+  inset: calc(-1 * var(--gap));
+  pointer-events: none;
+  filter: drop-shadow(0 0 1px rgb(0 0 0 / 0.45));
+}
+
+.ss__br > i {
+  position: absolute;
+  box-sizing: border-box;
+  width: var(--arm);
+  height: var(--arm);
+  border: 0 solid var(--accent);
+}
+
+.ss__br > i:nth-child(1) { --x: -1; --y: -1; left: 0; top: 0; border-width: var(--bw) 0 0 var(--bw); border-top-left-radius: var(--radius); }
+
+.ss__br > i:nth-child(2) { --x: 1; --y: -1; right: 0; top: 0; border-width: var(--bw) var(--bw) 0 0; border-top-right-radius: var(--radius); }
+
+.ss__br > i:nth-child(3) { --x: -1; --y: 1; left: 0; bottom: 0; border-width: 0 0 var(--bw) var(--bw); border-bottom-left-radius: var(--radius); }
+
+.ss__br > i:nth-child(4) { --x: 1; --y: 1; right: 0; bottom: 0; border-width: 0 var(--bw) var(--bw) 0; border-bottom-right-radius: var(--radius); }
+
+.ss__label {
+  position: relative;
+  display: flex;
+  align-items: center;
+  column-gap: calc(12 * var(--u));
+  padding: calc(22 * var(--u)) calc(28 * var(--u)) 0;
+  overflow: hidden;
+  white-space: nowrap;
+  color: var(--accent);
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: calc(18 * var(--u));
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.ss__label::before {
+  content: "";
+  flex: none;
+  width: calc(8 * var(--u));
+  height: calc(8 * var(--u));
+  background: var(--accent);
+}
+
+.ss__label:empty,
+.ss__label[data-empty] {
+  display: none;
+}
+
+/* One grid cell for all slides: the card is as tall as the tallest. */
+.ss__slides {
+  position: relative;
+  display: grid;
+}
+
+.ss__slide {
+  /* Seconds shown: data-duration (below), else --interval. */
+  --dur: var(--interval);
+  grid-area: 1 / 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  opacity: 0;
+  transform: translateY(calc(8 * var(--u)));
+}
+
+/* The current slide; no current slide (a preview): the first. */
+.ss__slide[data-current="true"],
+.ss__slides:not(:has(> [data-current="true"])) > .ss__slide:first-child {
+  opacity: 1;
+  transform: none;
+}
+
+.ss__slide:has(.ss__logo[data-empty]) {
+  display: none;
+}
+
+.ss__media {
+  display: grid;
+  place-items: center;
+  height: calc(176 * var(--u));
+  box-sizing: border-box;
+  padding: calc(26 * var(--u)) calc(44 * var(--u)) calc(18 * var(--u));
+}
+
+.ss__logo {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.ss__caption {
+  padding: calc(4 * var(--u)) calc(28 * var(--u)) calc(24 * var(--u));
+  text-align: center;
+}
+
+.ss__name {
+  font-family: var(--font-heading);
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+  font-size: calc(26 * var(--u));
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.ss__tagline {
+  margin-top: calc(4 * var(--u));
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+  color: var(--secondary);
+  font-family: var(--font-body);
+  font-size: calc(21 * var(--u));
+  font-weight: 400;
+  line-height: 1.3;
+}
+
+.ss__name:empty,
+.ss__name[data-empty],
+.ss__tagline:empty,
+.ss__tagline[data-empty] {
+  display: none;
+}
+
+/* Progress: a hairline filled over the slide's duration. */
+.ss__bar {
+  display: var(--progress);
+  position: relative;
+  height: max(2px, calc(3 * var(--u)));
+  margin: auto calc(28 * var(--u)) calc(20 * var(--u));
+}
+
+.ss__bar::before,
+.ss__bar::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--accent);
+}
+
+.ss__bar::before {
+  opacity: 0.2;
+}
+
+.ss__bar::after {
+  transform: scaleX(0);
+  transform-origin: left center;
+}
+
+.ss[data-state="in"] .ss__slide[data-current="true"] .ss__bar::after {
+  animation: ss-progress var(--dur) linear both;
+}
+
+/* In: brackets snap in from outside, plate, label, slide. */
+.ss[data-state="in"] .ss__br > i {
+  animation: ss-snap calc(380ms * var(--speed)) var(--snap) both;
+}
+
+.ss[data-state="in"] .ss__plate {
+  animation: ss-plate calc(320ms * var(--speed)) var(--ease) calc(60ms * var(--speed)) both;
+}
+
+.ss[data-state="in"] .ss__label {
+  animation: ss-rise calc(360ms * var(--speed)) var(--ease) calc(170ms * var(--speed)) both;
+}
+
+.ss[data-state="in"] .ss__slides {
+  animation: ss-rise calc(400ms * var(--speed)) var(--ease) calc(240ms * var(--speed)) both;
+}
+
+/* Out: content, then brackets; the root animation ends the layer. */
+.ss[data-state="out"] {
+  animation: ss-out calc(320ms * var(--speed)) var(--ease-in) forwards;
+}
+
+.ss[data-state="out"] .ss__label,
+.ss[data-state="out"] .ss__slides {
+  animation: ss-fade-out calc(140ms * var(--speed)) var(--ease-in) forwards;
+}
+
+.ss[data-state="out"] .ss__br > i {
+  animation: ss-snap-out calc(220ms * var(--speed)) var(--ease-in) calc(60ms * var(--speed)) forwards;
+}
+
+@keyframes ss-snap { from { opacity: 0; transform: translate(calc(var(--x) * var(--fly)), calc(var(--y) * var(--fly))); } }
+
+@keyframes ss-snap-out { to { opacity: 0; transform: translate(calc(var(--x) * var(--fly) * 0.6), calc(var(--y) * var(--fly) * 0.6)); } }
+
+@keyframes ss-plate { from { opacity: 0; transform: scale(0.97); } }
+
+@keyframes ss-rise { from { opacity: 0; transform: translateY(calc(12 * var(--u))); } }
+
+@keyframes ss-progress { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+
+@keyframes ss-fade-out { to { opacity: 0; } }
+
+@keyframes ss-out { 0%, 45% { opacity: 1; } 100% { opacity: 0; } }
+
+/* Logo background (--logo-bg): off, the logo sits on the card (transparency kept); on, a tile. */
+@container style(--logo-bg: on) {
+  .ss__media {
+    position: relative;
+    isolation: isolate;
+  }
+
+  .ss__media::before {
+    content: "";
+    position: absolute;
+    z-index: -1;
+    inset: calc(16 * var(--u)) calc(30 * var(--u)) calc(8 * var(--u));
+    border-radius: calc(var(--radius) * 0.6);
+    background: var(--text);
+  }
+}
+
+/* Slide change: --motion over --motion-ms. */
+.ss__slide{--t:var(--motion-ms);--half:calc(var(--t) / 2);--te:cubic-bezier(0.2, 0, 0, 1);transition:opacity var(--half) var(--ease-in),transform var(--t) var(--te)}
+.ss__slide[data-current="true"]{transition:opacity var(--half) var(--te) var(--half),transform var(--t) var(--te)}
+@container not style(--motion: fade){.ss__slide,.ss__slide[data-current="true"]{transition:opacity var(--t) var(--te),transform var(--t) var(--te)}}
+@container style(--motion: slide){.ss__slides{overflow:clip}.ss__slide{transform:translateX(-100%)}.ss__slide[data-current="true"] ~ .ss__slide{transform:translateX(100%)}}
+@container style(--motion: zoom){.ss__slide{transform:scale(1.15)}.ss__slide[data-current="true"] ~ .ss__slide{transform:scale(0.85)}}
+
+/* Per-slide durations sent by the source (whole seconds). */
+.ss__slide[data-duration="1"]{--dur:1s}
+.ss__slide[data-duration="2"]{--dur:2s}
+.ss__slide[data-duration="3"]{--dur:3s}
+.ss__slide[data-duration="4"]{--dur:4s}
+.ss__slide[data-duration="5"]{--dur:5s}
+.ss__slide[data-duration="6"]{--dur:6s}
+.ss__slide[data-duration="7"]{--dur:7s}
+.ss__slide[data-duration="8"]{--dur:8s}
+.ss__slide[data-duration="9"]{--dur:9s}
+.ss__slide[data-duration="10"]{--dur:10s}
+.ss__slide[data-duration="11"]{--dur:11s}
+.ss__slide[data-duration="12"]{--dur:12s}
+.ss__slide[data-duration="13"]{--dur:13s}
+.ss__slide[data-duration="14"]{--dur:14s}
+.ss__slide[data-duration="15"]{--dur:15s}
+.ss__slide[data-duration="16"]{--dur:16s}
+.ss__slide[data-duration="17"]{--dur:17s}
+.ss__slide[data-duration="18"]{--dur:18s}
+.ss__slide[data-duration="19"]{--dur:19s}
+.ss__slide[data-duration="20"]{--dur:20s}
+.ss__slide[data-duration="21"]{--dur:21s}
+.ss__slide[data-duration="22"]{--dur:22s}
+.ss__slide[data-duration="23"]{--dur:23s}
+.ss__slide[data-duration="24"]{--dur:24s}
+.ss__slide[data-duration="25"]{--dur:25s}
+.ss__slide[data-duration="26"]{--dur:26s}
+.ss__slide[data-duration="27"]{--dur:27s}
+.ss__slide[data-duration="28"]{--dur:28s}
+.ss__slide[data-duration="29"]{--dur:29s}
+.ss__slide[data-duration="30"]{--dur:30s}
+.ss__slide[data-duration="31"]{--dur:31s}
+.ss__slide[data-duration="32"]{--dur:32s}
+.ss__slide[data-duration="33"]{--dur:33s}
+.ss__slide[data-duration="34"]{--dur:34s}
+.ss__slide[data-duration="35"]{--dur:35s}
+.ss__slide[data-duration="36"]{--dur:36s}
+.ss__slide[data-duration="37"]{--dur:37s}
+.ss__slide[data-duration="38"]{--dur:38s}
+.ss__slide[data-duration="39"]{--dur:39s}
+.ss__slide[data-duration="40"]{--dur:40s}
+.ss__slide[data-duration="41"]{--dur:41s}
+.ss__slide[data-duration="42"]{--dur:42s}
+.ss__slide[data-duration="43"]{--dur:43s}
+.ss__slide[data-duration="44"]{--dur:44s}
+.ss__slide[data-duration="45"]{--dur:45s}
+.ss__slide[data-duration="46"]{--dur:46s}
+.ss__slide[data-duration="47"]{--dur:47s}
+.ss__slide[data-duration="48"]{--dur:48s}
+.ss__slide[data-duration="49"]{--dur:49s}
+.ss__slide[data-duration="50"]{--dur:50s}
+.ss__slide[data-duration="51"]{--dur:51s}
+.ss__slide[data-duration="52"]{--dur:52s}
+.ss__slide[data-duration="53"]{--dur:53s}
+.ss__slide[data-duration="54"]{--dur:54s}
+.ss__slide[data-duration="55"]{--dur:55s}
+.ss__slide[data-duration="56"]{--dur:56s}
+.ss__slide[data-duration="57"]{--dur:57s}
+.ss__slide[data-duration="58"]{--dur:58s}
+.ss__slide[data-duration="59"]{--dur:59s}
+.ss__slide[data-duration="60"]{--dur:60s}
+.ss__slide[data-duration="75"]{--dur:75s}
+.ss__slide[data-duration="90"]{--dur:90s}
+.ss__slide[data-duration="120"]{--dur:120s}

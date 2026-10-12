@@ -1,0 +1,434 @@
+/* Now & Next, Frame style: one plate held by accent corner brackets with two rows. NOW: a mono
+   tag, the title, location and end time; NEXT: tag, title, location, the start time and a
+   countdown to it. The next row carries data-status from `next_status`: "delayed" turns its tag
+   and new start to --warning (the original start is struck through when a new start is set).
+   A row whose title is empty is hidden.
+   Sizing: one unit --u, 1px at 1080p; a smaller layer box scales the strap to fill it. Vertical
+   frames stack each row's title under its tag.
+   The renderer sets data-state="in" | "out" on the root (.nn). Only transform and opacity
+   animate; every duration is multiplied by --speed.
+   Variables: --accent (brackets, NOW, countdown), --secondary (meta), --text, --plate,
+   --warning (delayed), --font-heading, --radius (px), --speed (duration factor). */
+
+:host {
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --snap: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --mono: "IBM Plex Mono", ui-monospace, monospace;
+}
+
+.nn {
+  position: absolute;
+  inset: 0;
+  container-type: size;
+}
+
+/* Title safe along the bottom; vertical frames sit higher, clear of platform UI. */
+.nn__safe {
+  --u: 1px;
+  position: absolute;
+  left: 6cqw;
+  right: 6cqw;
+  bottom: 9cqh;
+  display: flex;
+}
+
+@supports (width: 1cqmin) {
+  .nn__safe {
+    --u: max(100cqmin / 1080, 100cqw / 1920);
+  }
+}
+
+@container (orientation: portrait) {
+  .nn__safe {
+    left: 5cqw;
+    right: 5cqw;
+    bottom: 17cqh;
+  }
+}
+
+/* A layer box smaller than a frame: the strap fills the box. */
+@container ((max-width: 999px) and (max-height: 999px)) or (min-aspect-ratio: 2/1) {
+  .nn__safe {
+    --u: min(100cqw / 1260, 100cqh / 260);
+    left: calc(14 * var(--u));
+    right: calc(14 * var(--u));
+    bottom: calc(14 * var(--u));
+  }
+}
+
+.nn__box {
+  --gap: calc(10 * var(--u));
+  --arm: calc(26 * var(--u));
+  --bw: max(2px, calc(3 * var(--u)));
+  --fly: calc(34 * var(--u));
+  position: relative;
+  flex: 0 1 calc(1280 * var(--u));
+  min-width: 0;
+  color: var(--text);
+  line-height: normal;
+  -webkit-font-smoothing: antialiased;
+}
+
+.nn__plate {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius);
+  background: var(--plate);
+}
+
+/* Viewfinder brackets: four L-shaped corners just outside the plate. */
+.nn__br {
+  position: absolute;
+  inset: calc(-1 * var(--gap));
+  pointer-events: none;
+  filter: drop-shadow(0 0 1px rgb(0 0 0 / 0.45));
+}
+
+.nn__br > i {
+  position: absolute;
+  box-sizing: border-box;
+  width: var(--arm);
+  height: var(--arm);
+  border: 0 solid var(--accent);
+}
+
+.nn__br > i:nth-child(1) {
+  --x: -1;
+  --y: -1;
+  left: 0;
+  top: 0;
+  border-width: var(--bw) 0 0 var(--bw);
+  border-top-left-radius: var(--radius);
+}
+
+.nn__br > i:nth-child(2) {
+  --x: 1;
+  --y: -1;
+  right: 0;
+  top: 0;
+  border-width: var(--bw) var(--bw) 0 0;
+  border-top-right-radius: var(--radius);
+}
+
+.nn__br > i:nth-child(3) {
+  --x: -1;
+  --y: 1;
+  left: 0;
+  bottom: 0;
+  border-width: 0 0 var(--bw) var(--bw);
+  border-bottom-left-radius: var(--radius);
+}
+
+.nn__br > i:nth-child(4) {
+  --x: 1;
+  --y: 1;
+  right: 0;
+  bottom: 0;
+  border-width: 0 var(--bw) var(--bw) 0;
+  border-bottom-right-radius: var(--radius);
+}
+
+/* A row: tag | title | meta. */
+.nn__row {
+  --tone: var(--accent);
+  position: relative;
+  display: grid;
+  grid-template-columns: calc(150 * var(--u)) minmax(0, 1fr) auto;
+  grid-template-areas: "tag title meta";
+  align-items: baseline;
+  column-gap: calc(24 * var(--u));
+  padding: calc(22 * var(--u)) calc(36 * var(--u));
+}
+
+.nn__row--next {
+  --tone: var(--text);
+}
+
+.nn__row--next[data-status="delayed"] {
+  --tone: var(--warning);
+}
+
+/* A hairline between the rows (only when both show). */
+.nn__row--now + .nn__row--next::before {
+  content: "";
+  position: absolute;
+  left: calc(36 * var(--u));
+  right: calc(36 * var(--u));
+  top: 0;
+  height: 1px;
+  background: color-mix(in srgb, var(--text) 16%, transparent);
+}
+
+.nn__row:has(> .nn__title:empty),
+.nn__row:has(> .nn__title[data-empty]) {
+  display: none;
+}
+
+.nn__tag {
+  grid-area: tag;
+  display: flex;
+  align-items: center;
+  column-gap: calc(10 * var(--u));
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  color: var(--tone);
+  font-family: var(--mono);
+  font-size: calc(20 * var(--u));
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+/* NOW: a filled square; NEXT: an outlined one. */
+.nn__tag::before {
+  content: "";
+  flex: none;
+  box-sizing: border-box;
+  width: calc(10 * var(--u));
+  height: calc(10 * var(--u));
+  background: var(--tone);
+}
+
+.nn__row--next:not([data-status="delayed"]) .nn__tag::before {
+  border: max(1px, calc(2 * var(--u))) solid var(--tone);
+  background: transparent;
+}
+
+.nn__title {
+  grid-area: title;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  /* Room for descenders inside the clip; the margin cancels it. */
+  padding-block: 0.12em;
+  margin-block: -0.12em;
+  font-family: var(--font-heading);
+  font-size: calc(40 * var(--u));
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+}
+
+.nn__row--next .nn__title {
+  font-size: calc(32 * var(--u));
+  font-weight: 400;
+}
+
+.nn__meta {
+  grid-area: meta;
+  display: flex;
+  align-items: baseline;
+  column-gap: calc(20 * var(--u));
+  min-width: 0;
+  white-space: nowrap;
+  color: var(--secondary);
+  font-family: var(--mono);
+  font-size: calc(20 * var(--u));
+  font-weight: 400;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+
+.nn__loc {
+  overflow: hidden;
+  max-width: calc(300 * var(--u));
+  text-overflow: ellipsis;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.nn__until::before {
+  content: "until ";
+  opacity: 0.7;
+}
+
+/* The start: with a new start, the original is struck through and the new one follows (the new
+   start is first in the markup so a sibling selector can reach the original). */
+.nn__when {
+  display: inline-flex;
+  align-items: baseline;
+  column-gap: calc(10 * var(--u));
+}
+
+.nn__at {
+  order: 1;
+}
+
+.nn__new {
+  order: 2;
+  color: var(--tone);
+  font-weight: 600;
+}
+
+.nn__new:not(:empty):not([data-empty]) + .nn__at {
+  text-decoration: line-through;
+  text-decoration-thickness: max(1px, calc(2 * var(--u)));
+  opacity: 0.6;
+}
+
+.nn__in {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.nn__row--next[data-status="delayed"] .nn__in {
+  color: var(--warning);
+}
+
+.nn__in::before {
+  content: "in ";
+  color: var(--secondary);
+  font-weight: 400;
+  opacity: 0.7;
+}
+
+.nn__tag:empty,
+.nn__tag[data-empty],
+.nn__loc:empty,
+.nn__loc[data-empty],
+.nn__until:empty,
+.nn__until[data-empty],
+.nn__new:empty,
+.nn__new[data-empty],
+.nn__at:empty,
+.nn__at[data-empty] {
+  display: none;
+}
+
+/* Vertical frames: tag and meta on one line, the title under them. */
+@container (orientation: portrait) {
+  .nn__row {
+    grid-template-columns: minmax(0, auto) minmax(0, 1fr);
+    grid-template-areas:
+      "tag meta"
+      "title title";
+    row-gap: calc(10 * var(--u));
+    padding: calc(24 * var(--u)) calc(30 * var(--u));
+  }
+
+  .nn__meta {
+    justify-content: flex-end;
+  }
+
+  .nn__title {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .nn__row--now + .nn__row--next::before {
+    left: calc(30 * var(--u));
+    right: calc(30 * var(--u));
+  }
+}
+
+/* In: the brackets snap in from outside, the plate fades up, then NOW, then NEXT. */
+.nn[data-state="in"] .nn__br > i {
+  animation: nn-snap calc(380ms * var(--speed)) var(--snap) both;
+}
+
+.nn[data-state="in"] .nn__plate {
+  animation: nn-plate calc(320ms * var(--speed)) var(--ease) calc(60ms * var(--speed)) both;
+}
+
+.nn[data-state="in"] .nn__row--now > * {
+  animation: nn-rise calc(380ms * var(--speed)) var(--ease) calc(180ms * var(--speed)) both;
+}
+
+.nn[data-state="in"] .nn__row--next > * {
+  animation: nn-rise calc(380ms * var(--speed)) var(--ease) calc(270ms * var(--speed)) both;
+}
+
+/* Out: the text goes first, the brackets fly back out; the root animation's end is the end of
+   the layer. */
+.nn[data-state="out"] {
+  animation: nn-out calc(320ms * var(--speed)) var(--ease-in) forwards;
+}
+
+.nn[data-state="out"] .nn__row {
+  animation: nn-fade-out calc(140ms * var(--speed)) var(--ease-in) forwards;
+}
+
+.nn[data-state="out"] .nn__br > i {
+  animation: nn-snap-out calc(220ms * var(--speed)) var(--ease-in) calc(60ms * var(--speed)) forwards;
+}
+
+@keyframes nn-snap {
+  from {
+    opacity: 0;
+    transform: translate(calc(var(--x) * var(--fly)), calc(var(--y) * var(--fly)));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes nn-snap-out {
+  to {
+    opacity: 0;
+    transform: translate(calc(var(--x) * var(--fly) * 0.6), calc(var(--y) * var(--fly) * 0.6));
+  }
+}
+
+@keyframes nn-plate {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes nn-rise {
+  from {
+    opacity: 0;
+    transform: translateY(calc(12 * var(--u)));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes nn-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes nn-out {
+  0%,
+  45% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* Box case, landscape: the graphic IS the box. The strap takes the design's aspect (its own extent at
+   u = 1 is 1379 × 191), scaled to fit the box and anchored bottom left, and its plate fills it. */
+@container (((max-width: 999px) and (max-height: 999px)) or (min-aspect-ratio: 2/1)) and (orientation: landscape) {
+  .nn__safe {
+    --u: min(100cqw / 1379, 100cqh / 191);
+    left: 0;
+    right: auto;
+    bottom: 0;
+    width: min(100cqw, calc(100cqh * 1379 / 191));
+    height: min(100cqh, calc(100cqw * 191 / 1379));
+  }
+
+  .nn__box {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    margin: var(--gap);
+  }
+}

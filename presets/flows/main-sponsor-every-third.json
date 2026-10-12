@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "id": "main-sponsor-every-third",
+  "name": "Main sponsor every third loop",
+  "description": "Every third time the sponsor slideshow wraps, shows the main sponsor for 10 s.",
+  "category": "sponsors",
+  "slots": [
+    {"key":"slides","label":"Sponsor slideshow source","kind":"textSource"},
+    {"key":"main","label":"Main sponsor layer","kind":"layer","prefer":{"template":"fullscreen-title"}}
+  ],
+  "flows": [
+    {
+      "armed": false,
+      "nodes": [
+        {"id":"wrap","position":{"x":0,"y":0},"type":"trigger.slideshowWrap","config":{"sourceId":"{{slides}}"}},
+        {"id":"counter","position":{"x":260,"y":0},"type":"logic.counter","config":{"every":3}},
+        {"id":"take","position":{"x":520,"y":0},"type":"action.take","config":{"screenId":"{{main.screenId}}","layerId":"{{main.layerId}}","forMs":10000}}
+      ],
+      "edges": [
+        {"id":"e1","from":{"node":"wrap","port":"fired"},"to":{"node":"counter","port":"in"},"kind":"event"},
+        {"id":"e2","from":{"node":"counter","port":"out"},"to":{"node":"take","port":"in"},"kind":"event"}
+      ]
+    }
+  ]
+}

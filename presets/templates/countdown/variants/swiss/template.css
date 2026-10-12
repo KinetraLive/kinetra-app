@@ -1,0 +1,210 @@
+/* Countdown, Swiss style: a poster on the grid. The plate covers the frame; at the top of the grid
+   the accent square, the title ("Doors open in") and (on a field of accent) the logo; at the
+   bottom, flush left, the digits as large as the frame allows (tabular figures, so they never
+   jitter), a 1px rule across the grid and the grey subtitle.
+   Sizing: one unit --u, 1px at 1080p on the frame's short side; the digits also stay within the
+   frame's width, so an hour counter fits a vertical frame.
+   Motion: the plate wipes in from the left (scaleX of a cover), the square snaps, the text steps
+   in, the rule draws. Transform and opacity only, durations × --speed.
+   Variables: --accent, --secondary (subtitle), --text (digits), --plate (background),
+   --font-heading (digits), --font-body, --radius (px), --speed (duration factor). */
+
+:host {
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --wipe: cubic-bezier(0.7, 0, 0.2, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+}
+
+.cd {
+  position: absolute;
+  inset: 0;
+  container-type: size;
+}
+
+.cd__bg {
+  position: absolute;
+  inset: 0;
+  background: var(--plate);
+  transform-origin: left center;
+}
+
+.cd__stage {
+  --u: 1px;
+  position: absolute;
+  inset: 9cqh 8cqw;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  color: var(--text);
+  line-height: normal;
+  -webkit-font-smoothing: antialiased;
+}
+
+@supports (width: 1cqmin) {
+  .cd__stage {
+    --u: calc(100cqmin / 1080);
+  }
+}
+
+@container (orientation: portrait) {
+  .cd__stage {
+    inset: 10cqh 7cqw 14cqh;
+  }
+}
+
+/* A layer box smaller than a frame (or a wide bar): no title-safe margins, a small inset, and
+   the unit scales the block (1676 × 712 at 1px: a block with room, plus the inset) to the box. */
+@container ((max-width: 999px) and (max-height: 999px)) or (min-aspect-ratio: 2/1) {
+  .cd__stage {
+    --u: min(100cqw / 1724, 100cqh / 760);
+    inset: calc(24 * var(--u));
+  }
+}
+
+
+
+.cd__head {
+  display: grid;
+  grid-template-columns: calc(18 * var(--u)) minmax(0, 1fr) auto;
+  column-gap: calc(26 * var(--u));
+  align-items: start;
+}
+
+.cd__sq {
+  width: calc(18 * var(--u));
+  height: calc(18 * var(--u));
+  margin-top: calc(9 * var(--u));
+  background: var(--accent);
+}
+
+.cd__title {
+  grid-column: 2;
+  overflow-wrap: anywhere;
+  font-family: var(--font-body);
+  font-size: calc(32 * var(--u));
+  font-weight: 600;
+  line-height: 1.1;
+}
+
+.cd__field {
+  grid-column: 3;
+  display: grid;
+  place-items: center;
+  padding: calc(30 * var(--u)) calc(38 * var(--u));
+  border-radius: var(--radius);
+  background: var(--accent);
+}
+
+.cd__logo {
+  display: block;
+  width: auto;
+  max-width: calc(320 * var(--u));
+  height: calc(72 * var(--u));
+  object-fit: contain;
+}
+
+.cd__body {
+  padding-left: calc(44 * var(--u));
+}
+
+.cd__time {
+  margin-left: -0.05em;
+  white-space: nowrap;
+  font-family: var(--font-heading);
+  font-size: min(calc(340 * var(--u)), 23cqw);
+  font-weight: 600;
+  line-height: 0.9;
+  letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums;
+}
+
+.cd__rule {
+  display: block;
+  height: max(1px, calc(1.5 * var(--u)));
+  margin: calc(44 * var(--u)) 0 calc(26 * var(--u));
+  background: var(--text);
+  transform-origin: left center;
+}
+
+.cd__sub {
+  max-width: calc(1300 * var(--u));
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  color: var(--secondary);
+  font-family: var(--font-body);
+  font-size: calc(40 * var(--u));
+  font-weight: 400;
+  line-height: 1.25;
+}
+
+@container (orientation: portrait) {
+  .cd__body {
+    padding-left: 0;
+  }
+}
+
+.cd__title:empty,
+.cd__sub:empty,
+.cd__title[data-empty],
+.cd__sub[data-empty],
+.cd__body:has(> .cd__sub[data-empty]) .cd__rule,
+.cd__field:has(> .cd__logo[src=""]),
+.cd__field:has(> .cd__logo[data-empty]) {
+  display: none;
+}
+
+/* In: the plate wipes in, the square snaps, title and logo, the digits, the rule draws, the
+   subtitle. */
+.cd[data-state="in"] .cd__bg {
+  animation: cd-wipe calc(620ms * var(--speed)) var(--wipe) both;
+}
+
+.cd[data-state="in"] .cd__sq {
+  animation: cd-sq calc(260ms * var(--speed)) var(--ease) calc(380ms * var(--speed)) both;
+}
+
+.cd[data-state="in"] .cd__title,
+.cd[data-state="in"] .cd__field {
+  animation: cd-in calc(420ms * var(--speed)) var(--ease) calc(420ms * var(--speed)) both;
+}
+
+.cd[data-state="in"] .cd__time {
+  animation: cd-in calc(480ms * var(--speed)) var(--ease) calc(500ms * var(--speed)) both;
+}
+
+.cd[data-state="in"] .cd__rule {
+  animation: cd-draw calc(620ms * var(--speed)) var(--wipe) calc(540ms * var(--speed)) both;
+}
+
+.cd[data-state="in"] .cd__sub {
+  animation: cd-in calc(420ms * var(--speed)) var(--ease) calc(680ms * var(--speed)) both;
+}
+
+/* Out: the content goes, the plate wipes off to the right; the root animation's end is the end of
+   the layer. */
+.cd[data-state="out"] {
+  animation: cd-out calc(400ms * var(--speed)) linear forwards;
+}
+
+.cd[data-state="out"] .cd__stage {
+  animation: cd-fade-out calc(160ms * var(--speed)) var(--ease-in) forwards;
+}
+
+.cd[data-state="out"] .cd__bg {
+  transform-origin: right center;
+  animation: cd-wipe-out calc(360ms * var(--speed)) var(--wipe) forwards;
+}
+
+@keyframes cd-wipe { from { transform: scaleX(0); } to { transform: none; } }
+
+@keyframes cd-wipe-out { to { transform: scaleX(0); } }
+
+@keyframes cd-sq { from { transform: scale(0); } to { transform: none; } }
+
+@keyframes cd-draw { from { transform: scaleX(0); } to { transform: none; } }
+
+@keyframes cd-in { from { opacity: 0; transform: translateX(calc(-24 * var(--u))); } to { opacity: 1; transform: none; } }
+
+@keyframes cd-fade-out { to { opacity: 0; } }
+
+@keyframes cd-out { 0%, 90% { opacity: 1; } 100% { opacity: 0; } }

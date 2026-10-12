@@ -1,0 +1,308 @@
+/* Chat, Corporate style: a stack of messages on the right of the safe area, newest at the bottom,
+   under a title block in the accent. Each message is a rounded light plate led by an edge in the
+   user's colour (else the accent): the user, the platform in small capitals, then the text.
+   Highlighted messages (row mark _highlight, or highlighted = "true") turn to the dark --secondary
+   plate with an accent edge. Older messages leave over the top edge; at most 8 show.
+   Sizing: one unit --u, 1px at 1080p; a smaller layer box scales the stack to fill it.
+   The renderer sets data-state="in" | "out" on the root (.ch); rows get --i and data-row.
+   Only transform and opacity animate (plates wipe open with scaleX on their backgrounds);
+   durations × --speed. Variables: --accent, --secondary, --text, --plate, --font-heading,
+   --font-body, --radius (px), --speed. */
+
+:host {
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --wipe: cubic-bezier(0.65, 0, 0.15, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+}
+
+.ch {
+  position: absolute;
+  inset: 0;
+  container-type: size;
+}
+
+/* Right side of the safe area; vertical frames: the lower half, clear of platform UI. */
+.ch__safe {
+  --u: 1px;
+  position: absolute;
+  top: 10cqh;
+  right: 5cqw;
+  bottom: 9cqh;
+  width: calc(600 * var(--u));
+}
+
+@supports (width: 1cqmin) {
+  .ch__safe {
+    --u: max(100cqmin / 1080, 100cqw / 1920);
+  }
+}
+
+@container (orientation: portrait) {
+  .ch__safe {
+    --u: calc(115cqw / 1080);
+    top: 42cqh;
+    left: 5cqw;
+    bottom: 17cqh;
+    width: auto;
+  }
+}
+
+/* A layer box smaller than a frame: the stack fills the box. */
+@container ((max-width: 999px) and (max-height: 999px)) or (min-aspect-ratio: 2/1) {
+  .ch__safe {
+    --u: min(100cqw / 640, 100cqh / 560);
+    inset: calc(14 * var(--u));
+    width: auto;
+  }
+}
+
+.ch__panel {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  height: 100%;
+  line-height: normal;
+  -webkit-font-smoothing: antialiased;
+}
+
+.ch__head {
+  flex: none;
+  align-self: flex-start;
+  max-width: 100%;
+  margin-bottom: calc(14 * var(--u));
+  box-sizing: border-box;
+  padding: calc(10 * var(--u)) calc(20 * var(--u));
+  border-radius: var(--radius);
+  background: var(--accent);
+}
+
+.ch__title {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--plate);
+  font-family: var(--font-body);
+  font-size: calc(17 * var(--u));
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.ch__title:empty,
+.ch__title[data-empty],
+.ch__head:has(> .ch__title:empty),
+.ch__head:has(> .ch__title[data-empty]) {
+  display: none;
+}
+
+/* The messages: bottom-aligned; what does not fit is clipped at the top. */
+.ch__list {
+  flex: 0 1 auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  row-gap: calc(10 * var(--u));
+  min-height: 0;
+  overflow: clip;
+}
+
+.ch__msg {
+  --bg: var(--plate);
+  --fg: var(--text);
+  position: relative;
+  isolation: isolate;
+  flex: none;
+  display: flex;
+  align-items: stretch;
+  overflow: hidden;
+  border-radius: var(--radius);
+  color: var(--fg);
+}
+
+.ch__msg:nth-last-child(n + 9) {
+  display: none;
+}
+
+.ch__msg::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  background: var(--bg);
+  transform-origin: left center;
+}
+
+.ch__msg[data-highlight],
+.ch__msg[data-hl="true"] {
+  --bg: var(--secondary);
+  --fg: var(--plate);
+}
+
+/* The user's colour (an invalid or empty colour leaves the accent). */
+.ch__edge {
+  flex: none;
+  width: calc(7 * var(--u));
+  color: var(--accent);
+  background: currentColor;
+}
+
+.ch__msg[data-highlight] .ch__edge,
+.ch__msg[data-hl="true"] .ch__edge {
+  background: var(--accent);
+}
+
+.ch__body {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: calc(12 * var(--u)) calc(22 * var(--u)) calc(14 * var(--u)) calc(18 * var(--u));
+}
+
+.ch__meta {
+  display: flex;
+  align-items: baseline;
+  column-gap: calc(12 * var(--u));
+  min-width: 0;
+  margin-bottom: calc(3 * var(--u));
+  white-space: nowrap;
+  line-height: 1.2;
+}
+
+.ch__user {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--font-heading);
+  font-size: calc(20 * var(--u));
+  font-weight: 600;
+}
+
+.ch__platform {
+  flex: none;
+  margin-left: auto;
+  font-family: var(--font-body);
+  font-size: calc(13 * var(--u));
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  opacity: 0.55;
+}
+
+.ch__text {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  font-family: var(--font-body);
+  font-size: calc(24 * var(--u));
+  font-weight: 400;
+  line-height: 1.32;
+}
+
+.ch__user:empty,
+.ch__user[data-empty],
+.ch__platform:empty,
+.ch__platform[data-empty],
+.ch__text:empty,
+.ch__text[data-empty] {
+  display: none;
+}
+
+/* In: the title block slides in, then each message: its plate wipes open and its text follows.
+   A message added on air does the same on its own; a removed one fades. */
+.ch[data-state="in"] .ch__head {
+  animation: ch-slide calc(400ms * var(--speed)) var(--ease) both;
+}
+
+.ch[data-state="in"] .ch__msg::before {
+  animation: ch-wipe calc(440ms * var(--speed)) var(--wipe) calc(100ms * var(--speed)) both;
+}
+
+.ch[data-state="in"] .ch__edge {
+  animation: ch-fade calc(300ms * var(--speed)) var(--ease) calc(100ms * var(--speed)) both;
+}
+
+.ch[data-state="in"] .ch__body {
+  animation: ch-text calc(400ms * var(--speed)) var(--ease) calc(300ms * var(--speed)) both;
+}
+
+.ch__msg[data-row="out"] {
+  animation: ch-fade-out calc(200ms * var(--speed)) var(--ease-in) forwards;
+}
+
+/* Out: text, then the plates wipe closed; the root animation's end is the end of the layer. */
+.ch[data-state="out"] {
+  animation: ch-out calc(340ms * var(--speed)) var(--ease-in) forwards;
+}
+
+.ch[data-state="out"] .ch__body {
+  animation: ch-fade-out calc(130ms * var(--speed)) var(--ease-in) forwards;
+}
+
+.ch[data-state="out"] .ch__msg::before {
+  animation: ch-unwipe calc(220ms * var(--speed)) var(--ease-in) calc(60ms * var(--speed)) forwards;
+}
+
+@keyframes ch-slide {
+  from {
+    transform: translateX(calc(-30 * var(--u)));
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+@keyframes ch-wipe {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: none;
+  }
+}
+
+@keyframes ch-unwipe {
+  to {
+    transform: scaleX(0);
+  }
+}
+
+@keyframes ch-text {
+  from {
+    opacity: 0;
+    transform: translateX(calc(-10 * var(--u)));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes ch-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes ch-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes ch-out {
+  0%,
+  50% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}

@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "id": "manual-hold",
+  "name": "Manual hold",
+  "description": "Takes Now & Next when an item starts, unless the operator pressed Hold (Release lets it through again).",
+  "category": "blocks",
+  "slots": [
+    {"key":"schedule","label":"Run of show","kind":"scheduleSource"},
+    {"key":"layer","label":"Now & Next layer","kind":"layer","prefer":{"template":"now-next"}}
+  ],
+  "flows": [
+    {
+      "suffix": "take", "armed": false,
+      "nodes": [
+        {"id":"status","position":{"x":0,"y":0},"type":"trigger.itemStatus","config":{"sourceId":"{{schedule}}","status":"now"}},
+        {"id":"gate","position":{"x":520,"y":0},"type":"logic.gate","config":{"open":true}},
+        {"id":"take","position":{"x":780,"y":0},"type":"action.take","config":{"screenId":"{{layer.screenId}}","layerId":"{{layer.layerId}}","forMs":10000}},
+        {"id":"run","position":{"x":0,"y":160},"type":"trigger.runByFlow","config":{}},
+        {"id":"switch","position":{"x":260,"y":160},"type":"logic.switch","config":{"cases":["hold","release"]}}
+      ],
+      "edges": [
+        {"id":"e1","from":{"node":"status","port":"fired"},"to":{"node":"gate","port":"in"},"kind":"event"},
+        {"id":"e2","from":{"node":"gate","port":"out"},"to":{"node":"take","port":"in"},"kind":"event"},
+        {"id":"e3","from":{"node":"run","port":"fired"},"to":{"node":"switch","port":"in"},"kind":"event"},
+        {"id":"e4","from":{"node":"switch","port":"case0"},"to":{"node":"gate","port":"close"},"kind":"event"},
+        {"id":"e5","from":{"node":"switch","port":"case1"},"to":{"node":"gate","port":"open"},"kind":"event"},
+        {"id":"d1","from":{"node":"run","port":"value"},"to":{"node":"switch","port":"value"},"kind":"data"}
+      ]
+    },
+    {
+      "suffix": "hold", "armed": "cue",
+      "nodes": [
+        {"id":"cue","position":{"x":0,"y":0},"type":"trigger.cue","config":{"label":"Hold"}},
+        {"id":"runFlow","position":{"x":260,"y":0},"type":"action.runFlow","config":{"flowId":"{{flow:take}}"}},
+        {"id":"value","position":{"x":0,"y":160},"type":"data.constant","config":{"value":{"kind":"text","value":"hold"}}}
+      ],
+      "edges": [
+        {"id":"e1","from":{"node":"cue","port":"fired"},"to":{"node":"runFlow","port":"in"},"kind":"event"},
+        {"id":"d1","from":{"node":"value","port":"value"},"to":{"node":"runFlow","port":"value"},"kind":"data"}
+      ]
+    },
+    {
+      "suffix": "release", "armed": "cue",
+      "nodes": [
+        {"id":"cue","position":{"x":0,"y":0},"type":"trigger.cue","config":{"label":"Release"}},
+        {"id":"runFlow","position":{"x":260,"y":0},"type":"action.runFlow","config":{"flowId":"{{flow:take}}"}},
+        {"id":"value","position":{"x":0,"y":160},"type":"data.constant","config":{"value":{"kind":"text","value":"release"}}}
+      ],
+      "edges": [
+        {"id":"e1","from":{"node":"cue","port":"fired"},"to":{"node":"runFlow","port":"in"},"kind":"event"},
+        {"id":"d1","from":{"node":"value","port":"value"},"to":{"node":"runFlow","port":"value"},"kind":"data"}
+      ]
+    }
+  ]
+}

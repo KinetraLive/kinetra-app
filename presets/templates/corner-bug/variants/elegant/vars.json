@@ -1,0 +1,10 @@
+{
+  "accent": "#d9bc7a",
+  "secondary": "#d6cdbb",
+  "plate": "#0d0c0bc7",
+  "font-heading": "Playfair Display",
+  "font-body": "Jost",
+  "radius": "2",
+  "speed": "1",
+  "ink": "#f5f0e6"
+}

@@ -1,0 +1,329 @@
+/* Now & Next: a lower strap in two blocks. NOW: label badge, title, location and end time. NEXT:
+   label badge, title, a countdown to its start (a timer field), the start time and location.
+   The next block carries data-status from its `next_status` field: "delayed" turns its badge and
+   new start time to the warning colour (the original start is struck through when a new start
+   is set). A block whose title is empty is hidden.
+   The renderer sets data-state="in" | "out" on the root (.nn). Only transform and opacity animate.
+   Variables: --accent (NOW), --next (UP NEXT), --warning (DELAYED), --ink (text on filled badges),
+   --panel, --text, --font, --scale (unitless), --radius (px). */
+
+:host {
+  /* One scaled pixel; --scale resizes the strap while it stays anchored to the safe area. */
+  --u: calc(1px * var(--scale));
+  --r: calc(var(--radius) * var(--scale));
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+}
+
+/* The root fills the layer box and is its size container; .nn__safe holds the layout. */
+.nn {
+  position: absolute;
+  inset: 0;
+  container-type: size;
+}
+
+/* Safe area: 8% of 1920 left/right, 8% of 1080 from the bottom. */
+.nn__safe {
+  position: absolute;
+  left: 154px;
+  right: 154px;
+  bottom: 86px;
+  display: flex;
+  justify-content: flex-start;
+}
+
+/* A layer box smaller than a frame (or a wide bar): the graphic scales to fill it. */
+@container ((max-width: 999px) and (max-height: 999px)) or (min-aspect-ratio: 2/1) {
+  .nn__safe {
+    --u: calc(min(100cqw / 1400, 100cqh / 260) * var(--scale));
+    left: calc(14 * var(--u));
+    right: calc(14 * var(--u));
+    bottom: calc(14 * var(--u));
+  }
+}
+
+.nn__bar {
+  display: flex;
+  align-items: stretch;
+  max-width: 100%;
+  min-width: 0;
+  border-radius: var(--r);
+  overflow: hidden;
+  background: var(--panel);
+  color: var(--text);
+  font-family: var(--font);
+  line-height: normal;
+  -webkit-font-smoothing: antialiased;
+}
+
+.nn__block {
+  /* Badge colour of the block. */
+  --tone: var(--next);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  flex: 0 1 auto;
+  min-width: calc(360 * var(--u));
+  max-width: calc(820 * var(--u));
+  box-sizing: border-box;
+  padding: calc(22 * var(--u)) calc(36 * var(--u)) calc(24 * var(--u)) calc(34 * var(--u));
+}
+
+.nn__block--now {
+  --tone: var(--accent);
+}
+
+/* The NOW block carries an accent edge on its leading side. */
+.nn__block--now::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: calc(8 * var(--u));
+  background: var(--accent);
+  transform-origin: center bottom;
+}
+
+/* A divider between the two blocks. */
+.nn__block + .nn__block::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: calc(20 * var(--u));
+  bottom: calc(20 * var(--u));
+  width: max(1px, calc(1 * var(--u)));
+  background: var(--text);
+  opacity: 0.18;
+}
+
+.nn__block--next[data-status="delayed"] {
+  --tone: var(--warning);
+}
+
+/* No item: the whole block goes (where :has() is supported; else only its texts). */
+.nn__block:has(> .nn__title:empty) {
+  display: none;
+}
+
+/* …and with it the divider, when NOW is the one that went. */
+.nn__block:has(> .nn__title:empty) + .nn__block::before {
+  display: none;
+}
+
+.nn__tag {
+  align-self: flex-start;
+  margin-bottom: calc(10 * var(--u));
+  padding: calc(4 * var(--u)) calc(12 * var(--u));
+  border-radius: calc(var(--r) * 0.5);
+  background: var(--tone);
+  color: var(--ink);
+  font-size: calc(20 * var(--u));
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* UP NEXT is outlined; DELAYED is filled like NOW. */
+.nn__block--next .nn__tag {
+  padding: calc(2 * var(--u)) calc(10 * var(--u));
+  border: calc(2 * var(--u)) solid var(--tone);
+  background: transparent;
+  color: var(--tone);
+}
+
+.nn__block--next[data-status="delayed"] .nn__tag {
+  background: var(--tone);
+  color: var(--ink);
+}
+
+.nn__tag:empty {
+  display: none;
+}
+
+.nn__title,
+.nn__loc {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  /* Room for descenders and accented capitals inside the clip; the margin cancels it. */
+  padding-block: 0.2em;
+  margin-block: -0.2em;
+}
+
+.nn__title {
+  font-size: calc(44 * var(--u));
+  font-weight: 600;
+  line-height: 1.15;
+}
+
+.nn__block--next .nn__title {
+  font-size: calc(36 * var(--u));
+}
+
+.nn__meta {
+  display: flex;
+  align-items: baseline;
+  column-gap: calc(22 * var(--u));
+  min-width: 0;
+  margin-top: calc(8 * var(--u));
+  font-size: calc(24 * var(--u));
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.nn__loc {
+  flex: 0 1 auto;
+  min-width: 0;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.72;
+}
+
+.nn__until,
+.nn__at,
+.nn__new {
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.8;
+}
+
+.nn__until::before {
+  content: "until ";
+}
+
+.nn__in {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--tone);
+}
+
+.nn__in::before {
+  content: "in ";
+  font-weight: 400;
+  color: var(--text);
+  opacity: 0.8;
+}
+
+/* The start: "at 15:10"; with a new start, the original is struck through and the new one follows
+   (the new start is first in the markup so a sibling selector can reach the original). */
+.nn__when {
+  display: inline-flex;
+  align-items: baseline;
+  column-gap: calc(10 * var(--u));
+}
+
+.nn__at {
+  order: 1;
+}
+
+.nn__new {
+  order: 2;
+  font-weight: 700;
+  color: var(--tone);
+  opacity: 1;
+}
+
+.nn__new:empty + .nn__at::before {
+  content: "at ";
+}
+
+.nn__new:not(:empty) + .nn__at {
+  text-decoration: line-through;
+  text-decoration-thickness: calc(2 * var(--u));
+  opacity: 0.6;
+}
+
+.nn__loc:empty,
+.nn__until:empty,
+.nn__new:empty,
+.nn__at:empty,
+.nn__title:empty {
+  display: none;
+}
+
+/* In: the strap rises, the NOW edge grows, then each block's content follows. */
+.nn[data-state="in"] .nn__bar {
+  animation: nn-rise 420ms var(--ease) both;
+}
+
+.nn[data-state="in"] .nn__block--now::before {
+  animation: nn-grow 360ms var(--ease) 120ms both;
+}
+
+.nn[data-state="in"] .nn__block--now > * {
+  animation: nn-text-in 380ms var(--ease) 180ms both;
+}
+
+.nn[data-state="in"] .nn__block--next > * {
+  animation: nn-text-in 380ms var(--ease) 280ms both;
+}
+
+/* Out: one animation on the root, so its animationend marks the end of the layer. */
+.nn[data-state="out"] {
+  animation: nn-out 320ms var(--ease-in) forwards;
+}
+
+@keyframes nn-rise {
+  from {
+    opacity: 0;
+    transform: translateY(28px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes nn-grow {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+
+@keyframes nn-text-in {
+  from {
+    opacity: 0;
+    transform: translateX(-14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes nn-out {
+  to {
+    opacity: 0;
+    transform: translateY(28px);
+  }
+}
+
+/* Box case, landscape: the graphic IS the box. The strap takes the design's aspect (its own extent at
+   u = 1 is 1420 × 197), scaled to fit the box and anchored bottom left, and its plate fills it. */
+@container (((max-width: 999px) and (max-height: 999px)) or (min-aspect-ratio: 2/1)) and (orientation: landscape) {
+  .nn__safe {
+    --u: calc(min(100cqw / 1420, 100cqh / 197) * var(--scale));
+    left: 0;
+    right: auto;
+    bottom: 0;
+    width: min(100cqw, calc(100cqh * 1420 / 197));
+    height: min(100cqh, calc(100cqw * 197 / 1420));
+  }
+
+  .nn__bar {
+    flex: 1 1 auto;
+  }
+
+  .nn__block {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+}

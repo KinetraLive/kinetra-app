@@ -1,0 +1,32 @@
+{
+  "name": "@kinetra/renderer",
+  "private": true,
+  "type": "module",
+  "description": "Browser-source renderer loaded by OBS/vMix. Vanilla TS, no runtime dependencies.",
+  "scripts": {
+    "build": "vite build && node scripts/fonts.mjs",
+    "dev": "vite build --watch",
+    "fonts": "node scripts/fonts.mjs"
+  },
+  "devDependencies": {
+    "@fontsource/archivo": "^5.3.0",
+    "@fontsource/barlow": "^5.3.0",
+    "@fontsource/barlow-condensed": "^5.3.0",
+    "@fontsource/ibm-plex-mono": "^5.3.0",
+    "@fontsource/ibm-plex-sans": "^5.3.0",
+    "@fontsource/ibm-plex-sans-condensed": "^5.3.0",
+    "@fontsource/instrument-sans": "^5.3.0",
+    "@fontsource/jost": "^5.3.0",
+    "@fontsource/manrope": "^5.3.0",
+    "@fontsource/montserrat": "^5.3.0",
+    "@fontsource/oswald": "^5.3.0",
+    "@fontsource/outfit": "^5.3.0",
+    "@fontsource/playfair-display": "^5.3.0",
+    "@fontsource/plus-jakarta-sans": "^5.3.0",
+    "@fontsource/roboto-mono": "^5.3.0",
+    "@fontsource/source-serif-4": "^5.3.0",
+    "@fontsource/space-grotesk": "^5.3.0",
+    "typescript": "~6.0.3",
+    "vite": "^8.0.16"
+  }
+}

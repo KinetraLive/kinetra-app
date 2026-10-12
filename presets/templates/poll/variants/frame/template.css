@@ -1,0 +1,572 @@
+/* Poll, Frame style: a panel in accent corner brackets. Left: a mono state line from `status`
+   (LIVE POLL, STARTING SOON when draft, VOTING CLOSED when full, RESULTS when closed) with the
+   total, the question, one row per option (label, votes, `pct_round` else `pct`) over a bar
+   scaled by `pct` (--p) that glides as votes arrive. Right: a white QR tile with VOTE AT and the
+   short link while voting; full or closed, the total takes its place. No QR: one column. Closed:
+   the winner (_winner) gets brackets, the rest dim. --u is 1px at 1080p. Only transform and
+   opacity animate, every duration times --speed. Variables: --accent, --secondary, --text,
+   --plate, --font-heading, --font-body, --radius (px), --speed. */
+
+:host {
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --snap: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --mono: "IBM Plex Mono", ui-monospace, monospace;
+}
+
+.pl {
+  position: absolute;
+  inset: 0;
+  container-type: size;
+}
+
+/* Right side of the safe area, centred vertically; vertical frames: the lower half. */
+.pl__safe {
+  --u: 1px;
+  position: absolute;
+  inset: 8cqh 6cqw;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+@supports (width: 1cqmin) {
+  .pl__safe {
+    --u: max(100cqmin / 1080, 100cqw / 1920);
+  }
+}
+
+@container (orientation: portrait) {
+  .pl__safe {
+    inset: 10cqh 5cqw 17cqh;
+    align-items: flex-end;
+    justify-content: center;
+  }
+}
+
+/* A layer box smaller than a frame: the panel fills the box. */
+@container ((max-width: 999px) and (max-height: 999px)) or (min-aspect-ratio: 2/1) {
+  .pl__safe {
+    --u: min(100cqw / 780, (100cqh - 6px) / 448);
+    inset: 0;
+    justify-content: center;
+  }
+}
+
+.pl__box {
+  --gap: calc(10 * var(--u));
+  --arm: calc(26 * var(--u));
+  --bw: max(2px, calc(3 * var(--u)));
+  --fly: calc(34 * var(--u));
+  position: relative;
+  flex: 0 1 calc(760 * var(--u));
+  min-width: 0;
+  box-sizing: border-box;
+  padding: calc(30 * var(--u)) calc(40 * var(--u)) calc(36 * var(--u));
+  color: var(--text);
+  line-height: normal;
+  -webkit-font-smoothing: antialiased;
+}
+
+.pl__plate {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius);
+  background: var(--plate);
+}
+
+/* Viewfinder brackets: four L-shaped corners just outside the plate (and, smaller, around the
+   winning option). */
+.pl__br,
+.pl__wbr {
+  position: absolute;
+  inset: calc(-1 * var(--gap));
+  pointer-events: none;
+}
+
+.pl__br {
+  filter: drop-shadow(0 0 1px rgb(0 0 0 / 0.45));
+}
+
+.pl__wbr {
+  --gap: calc(12 * var(--u));
+  --arm: calc(14 * var(--u));
+  --bw: max(2px, calc(2 * var(--u)));
+  --fly: calc(14 * var(--u));
+  inset: calc(-1 * var(--gap)) calc(-1 * var(--gap) - 4 * var(--u));
+  display: none;
+}
+
+.pl__br > i,
+.pl__wbr > i {
+  position: absolute;
+  box-sizing: border-box;
+  width: var(--arm);
+  height: var(--arm);
+  border: 0 solid var(--accent);
+}
+
+.pl__br > i:nth-child(1),
+.pl__wbr > i:nth-child(1) {
+  --x: -1;
+  --y: -1;
+  left: 0;
+  top: 0;
+  border-width: var(--bw) 0 0 var(--bw);
+  border-top-left-radius: var(--radius);
+}
+
+.pl__br > i:nth-child(2),
+.pl__wbr > i:nth-child(2) {
+  --x: 1;
+  --y: -1;
+  right: 0;
+  top: 0;
+  border-width: var(--bw) var(--bw) 0 0;
+  border-top-right-radius: var(--radius);
+}
+
+.pl__br > i:nth-child(3),
+.pl__wbr > i:nth-child(3) {
+  --x: -1;
+  --y: 1;
+  left: 0;
+  bottom: 0;
+  border-width: 0 0 var(--bw) var(--bw);
+  border-bottom-left-radius: var(--radius);
+}
+
+.pl__br > i:nth-child(4),
+.pl__wbr > i:nth-child(4) {
+  --x: 1;
+  --y: 1;
+  right: 0;
+  bottom: 0;
+  border-width: 0 var(--bw) var(--bw) 0;
+  border-bottom-right-radius: var(--radius);
+}
+
+.pl__body {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  column-gap: calc(32 * var(--u));
+}
+
+.pl__main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.pl__side {
+  --qr: calc(200 * var(--u));
+  position: relative;
+  flex: none;
+  width: var(--qr);
+  height: calc(var(--qr) + 54 * var(--u));
+}
+
+.pl__body:has(.pl__qr[data-empty]) .pl__side {
+  display: none;
+}
+
+.pl__vote,
+.pl__sum {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  transition-property: opacity, transform;
+  transition-duration: calc(360ms * var(--speed));
+  transition-timing-function: var(--ease);
+}
+
+/* Black on white, never tinted. */
+.pl__qr {
+  display: block;
+  width: var(--qr);
+  height: var(--qr);
+  border-radius: var(--radius);
+  background: #fff;
+  image-rendering: pixelated;
+}
+
+.pl__at,
+.pl__suml {
+  margin-top: calc(12 * var(--u));
+  color: var(--secondary);
+  font-family: var(--mono);
+  font-size: calc(13 * var(--u));
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+/* The whole link always shows (data-fit shrinks it to the tile). */
+.pl__url {
+  margin-top: calc(4 * var(--u));
+  white-space: nowrap;
+  font-family: var(--mono);
+  font-size: calc(15 * var(--u));
+  font-weight: 600;
+}
+
+.pl__sum {
+  align-items: center;
+  justify-content: center;
+  border: max(1px, calc(2 * var(--u))) solid color-mix(in srgb, var(--text) 14%, transparent);
+  border-radius: var(--radius);
+  opacity: 0;
+  transform: scale(0.96);
+}
+
+.pl__sumn {
+  font-family: var(--font-heading);
+  font-size: calc(54 * var(--u));
+  font-weight: 600;
+  line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+}
+
+.pl:is([data-poll="closed"], [data-poll="full"]) .pl__vote {
+  opacity: 0;
+  transform: scale(0.96);
+}
+
+.pl:is([data-poll="closed"], [data-poll="full"]) .pl__sum {
+  opacity: 1;
+  transform: none;
+}
+
+.pl__head {
+  position: relative;
+  display: flex;
+  align-items: center;
+  column-gap: calc(16 * var(--u));
+  margin-bottom: calc(14 * var(--u));
+  white-space: nowrap;
+  font-family: var(--mono);
+  font-size: calc(18 * var(--u));
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.pl__state {
+  display: flex;
+  align-items: center;
+  column-gap: calc(12 * var(--u));
+  color: var(--accent);
+}
+
+.pl__state::before {
+  content: "";
+  flex: none;
+  width: calc(8 * var(--u));
+  height: calc(8 * var(--u));
+  background: var(--accent);
+}
+
+.pl:is([data-poll="closed"], [data-poll="full"]) .pl__state {
+  color: var(--secondary);
+}
+
+.pl:is([data-poll="closed"], [data-poll="full"]) .pl__state::before {
+  background: var(--secondary);
+}
+
+/* Any other status reads as a live poll. */
+.pl__state::after {
+  content: "Live poll";
+}
+
+.pl[data-poll="draft"] .pl__state::after {
+  content: "Starting soon";
+}
+
+.pl[data-poll="full"] .pl__state::after {
+  content: "Voting closed";
+}
+
+.pl[data-poll="closed"] .pl__state::after {
+  content: "Results";
+}
+
+/* Voting over: the total moves to the tile. */
+.pl:is([data-poll="closed"], [data-poll="full"]) .pl__total {
+  visibility: hidden;
+}
+
+.pl__total {
+  margin-left: auto;
+  color: var(--secondary);
+  font-weight: 400;
+  letter-spacing: 0.12em;
+  font-variant-numeric: tabular-nums;
+}
+
+.pl__total::after {
+  content: " votes";
+}
+
+.pl__suml::after {
+  content: "votes";
+}
+
+.pl[data-votes="1"] .pl__total::after {
+  content: " vote";
+}
+
+.pl[data-votes="1"] .pl__suml::after {
+  content: "vote";
+}
+
+.pl__q {
+  position: relative;
+  margin-bottom: calc(26 * var(--u));
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+  font-family: var(--font-heading);
+  font-size: calc(42 * var(--u));
+  font-weight: 600;
+  line-height: 1.12;
+  letter-spacing: -0.01em;
+}
+
+.pl__opts {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  row-gap: calc(22 * var(--u));
+}
+
+.pl__opt {
+  position: relative;
+}
+
+.pl__row {
+  display: flex;
+  align-items: baseline;
+  column-gap: calc(14 * var(--u));
+  margin-bottom: calc(10 * var(--u));
+  white-space: nowrap;
+}
+
+.pl__label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--font-body);
+  font-size: calc(26 * var(--u));
+  font-weight: 400;
+  line-height: 1.25;
+}
+
+.pl__votes {
+  color: var(--secondary);
+  font-family: var(--mono);
+  font-size: calc(17 * var(--u));
+  font-weight: 400;
+  letter-spacing: 0.06em;
+  font-variant-numeric: tabular-nums;
+}
+
+.pl__pct {
+  min-width: 4ch;
+  text-align: right;
+  font-family: var(--mono);
+  font-size: calc(26 * var(--u));
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Rounded when given, else exact. */
+.pl__pct--raw,
+.pl__pct--round[data-empty] {
+  display: none;
+}
+
+.pl__pct--round[data-empty] + .pl__pct--raw {
+  display: inline;
+}
+
+.pl__pct::after {
+  content: "%";
+  margin-left: 0.1em;
+  color: var(--secondary);
+  font-weight: 400;
+}
+
+/* The bar: a track, the share as a bound scaleX (it glides when the share changes), and the
+   accent fill that grows in on take. */
+.pl__track {
+  position: relative;
+  height: calc(10 * var(--u));
+  background: color-mix(in srgb, var(--text) 10%, transparent);
+}
+
+.pl__bar {
+  --p: 0;
+  position: absolute;
+  inset: 0;
+  /* --p is "0" + pct (so an empty share is 0, never a full bar). */
+  transform: scaleX(clamp(0, var(--p) / 100, 1));
+  transform-origin: left center;
+  transition: transform 700ms var(--ease);
+}
+
+.pl__fill {
+  position: absolute;
+  inset: 0;
+  background: var(--accent);
+  transform-origin: left center;
+}
+
+.pl__label:empty,
+.pl__label[data-empty],
+.pl__votes:empty,
+.pl__votes[data-empty],
+.pl__total:empty,
+.pl__total[data-empty],
+.pl__q:empty,
+.pl__q[data-empty] {
+  display: none;
+}
+
+/* Closed: the winner is bracketed and full strength, the other options dim. */
+.pl[data-poll="closed"] .pl__opt[data-winner] .pl__wbr {
+  display: block;
+}
+
+.pl[data-poll="closed"] .pl__opt[data-winner] .pl__label {
+  font-weight: 600;
+}
+
+.pl[data-poll="closed"] .pl__opt[data-winner] .pl__pct {
+  color: var(--accent);
+}
+
+.pl[data-poll="closed"] .pl__opt:not([data-winner]) {
+  opacity: 0.5;
+  transition: opacity 400ms var(--ease);
+}
+
+.pl[data-poll="closed"] .pl__opt[data-winner] .pl__wbr > i {
+  animation: pl-snap calc(360ms * var(--speed)) var(--snap) both;
+}
+
+/* In: the brackets snap in from outside, the plate fades up, then the head and question, then
+   each option with its bar growing, one after the other. */
+.pl[data-state="in"] .pl__br > i {
+  animation: pl-snap calc(380ms * var(--speed)) var(--snap) both;
+}
+
+.pl[data-state="in"] .pl__plate {
+  animation: pl-plate calc(320ms * var(--speed)) var(--ease) calc(60ms * var(--speed)) both;
+}
+
+.pl[data-state="in"] .pl__head {
+  animation: pl-rise calc(360ms * var(--speed)) var(--ease) calc(160ms * var(--speed)) both;
+}
+
+.pl[data-state="in"] .pl__q {
+  animation: pl-rise calc(380ms * var(--speed)) var(--ease) calc(210ms * var(--speed)) both;
+}
+
+.pl[data-state="in"] .pl__row {
+  animation: pl-rise calc(360ms * var(--speed)) var(--ease) calc((280ms + min(var(--i), 8) * 70ms) * var(--speed)) both;
+}
+
+.pl[data-state="in"] .pl__side {
+  animation: pl-rise calc(400ms * var(--speed)) var(--ease) calc(320ms * var(--speed)) both;
+}
+
+.pl[data-state="in"] .pl__fill {
+  animation: pl-grow calc(620ms * var(--speed)) var(--ease) calc((340ms + min(var(--i), 8) * 70ms) * var(--speed)) both;
+}
+
+.pl__opt[data-row="out"] {
+  animation: pl-fade-out calc(200ms * var(--speed)) var(--ease-in) forwards;
+}
+
+/* Out: content first, the brackets fly back out; the root animation's end is the layer's end. */
+.pl[data-state="out"] {
+  animation: pl-out calc(320ms * var(--speed)) var(--ease-in) forwards;
+}
+
+.pl[data-state="out"] .pl__head,
+.pl[data-state="out"] .pl__q,
+.pl[data-state="out"] .pl__opts,
+.pl[data-state="out"] .pl__side {
+  animation: pl-fade-out calc(140ms * var(--speed)) var(--ease-in) forwards;
+}
+
+.pl[data-state="out"] .pl__br > i {
+  animation: pl-snap-out calc(220ms * var(--speed)) var(--ease-in) calc(60ms * var(--speed)) forwards;
+}
+
+@keyframes pl-snap {
+  from {
+    opacity: 0;
+    transform: translate(calc(var(--x) * var(--fly)), calc(var(--y) * var(--fly)));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes pl-snap-out {
+  to {
+    opacity: 0;
+    transform: translate(calc(var(--x) * var(--fly) * 0.6), calc(var(--y) * var(--fly) * 0.6));
+  }
+}
+
+@keyframes pl-plate {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes pl-rise {
+  from {
+    opacity: 0;
+    transform: translateY(calc(12 * var(--u)));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes pl-grow {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: none;
+  }
+}
+
+@keyframes pl-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes pl-out {
+  0%,
+  45% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}

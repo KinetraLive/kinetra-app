@@ -1,0 +1,367 @@
+/* Now & Next, Minimal style: no plate. Two rows, each led by a 3px bar: NOW in the accent, NEXT in
+   white (--warning when delayed). Each row: the tag in small capitals, the title, then location
+   and times. White type with a soft halo (blurred shadows and a feathered shade in the plate
+   colour) so it reads on light pictures too. The next row carries data-status from
+   `next_status`: "delayed" turns its bar, tag and new start to --warning (the original start is
+   struck through when a new start is set). A row whose title is empty is hidden.
+   Sizing: one unit --u, 1px at 1080p; a smaller layer box scales the strap to fill it. Vertical
+   frames stack each row's title under its tag.
+   The renderer sets data-state="in" | "out" on the root (.nn). Only transform and opacity
+   animate; every duration is multiplied by --speed.
+   Variables: --accent, --secondary (meta), --text, --plate (halo colour), --warning,
+   --font-heading, --font-body, --speed. */
+
+:host {
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --halo: 0 0 0.04em color-mix(in srgb, var(--plate) 90%, transparent),
+    0 0 0.1em color-mix(in srgb, var(--plate) 75%, transparent),
+    0 0.02em 0.22em color-mix(in srgb, var(--plate) 55%, transparent);
+  --shade: drop-shadow(0 0 2px color-mix(in srgb, var(--plate) 70%, transparent))
+    drop-shadow(0 0 10px color-mix(in srgb, var(--plate) 40%, transparent));
+}
+
+.nn {
+  position: absolute;
+  inset: 0;
+  container-type: size;
+}
+
+/* Title safe along the bottom; vertical frames sit higher, clear of platform UI. */
+.nn__safe {
+  --u: 1px;
+  position: absolute;
+  left: 6cqw;
+  right: 6cqw;
+  bottom: 9cqh;
+  display: flex;
+}
+
+@supports (width: 1cqmin) {
+  .nn__safe {
+    --u: max(100cqmin / 1080, 100cqw / 1920);
+  }
+}
+
+/* Vertical frames: 25% larger type across the narrow frame. */
+@container (orientation: portrait) {
+  .nn__safe {
+    --u: calc(125cqw / 1080);
+    left: 6cqw;
+    right: 6cqw;
+    bottom: 17cqh;
+  }
+}
+
+/* A layer box smaller than a frame: the strap fills the box. */
+@container ((max-width: 999px) and (max-height: 999px)) or (min-aspect-ratio: 2/1) {
+  .nn__safe {
+    --u: min(100cqw / 1260, 100cqh / 260);
+    left: calc(14 * var(--u));
+    right: calc(14 * var(--u));
+    bottom: calc(14 * var(--u));
+  }
+}
+
+.nn__box {
+  position: relative;
+  isolation: isolate;
+  flex: 0 1 calc(1240 * var(--u));
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  row-gap: calc(18 * var(--u));
+  color: var(--text);
+  line-height: normal;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* The halo: a feathered shade behind the rows. */
+.nn__box::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 0 calc(-10 * var(--u));
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--plate) 30%, transparent);
+  filter: blur(calc(40 * var(--u)));
+}
+
+/* A row: bar | tag | title | meta. */
+.nn__row {
+  --tone: var(--accent);
+  display: grid;
+  grid-template-columns: max(2px, calc(3 * var(--u))) calc(150 * var(--u)) minmax(0, 1fr) auto;
+  grid-template-areas: "bar tag title meta";
+  align-items: baseline;
+  column-gap: calc(22 * var(--u));
+  text-shadow: var(--halo);
+}
+
+.nn__row--next {
+  --tone: var(--text);
+}
+
+.nn__row--next[data-status="delayed"] {
+  --tone: var(--warning);
+}
+
+.nn__row:has(> .nn__title:empty),
+.nn__row:has(> .nn__title[data-empty]) {
+  display: none;
+}
+
+.nn__bar {
+  grid-area: bar;
+  align-self: stretch;
+  background: var(--tone);
+  filter: var(--shade);
+  transform-origin: 50% 100%;
+}
+
+.nn__row--next:not([data-status="delayed"]) .nn__bar {
+  opacity: 0.55;
+}
+
+.nn__tag {
+  grid-area: tag;
+  min-width: 0;
+  overflow: clip;
+  overflow-clip-margin: 0.6em;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--tone);
+  font-family: var(--font-heading);
+  font-size: calc(18 * var(--u));
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.nn__title {
+  grid-area: title;
+  min-width: 0;
+  overflow: clip;
+  overflow-clip-margin: 0.6em;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  /* Room for descenders and the halo inside the clip; the margin cancels it. */
+  padding-block: 0.12em;
+  margin-block: -0.12em;
+  font-family: var(--font-heading);
+  font-size: calc(40 * var(--u));
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+}
+
+.nn__row--next .nn__title {
+  font-size: calc(32 * var(--u));
+  font-weight: 500;
+}
+
+.nn__meta {
+  grid-area: meta;
+  display: flex;
+  align-items: baseline;
+  column-gap: calc(20 * var(--u));
+  min-width: 0;
+  white-space: nowrap;
+  color: var(--secondary);
+  font-family: var(--font-body);
+  font-size: calc(21 * var(--u));
+  font-weight: 500;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+
+.nn__loc {
+  overflow: clip;
+  overflow-clip-margin: 0.6em;
+  max-width: calc(300 * var(--u));
+  text-overflow: ellipsis;
+}
+
+.nn__until::before {
+  content: "until ";
+  opacity: 0.75;
+}
+
+/* The start: with a new start, the original is struck through and the new one follows (the new
+   start is first in the markup so a sibling selector can reach the original). */
+.nn__when {
+  display: inline-flex;
+  align-items: baseline;
+  column-gap: calc(10 * var(--u));
+}
+
+.nn__at {
+  order: 1;
+}
+
+.nn__new {
+  order: 2;
+  color: var(--tone);
+  font-weight: 600;
+}
+
+.nn__new:not(:empty):not([data-empty]) + .nn__at {
+  text-decoration: line-through;
+  text-decoration-thickness: max(1px, calc(2 * var(--u)));
+  opacity: 0.65;
+}
+
+.nn__in {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.nn__row--next[data-status="delayed"] .nn__in {
+  color: var(--warning);
+}
+
+.nn__in::before {
+  content: "in ";
+  color: var(--secondary);
+  font-weight: 500;
+  opacity: 0.75;
+}
+
+.nn__tag:empty,
+.nn__tag[data-empty],
+.nn__loc:empty,
+.nn__loc[data-empty],
+.nn__until:empty,
+.nn__until[data-empty],
+.nn__new:empty,
+.nn__new[data-empty],
+.nn__at:empty,
+.nn__at[data-empty] {
+  display: none;
+}
+
+/* Vertical frames: tag and meta on one line, the title under them. */
+@container (orientation: portrait) {
+  .nn__row {
+    grid-template-columns: max(2px, calc(3 * var(--u))) minmax(0, auto) minmax(0, 1fr);
+    grid-template-areas:
+      "bar tag meta"
+      "bar title title";
+    row-gap: calc(8 * var(--u));
+  }
+
+  .nn__meta {
+    justify-content: flex-end;
+  }
+
+  .nn__title {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+}
+
+/* In: the bars grow first, then NOW, then NEXT fade up 12px. */
+.nn[data-state="in"] .nn__bar {
+  animation: nn-grow calc(340ms * var(--speed)) var(--ease) both;
+}
+
+.nn[data-state="in"] .nn__row--next .nn__bar {
+  animation-delay: calc(80ms * var(--speed));
+}
+
+.nn[data-state="in"] .nn__box::before {
+  animation: nn-fade calc(420ms * var(--speed)) var(--ease) both;
+}
+
+.nn[data-state="in"] .nn__row--now > :not(.nn__bar) {
+  animation: nn-rise calc(440ms * var(--speed)) var(--ease) calc(170ms * var(--speed)) both;
+}
+
+.nn[data-state="in"] .nn__row--next > :not(.nn__bar) {
+  animation: nn-rise calc(440ms * var(--speed)) var(--ease) calc(260ms * var(--speed)) both;
+}
+
+/* Out: the text fades, the bars retract; the root animation's end is the end of the layer. */
+.nn[data-state="out"] {
+  animation: nn-out calc(320ms * var(--speed)) var(--ease-in) forwards;
+}
+
+.nn[data-state="out"] .nn__row > :not(.nn__bar) {
+  animation: nn-fade-out calc(150ms * var(--speed)) var(--ease-in) forwards;
+}
+
+.nn[data-state="out"] .nn__bar {
+  transform-origin: 50% 0;
+  animation: nn-shrink calc(220ms * var(--speed)) var(--ease-in) calc(70ms * var(--speed)) forwards;
+}
+
+@keyframes nn-grow {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: none;
+  }
+}
+
+@keyframes nn-shrink {
+  to {
+    transform: scaleY(0);
+  }
+}
+
+@keyframes nn-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes nn-rise {
+  from {
+    opacity: 0;
+    transform: translateY(calc(12 * var(--u)));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes nn-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes nn-out {
+  0%,
+  50% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* Box case, landscape: the graphic IS the box. The strap takes the design's aspect (its own extent at
+   u = 1 is 1240 × 172), scaled to fit the box and anchored bottom left, and its plate fills it. */
+@container (((max-width: 999px) and (max-height: 999px)) or (min-aspect-ratio: 2/1)) and (orientation: landscape) {
+  .nn__safe {
+    --u: min(100cqw / 1240, 100cqh / 172);
+    left: 0;
+    right: auto;
+    bottom: 0;
+    width: min(100cqw, calc(100cqh * 1240 / 172));
+    height: min(100cqh, calc(100cqw * 172 / 1240));
+  }
+
+  .nn__box {
+    flex: 1 1 auto;
+    justify-content: space-between;
+    padding-block: calc(6 * var(--u));
+  }
+}

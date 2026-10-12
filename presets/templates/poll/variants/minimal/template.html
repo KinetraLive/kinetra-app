@@ -1,0 +1,40 @@
+<div class="pl" data-poll="{{status}}" data-votes="{{total_votes}}">
+  <div class="pl__safe">
+    <div class="pl__box">
+      <span class="pl__barl" aria-hidden="true"></span>
+      <div class="pl__body">
+        <div class="pl__cols">
+          <div class="pl__main">
+            <div class="pl__head">
+              <span class="pl__state"></span>
+              <span class="pl__total">{{total_votes}}</span>
+            </div>
+            <div class="pl__q" data-fit data-fit-lines="3" data-fit-min="0.6">{{question}}</div>
+            <div class="pl__opts">
+              <div class="pl__opt" data-each="options">
+                <div class="pl__row">
+                  <span class="pl__label">{{.label}}</span>
+                  <span class="pl__votes">{{.votes}}</span>
+                  <span class="pl__pct pl__pct--round">{{.pct_round}}</span>
+                  <span class="pl__pct pl__pct--raw">{{.pct}}</span>
+                </div>
+                <div class="pl__track"><div class="pl__bar" style="--p:0{{.pct}}"><div class="pl__fill"></div></div></div>
+              </div>
+            </div>
+          </div>
+          <div class="pl__side">
+            <div class="pl__vote">
+              <img class="pl__qr" src="{{qr}}" alt="" />
+              <span class="pl__at">Vote at</span>
+              <span class="pl__url" data-fit data-fit-lines="1" data-fit-min="0.5">{{short_url}}</span>
+            </div>
+            <div class="pl__sum">
+              <span class="pl__sumn">{{total_votes}}</span>
+              <span class="pl__suml"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

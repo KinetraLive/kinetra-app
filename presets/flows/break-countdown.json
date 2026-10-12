@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "id": "break-countdown",
+  "name": "Break with countdown",
+  "description": "Clears the screen and runs a 5 min break countdown; at zero the show graphic returns.",
+  "category": "show",
+  "slots": [
+    {"key":"screen","label":"Program screen","kind":"screen"},
+    {"key":"countdown","label":"Break countdown layer","kind":"layer","prefer":{"template":"countdown"}},
+    {"key":"timer","label":"Break countdown timer","kind":"timer","prefer":{"template":"countdown"}},
+    {"key":"back","label":"Back from break layer","kind":"layer","prefer":{"template":"corner-bug"}}
+  ],
+  "flows": [
+    {
+      "suffix": "start", "armed": "cue",
+      "nodes": [
+        {"id":"cue","position":{"x":0,"y":0},"type":"trigger.cue","config":{"label":"Break"}},
+        {"id":"seq","position":{"x":260,"y":0},"type":"logic.sequence","config":{"count":2}},
+        {"id":"clearScreen","position":{"x":520,"y":0},"type":"action.clearScreen","config":{"screenId":"{{screen}}"}},
+        {"id":"take","position":{"x":780,"y":0},"type":"action.take","config":{"screenId":"{{countdown.screenId}}","layerId":"{{countdown.layerId}}"}},
+        {"id":"set","position":{"x":520,"y":160},"type":"action.setTimer","config":{"screenId":"{{timer.screenId}}","layerId":"{{timer.layerId}}","key":"{{timer.key}}","action":{"action":"set","ms":300000}}},
+        {"id":"start","position":{"x":780,"y":160},"type":"action.setTimer","config":{"screenId":"{{timer.screenId}}","layerId":"{{timer.layerId}}","key":"{{timer.key}}","action":{"action":"start"}}}
+      ],
+      "edges": [
+        {"id":"e1","from":{"node":"cue","port":"fired"},"to":{"node":"seq","port":"in"},"kind":"event"},
+        {"id":"e2","from":{"node":"seq","port":"s0"},"to":{"node":"clearScreen","port":"in"},"kind":"event"},
+        {"id":"e3","from":{"node":"clearScreen","port":"done"},"to":{"node":"take","port":"in"},"kind":"event"},
+        {"id":"e4","from":{"node":"seq","port":"s1"},"to":{"node":"set","port":"in"},"kind":"event"},
+        {"id":"e5","from":{"node":"set","port":"done"},"to":{"node":"start","port":"in"},"kind":"event"}
+      ]
+    },
+    {
+      "suffix": "end", "armed": false,
+      "nodes": [
+        {"id":"zero","position":{"x":0,"y":0},"type":"trigger.timerZero","config":{"screenId":"{{timer.screenId}}","layerId":"{{timer.layerId}}","key":"{{timer.key}}"}},
+        {"id":"clear","position":{"x":260,"y":0},"type":"action.clear","config":{"screenId":"{{countdown.screenId}}","layerId":"{{countdown.layerId}}"}},
+        {"id":"take","position":{"x":520,"y":0},"type":"action.take","config":{"screenId":"{{back.screenId}}","layerId":"{{back.layerId}}"}}
+      ],
+      "edges": [
+        {"id":"e1","from":{"node":"zero","port":"fired"},"to":{"node":"clear","port":"in"},"kind":"event"},
+        {"id":"e2","from":{"node":"clear","port":"done"},"to":{"node":"take","port":"in"},"kind":"event"}
+      ]
+    }
+  ]
+}

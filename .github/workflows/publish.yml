@@ -1,0 +1,96 @@
+# Reusable: assembles a built release (SHA256SUMS, release.json, latest.json, the updater
+# manifest) and uploads it to R2 in order, the manifest LAST, then verifies it from
+# https://download.kinetra.live. With dry_run it only assembles and keeps the result as a
+# workflow artifact. docs/RELEASING.md.
+name: Publish
+
+on:
+  workflow_call:
+    inputs:
+      channel: { type: string, required: true } # stable | canary
+      version: { type: string, required: true }
+      tag: { type: string, required: false, default: "" } # stable: the tag (notes fallback)
+      dry_run: { type: boolean, required: false, default: false }
+
+permissions:
+  contents: read
+
+env:
+  BUCKET: kinetra-downloads
+  CHANNEL: ${{ inputs.channel }}
+  VERSION: ${{ inputs.version }}
+
+jobs:
+  publish:
+    name: ${{ inputs.dry_run && 'Assemble (dry run)' || 'Upload to R2' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        # Credentials kept (read-only token): the notes step fetches the tag.
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with: { node-version: "24" }
+      - name: Validate
+        run: node .github/scripts/release.mjs validate --channel "$CHANNEL" --version "$VERSION"
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with: { pattern: release-*, path: artifacts, merge-multiple: true }
+      - name: Notes
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          if [ "$CHANNEL" = "stable" ] && [ -n "$TAG" ]; then
+            git fetch --quiet --force origin "refs/tags/$TAG:refs/tags/$TAG"
+            git tag -l --format='%(contents)' "$TAG" > "$RUNNER_TEMP/fallback.md"
+          elif [ "$CHANNEL" = "canary" ]; then
+            # Commit subjects since the canary that is out now (the last 10 when unknown).
+            prev=$(curl -fsS https://download.kinetra.live/releases/canary/latest.json 2>/dev/null \
+              | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const c=JSON.parse(s).commit;if(/^[0-9a-f]{7,40}$/.test(c))process.stdout.write(c)}catch{}})' || true)
+            if [ -n "$prev" ] && git cat-file -e "$prev^{commit}" 2>/dev/null; then
+              git log --no-merges --format='- %s' "$prev..HEAD" | head -n 50 > "$RUNNER_TEMP/fallback.md"
+            else
+              git log --no-merges --format='- %s' -n 10 > "$RUNNER_TEMP/fallback.md"
+            fi
+          else
+            : > "$RUNNER_TEMP/fallback.md"
+          fi
+          node .github/scripts/release.mjs notes --channel "$CHANNEL" --version "$VERSION" \
+            --fallback "$RUNNER_TEMP/fallback.md" --out "$RUNNER_TEMP/notes.md"
+      - name: Assemble
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          release=true
+          if [ "$DRY_RUN" = "true" ]; then release=false; fi
+          node .github/scripts/release.mjs assemble --channel "$CHANNEL" --version "$VERSION" \
+            --commit "$GITHUB_SHA" --in artifacts --notes "$RUNNER_TEMP/notes.md" --out publish --release "$release"
+          echo "### $CHANNEL $VERSION" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          cat publish/SHA256SUMS >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+      - name: Keep the assembled release (dry run)
+        if: inputs.dry_run
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with: { name: dry-run-release, path: publish/, retention-days: 7 }
+
+      - name: Upload (files, SHA256SUMS, release.json, latest.json, manifest last)
+        if: ${{ !inputs.dry_run }}
+        env:
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+        run: |
+          set -euo pipefail
+          . .github/scripts/r2-env.sh
+          # A version is never overwritten.
+          count=$(aws s3api list-objects-v2 --bucket "$BUCKET" --prefix "releases/$CHANNEL/$VERSION/" --max-keys 1 --query 'KeyCount' --output text)
+          if [ "$count" != "0" ]; then echo "::error::releases/$CHANNEL/$VERSION/ already exists in R2"; exit 1; fi
+          while IFS=$'\t' read -r path key cache type; do
+            [ -n "$path" ] || continue
+            aws s3api put-object --bucket "$BUCKET" --key "$key" --body "publish/$path" \
+              --cache-control "$cache" --content-type "$type" > /dev/null
+            echo "uploaded $key"
+          done < publish/plan.tsv
+      - name: Verify from download.kinetra.live
+        if: ${{ !inputs.dry_run }}
+        run: node .github/scripts/release.mjs verify --channel "$CHANNEL" --version "$VERSION" --dir publish

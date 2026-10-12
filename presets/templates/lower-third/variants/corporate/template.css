@@ -1,0 +1,356 @@
+/* Lower third, Corporate style: a logo block in the accent on the left, then a light name plate
+   (label in the accent, the name) over a dark title plate; 8px outer radius, IBM Plex Sans. An
+   optional photo sits between the logo block and the plates; without a logo the block narrows to
+   a brand-colour edge. Missing parts collapse (data-empty, or an empty src / text).
+   Colours: light surface --plate with --text on it; dark surface --secondary with --plate on it.
+   Sizing: one unit --u, 1px at 1080p; a full frame (16:9 or 9:16) scales with its short side, a
+   smaller layer box scales the graphic to fill it. The renderer sets data-state="in" | "out" on
+   the root (.lt). Only transform and opacity animate (the plates wipe open with scaleX on their
+   backgrounds), every duration is multiplied by --speed.
+   Variables: --accent, --secondary, --text, --plate, --font-heading, --font-body, --radius (px),
+   --speed, --photo-shape (0 | 50). */
+
+:host {
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --wipe: cubic-bezier(0.65, 0, 0.15, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+}
+
+.lt {
+  position: absolute;
+  inset: 0;
+  container-type: size;
+}
+
+/* Full frame: title safe; vertical frames sit higher, clear of platform UI. */
+.lt__safe {
+  --u: 1px;
+  position: absolute;
+  left: 6cqw;
+  right: 6cqw;
+  bottom: 9cqh;
+  display: flex;
+}
+
+@supports (width: 1cqmin) {
+  .lt__safe {
+    --u: max(100cqmin / 1080, 100cqw / 1920);
+  }
+}
+
+@container (orientation: portrait) {
+  .lt__safe {
+    --u: calc(120cqw / 1080);
+    left: 5cqw;
+    right: 5cqw;
+    bottom: 17cqh;
+  }
+}
+
+/* A layer box smaller than a frame: the graphic fills the box. */
+@container ((max-width: 999px) and (max-height: 999px)) or (min-aspect-ratio: 2/1) {
+  .lt__safe {
+    /* The graphic's frame: the largest box of the design's aspect (4.8:1) in the layer box, at
+       its bottom left; the look scales to fill it by its own extent at 1080p. */
+    --fw: min(100cqw, 480cqh);
+    --fh: min(100cqh, 100cqw / 4.8);
+    --u: min(var(--fw) / 777, var(--fh) / 171);
+    left: 0;
+    right: auto;
+    bottom: 0;
+    width: var(--fw);
+    height: var(--fh);
+  }
+}
+
+/* The group: one rounded, clipped unit (the logo block slides in from behind its left edge). */
+.lt__group {
+  display: flex;
+  align-items: stretch;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  border-radius: var(--radius);
+  line-height: normal;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Vertical frames: the strap spans the safe width. */
+@container (orientation: portrait) {
+  .lt__group {
+    flex: 1 1 auto;
+  }
+
+  .lt__plates {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+}
+
+.lt__brand {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: calc(120 * var(--u));
+  box-sizing: border-box;
+  padding: 0 calc(30 * var(--u));
+  background: var(--accent);
+}
+
+.lt__logo {
+  display: block;
+  width: auto;
+  max-width: calc(200 * var(--u));
+  height: calc(56 * var(--u));
+  object-fit: contain;
+}
+
+/* No logo: the block narrows to a brand-colour edge. */
+.lt__brand:has(> .lt__logo[data-empty]),
+.lt__brand:has(> .lt__logo[src=""]) {
+  min-width: calc(14 * var(--u));
+  padding: 0;
+}
+
+.lt__photo {
+  flex: none;
+  align-self: stretch;
+  width: calc(156 * var(--u));
+  min-height: calc(156 * var(--u));
+  height: auto;
+  object-fit: cover;
+  background: var(--secondary);
+}
+
+@container style(--photo-shape: 50) {
+  .lt__photo {
+    box-sizing: border-box;
+    padding: calc(18 * var(--u));
+    border-radius: 50%;
+    background: none;
+  }
+
+  .lt__group:has(> .lt__photo:not([src=""], [data-empty])) .lt__brand + .lt__photo {
+    background: var(--plate);
+  }
+}
+
+.lt__plates {
+  flex: 0 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-width: calc(420 * var(--u));
+  max-width: calc(1100 * var(--u));
+}
+
+/* A plate: its background is a pseudo-element, so it can wipe open without scaling the text. */
+.lt__top,
+.lt__bottom {
+  position: relative;
+  isolation: isolate;
+}
+
+.lt__top::before,
+.lt__bottom::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  transform-origin: left center;
+}
+
+.lt__top {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: calc(18 * var(--u)) calc(40 * var(--u)) calc(18 * var(--u)) calc(30 * var(--u));
+  color: var(--text);
+}
+
+.lt__top::before {
+  background: var(--plate);
+}
+
+.lt__bottom {
+  padding: calc(12 * var(--u)) calc(40 * var(--u)) calc(14 * var(--u)) calc(30 * var(--u));
+  color: var(--plate);
+}
+
+.lt__bottom::before {
+  background: var(--secondary);
+}
+
+.lt__label {
+  margin-bottom: calc(4 * var(--u));
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--accent);
+  font-family: var(--font-body);
+  font-size: calc(17 * var(--u));
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.lt__name {
+  overflow-wrap: anywhere;
+  font-family: var(--font-heading);
+  font-size: calc(46 * var(--u));
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+}
+
+.lt__title {
+  overflow-wrap: anywhere;
+  font-family: var(--font-body);
+  font-size: calc(25 * var(--u));
+  font-weight: 400;
+  line-height: 1.3;
+}
+
+.lt__label:empty,
+.lt__name:empty,
+.lt__title:empty,
+.lt__label[data-empty],
+.lt__name[data-empty],
+.lt__title[data-empty],
+.lt__photo[src=""],
+.lt__photo[data-empty],
+.lt__logo[src=""],
+.lt__logo[data-empty],
+.lt__bottom:has(> .lt__title:empty),
+.lt__bottom:has(> .lt__title[data-empty]) {
+  display: none;
+}
+
+/* In: the logo block slides in, the plates wipe open left to right, then the text follows. */
+.lt[data-state="in"] .lt__brand {
+  animation: lt-slide calc(420ms * var(--speed)) var(--ease) both;
+}
+
+.lt[data-state="in"] .lt__logo,
+.lt[data-state="in"] .lt__photo {
+  animation: lt-fade calc(360ms * var(--speed)) var(--ease) calc(160ms * var(--speed)) both;
+}
+
+.lt[data-state="in"] .lt__top::before {
+  animation: lt-wipe calc(460ms * var(--speed)) var(--wipe) calc(120ms * var(--speed)) both;
+}
+
+.lt[data-state="in"] .lt__bottom::before {
+  animation: lt-wipe calc(460ms * var(--speed)) var(--wipe) calc(200ms * var(--speed)) both;
+}
+
+.lt[data-state="in"] .lt__label,
+.lt[data-state="in"] .lt__name {
+  animation: lt-text calc(420ms * var(--speed)) var(--ease) calc(320ms * var(--speed)) both;
+}
+
+.lt[data-state="in"] .lt__title {
+  animation: lt-text calc(420ms * var(--speed)) var(--ease) calc(400ms * var(--speed)) both;
+}
+
+/* Out: the text fades, the plates wipe closed, the logo block slides away; the root animation's
+   end is the end of the layer. */
+.lt[data-state="out"] {
+  animation: lt-out calc(380ms * var(--speed)) var(--ease-in) forwards;
+}
+
+.lt[data-state="out"] .lt__top > *,
+.lt[data-state="out"] .lt__bottom > *,
+.lt[data-state="out"] .lt__photo,
+.lt[data-state="out"] .lt__logo {
+  animation: lt-fade-out calc(140ms * var(--speed)) var(--ease-in) forwards;
+}
+
+.lt[data-state="out"] .lt__top::before,
+.lt[data-state="out"] .lt__bottom::before {
+  animation: lt-unwipe calc(240ms * var(--speed)) var(--ease-in) calc(80ms * var(--speed)) forwards;
+}
+
+.lt[data-state="out"] .lt__brand {
+  animation: lt-slide-out calc(220ms * var(--speed)) var(--ease-in) calc(150ms * var(--speed)) forwards;
+}
+
+@keyframes lt-slide {
+  from {
+    transform: translateX(-101%);
+  }
+  to {
+    transform: none;
+  }
+}
+
+@keyframes lt-slide-out {
+  to {
+    transform: translateX(-101%);
+  }
+}
+
+@keyframes lt-wipe {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: none;
+  }
+}
+
+@keyframes lt-unwipe {
+  to {
+    transform: scaleX(0);
+  }
+}
+
+@keyframes lt-text {
+  from {
+    opacity: 0;
+    transform: translateX(calc(-12 * var(--u)));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes lt-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes lt-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes lt-out {
+  0%,
+  60% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* A layer box smaller than a frame, part 2: the plates run to the frame's right edge. */
+@container ((max-width: 999px) and (max-height: 999px)) or (min-aspect-ratio: 2/1) {
+  .lt__group {
+    flex: 1 1 auto;
+  }
+
+  .lt__plates {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+}

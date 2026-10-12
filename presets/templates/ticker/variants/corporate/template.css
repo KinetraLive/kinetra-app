@@ -1,0 +1,267 @@
+/* Ticker, Corporate style: one rounded strap: the label in capitals on a block in the accent, then
+   a dark --secondary plate with the items scrolling right to left in the --plate colour, each led
+   by a small accent square. IBM Plex Sans. Without a label the block narrows to a brand-colour edge.
+   Sizing: one unit --u, 1px at 1080p; a strap-shaped layer box (≤ 300px tall) is filled.
+   The renderer sets data-state="in" | "out" on the root (.tk). Only transform and opacity animate.
+   Variables: --accent, --secondary (strap), --plate (label and item text), --font-heading
+   (label), --font-body (items), --radius (px), --speed (seconds per loop; this template's own
+   meaning).
+
+   The loop: the track holds two identical runs of the items, each at least as wide as the window
+   (a container, so a run's min-width is 100cqw of it). The track moves left by -50%, exactly one
+   run, then starts over: the jump is invisible. CSS only, and only while the layer is on air. */
+
+:host {
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --wipe: cubic-bezier(0.65, 0, 0.15, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+}
+
+.tk {
+  position: absolute;
+  inset: 0;
+  container-type: size;
+}
+
+/* Title safe, along the bottom; vertical frames sit higher, clear of platform UI. */
+.tk__safe {
+  --u: 1px;
+  position: absolute;
+  left: 6cqw;
+  right: 6cqw;
+  bottom: 7cqh;
+}
+
+@supports (width: 1cqmin) {
+  .tk__safe {
+    --u: max(100cqmin / 1080, 100cqw / 1920);
+  }
+}
+
+@container (orientation: portrait) {
+  .tk__safe {
+    --u: calc(125cqw / 1080);
+    left: 4cqw;
+    right: 4cqw;
+    bottom: 14cqh;
+  }
+}
+
+/* A strap-shaped layer box: the strap fills it. */
+@container (max-height: 300px) {
+  .tk__safe {
+    --u: min((100cqh - 2px) / 68, max(100cqw / 1810, min(100cqw / 800, 1px)));
+    left: 0;
+    right: 0;
+    top: 50%;
+    bottom: auto;
+    transform: translateY(-50%);
+  }
+}
+
+.tk__group {
+  display: flex;
+  align-items: stretch;
+  height: calc(68 * var(--u));
+  overflow: hidden;
+  border-radius: var(--radius);
+  line-height: normal;
+  -webkit-font-smoothing: antialiased;
+}
+
+.tk__brand {
+  flex: none;
+  display: flex;
+  align-items: center;
+  max-width: calc(420 * var(--u));
+  min-width: calc(12 * var(--u));
+  box-sizing: border-box;
+  padding: 0 calc(28 * var(--u));
+  background: var(--accent);
+}
+
+.tk__brand:has(> .tk__ltext:empty),
+.tk__brand:has(> .tk__ltext[data-empty]) {
+  padding: 0;
+}
+
+.tk__ltext {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--plate);
+  font-family: var(--font-heading);
+  font-size: calc(23 * var(--u));
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.tk__ltext:empty,
+.tk__ltext[data-empty] {
+  display: none;
+}
+
+.tk__plate {
+  position: relative;
+  isolation: isolate;
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+}
+
+.tk__plate::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  background: var(--secondary);
+  transform-origin: left center;
+}
+
+/* The visible part of the track; inside it sizes are in em (the window is a container). */
+.tk__window {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  margin: 0 calc(6 * var(--u));
+  overflow: hidden;
+  container-type: inline-size;
+  color: var(--plate);
+  font-family: var(--font-body);
+  font-size: calc(29 * var(--u));
+  /* Items fade at both edges instead of being cut. */
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 0.8em, #000 calc(100% - 0.8em), transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 0.8em, #000 calc(100% - 0.8em), transparent);
+}
+
+.tk__track {
+  display: flex;
+  flex: none;
+  width: max-content;
+}
+
+.tk__run {
+  display: flex;
+  flex: none;
+  /* At least the window's width, so short lists never show a gap. */
+  min-width: 1612px;
+  min-width: 100cqw;
+}
+
+.tk__item {
+  flex: none;
+  display: flex;
+  align-items: center;
+  column-gap: 0.75em;
+  padding: 0 0.75em;
+  font-weight: 400;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.tk__item::before {
+  content: "";
+  flex: none;
+  width: 0.26em;
+  height: 0.26em;
+  background: var(--accent);
+}
+
+/* In: the label block slides in, the strap wipes open, then the items fade in and scroll. */
+.tk[data-state="in"] .tk__brand {
+  animation: tk-slide 400ms var(--ease) both;
+}
+
+.tk[data-state="in"] .tk__ltext {
+  animation: tk-fade 340ms var(--ease) 180ms both;
+}
+
+.tk[data-state="in"] .tk__plate::before {
+  animation: tk-wipe 560ms var(--wipe) 120ms both;
+}
+
+.tk[data-state="in"] .tk__window {
+  animation: tk-fade 400ms var(--ease) 420ms both;
+}
+
+.tk[data-state="in"] .tk__track {
+  animation: tk-scroll var(--speed) linear 420ms infinite;
+}
+
+/* Out: the scroll stops, so the items are hidden at once rather than seen jumping back; the strap
+   wipes closed, the label block slides away; the root animation's end is the layer's end. */
+.tk[data-state="out"] .tk__window {
+  opacity: 0;
+}
+
+.tk[data-state="out"] .tk__plate::before {
+  animation: tk-unwipe 240ms var(--ease-in) forwards;
+}
+
+.tk[data-state="out"] .tk__brand {
+  animation: tk-slide-out 200ms var(--ease-in) 100ms forwards;
+}
+
+.tk[data-state="out"] {
+  animation: tk-out 340ms var(--ease-in) forwards;
+}
+
+@keyframes tk-slide {
+  from {
+    transform: translateX(-101%);
+  }
+  to {
+    transform: none;
+  }
+}
+
+@keyframes tk-slide-out {
+  to {
+    transform: translateX(-101%);
+  }
+}
+
+@keyframes tk-wipe {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: none;
+  }
+}
+
+@keyframes tk-unwipe {
+  to {
+    transform: scaleX(0);
+  }
+}
+
+@keyframes tk-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes tk-scroll {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@keyframes tk-out {
+  0%,
+  60% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}

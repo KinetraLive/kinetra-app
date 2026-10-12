@@ -1,0 +1,341 @@
+/* Lower third, Swiss style: a white plate on a strict grid. A small accent square holds the first
+   column; flush left beside it the label, the name, a 1px rule and the grey title. An optional
+   photo sits flush on the left edge; an optional logo stands on a field of accent on the right.
+   Missing parts collapse (data-empty, or an empty src / text).
+   Sizing: one unit --u, 1px at 1080p (16:9 or 9:16 frames scale with the short side; a smaller
+   layer box scales the strap to fill it). Motion: the plate is revealed by a hard mask wipe (the
+   box slides inside a clipping wrapper that slides the other way), the square snaps, the rule
+   draws, the text follows. Transform and opacity only, durations × --speed.
+   Variables: --accent, --secondary (title), --text, --plate, --font-heading, --font-body,
+   --radius (px), --speed (duration factor), --photo-shape (0 square, 50 round). */
+
+:host {
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --wipe: cubic-bezier(0.7, 0, 0.2, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+}
+
+.lt {
+  position: absolute;
+  inset: 0;
+  container-type: size;
+}
+
+.lt__safe {
+  --u: 1px;
+  position: absolute;
+  left: 6cqw;
+  right: 6cqw;
+  bottom: 9cqh;
+  display: flex;
+}
+
+@supports (width: 1cqmin) {
+  .lt__safe {
+    --u: max(100cqmin / 1080, 100cqw / 1920);
+  }
+}
+
+@container (orientation: portrait) {
+  .lt__safe {
+    left: 5cqw;
+    right: 5cqw;
+    bottom: 17cqh;
+  }
+}
+
+@container ((max-width: 999px) and (max-height: 999px)) or (min-aspect-ratio: 2/1) {
+  .lt__safe {
+    /* The graphic's frame: the largest box of the design's aspect (4.8:1) in the layer box, at
+       its bottom left; the look scales to fill it by its own extent at 1080p. */
+    --fw: min(100cqw, 480cqh);
+    --fh: min(100cqh, 100cqw / 4.8);
+    --u: min(var(--fw) / 961, var(--fh) / 231);
+    left: 0;
+    right: auto;
+    bottom: 0;
+    width: var(--fw);
+    height: var(--fh);
+  }
+}
+
+/* The mask of the wipe: clips the box while both slide. */
+.lt__wipe {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  border-radius: var(--radius);
+}
+
+.lt__box {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  background: var(--plate);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 10%, transparent);
+  border-radius: var(--radius);
+  color: var(--text);
+  line-height: normal;
+  -webkit-font-smoothing: antialiased;
+}
+
+.lt__photo {
+  flex: none;
+  align-self: stretch;
+  width: calc(176 * var(--u));
+  min-height: calc(176 * var(--u));
+  height: auto;
+  object-fit: cover;
+}
+
+@container style(--photo-shape: 50) {
+  .lt__photo {
+    align-self: center;
+    width: calc(132 * var(--u));
+    height: calc(132 * var(--u));
+    min-height: 0;
+    margin-left: calc(28 * var(--u));
+    border-radius: 50%;
+  }
+}
+
+/* The grid: square column, gutter, text column. */
+.lt__text {
+  flex: 0 1 auto;
+  display: grid;
+  grid-template-columns: calc(14 * var(--u)) minmax(0, 1fr);
+  column-gap: calc(22 * var(--u));
+  align-content: center;
+  min-width: calc(400 * var(--u));
+  max-width: calc(1180 * var(--u));
+  box-sizing: border-box;
+  padding: calc(30 * var(--u)) calc(48 * var(--u)) calc(32 * var(--u)) calc(32 * var(--u));
+}
+
+.lt__text > * {
+  grid-column: 2;
+}
+
+.lt__sq {
+  grid-column: 1;
+  grid-row: 1;
+  align-self: start;
+  width: calc(14 * var(--u));
+  height: calc(14 * var(--u));
+  margin-top: calc(5 * var(--u));
+  background: var(--accent);
+}
+
+/* No label: the square aligns with the name's cap height. */
+.lt__text:has(> .lt__label[data-empty]) .lt__sq,
+.lt__text:has(> .lt__label:empty) .lt__sq {
+  margin-top: calc(15 * var(--u));
+}
+
+.lt__label {
+  margin-bottom: calc(12 * var(--u));
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-family: var(--font-body);
+  font-size: calc(20 * var(--u));
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0.01em;
+}
+
+.lt__name {
+  overflow-wrap: anywhere;
+  font-family: var(--font-heading);
+  font-size: calc(62 * var(--u));
+  font-weight: 600;
+  line-height: 1.05;
+  letter-spacing: -0.025em;
+}
+
+.lt__rule {
+  display: block;
+  height: max(1px, calc(1.2 * var(--u)));
+  margin: calc(18 * var(--u)) 0 calc(14 * var(--u));
+  background: var(--text);
+  transform-origin: left center;
+}
+
+.lt__title {
+  overflow-wrap: anywhere;
+  color: var(--secondary);
+  font-family: var(--font-body);
+  font-size: calc(28 * var(--u));
+  font-weight: 400;
+  line-height: 1.25;
+}
+
+/* The logo stands on a field of accent, flush right and full height. */
+.lt__field {
+  flex: none;
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  min-width: calc(176 * var(--u));
+  padding: 0 calc(36 * var(--u));
+  background: var(--accent);
+}
+
+.lt__logo {
+  display: block;
+  width: auto;
+  max-width: calc(200 * var(--u));
+  height: calc(60 * var(--u));
+  object-fit: contain;
+}
+
+@container (orientation: portrait) {
+  .lt__field {
+    min-width: calc(120 * var(--u));
+    padding: 0 calc(24 * var(--u));
+  }
+
+  .lt__logo {
+    max-width: calc(130 * var(--u));
+    height: calc(48 * var(--u));
+  }
+}
+
+.lt__label:empty,
+.lt__name:empty,
+.lt__title:empty,
+.lt__label[data-empty],
+.lt__name[data-empty],
+.lt__title[data-empty],
+.lt__text:has(> .lt__title[data-empty]) .lt__rule,
+.lt__photo[src=""],
+.lt__photo[data-empty],
+.lt__field:has(> .lt__logo[src=""]),
+.lt__field:has(> .lt__logo[data-empty]) {
+  display: none;
+}
+
+/* In: the wipe, then the square, the label and name, the rule draws, the title, the logo. */
+.lt[data-state="in"] .lt__wipe {
+  animation: lt-mask calc(520ms * var(--speed)) var(--wipe) both;
+}
+
+.lt[data-state="in"] .lt__box {
+  animation: lt-unmask calc(520ms * var(--speed)) var(--wipe) both;
+}
+
+.lt[data-state="in"] .lt__sq {
+  animation: lt-sq calc(260ms * var(--speed)) var(--ease) calc(300ms * var(--speed)) both;
+}
+
+.lt[data-state="in"] .lt__label,
+.lt[data-state="in"] .lt__name {
+  animation: lt-in calc(380ms * var(--speed)) var(--ease) calc(320ms * var(--speed)) both;
+}
+
+.lt[data-state="in"] .lt__rule {
+  animation: lt-draw calc(520ms * var(--speed)) var(--wipe) calc(380ms * var(--speed)) both;
+}
+
+.lt[data-state="in"] .lt__title,
+.lt[data-state="in"] .lt__logo {
+  animation: lt-in calc(380ms * var(--speed)) var(--ease) calc(480ms * var(--speed)) both;
+}
+
+/* Out: the plate wipes off to the right; the root animation's end is the end of the layer. */
+.lt[data-state="out"] {
+  animation: lt-out calc(380ms * var(--speed)) linear forwards;
+}
+
+.lt[data-state="out"] .lt__wipe {
+  animation: lt-mask-out calc(360ms * var(--speed)) var(--wipe) forwards;
+}
+
+.lt[data-state="out"] .lt__box {
+  animation: lt-unmask-out calc(360ms * var(--speed)) var(--wipe) forwards;
+}
+
+@keyframes lt-mask {
+  from {
+    transform: translateX(-101%);
+  }
+  to {
+    transform: none;
+  }
+}
+
+@keyframes lt-unmask {
+  from {
+    transform: translateX(101%);
+  }
+  to {
+    transform: none;
+  }
+}
+
+@keyframes lt-mask-out {
+  to {
+    transform: translateX(101%);
+  }
+}
+
+@keyframes lt-unmask-out {
+  to {
+    transform: translateX(-101%);
+  }
+}
+
+@keyframes lt-sq {
+  from {
+    transform: scale(0);
+  }
+  to {
+    transform: none;
+  }
+}
+
+@keyframes lt-draw {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: none;
+  }
+}
+
+@keyframes lt-in {
+  from {
+    opacity: 0;
+    transform: translateX(calc(-16 * var(--u)));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes lt-out {
+  0%,
+  90% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* A layer box smaller than a frame, part 2: the plate fills the frame, the accent field flush right. */
+@container ((max-width: 999px) and (max-height: 999px)) or (min-aspect-ratio: 2/1) {
+  .lt__wipe {
+    flex: 1 1 auto;
+  }
+
+  .lt__box {
+    box-sizing: border-box;
+    height: 100%;
+  }
+
+  .lt__text {
+    flex: 1 1 auto;
+  }
+}

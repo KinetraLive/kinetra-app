@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "id": "countdown-to-doors",
+  "name": "Countdown to doors",
+  "description": "A full-screen countdown to the next schedule item.",
+  "panel": "countdown",
+  "version": 1,
+  "source": { "kind": "schedule", "name": "Doors", "sample": "around-now" },
+  "screen": { "name": "Countdown", "width": 1920, "height": 1080 },
+  "layers": [
+    {
+      "name": "Countdown",
+      "preset": "countdown",
+      "rect": { "x": 0, "y": 0, "w": 1920, "h": 1080 },
+      "fields": {},
+      "vars": {},
+      "bindings": {
+        "title": { "sourceId": "$source", "column": "title", "row": "next" },
+        "subtitle": { "sourceId": "$source", "column": "location", "row": "next" },
+        "countdown": { "sourceId": "$source", "column": "countdown", "row": "next" }
+      }
+    }
+  ],
+  "rules": [
+    {
+      "name": "When the item starts, clear the countdown",
+      "enabled": false,
+      "when": { "on": "itemStatus", "sourceId": "$source", "status": "now" },
+      "then": [{ "do": "clear", "screenId": "$screen", "layerId": "$layer:0" }]
+    }
+  ]
+}

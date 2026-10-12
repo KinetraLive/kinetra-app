@@ -1,0 +1,11 @@
+{
+  "accent": "#33d6ff",
+  "secondary": "#b3bac5",
+  "text": "#f5f5f2",
+  "plate": "#0c0d11d9",
+  "tile": "#f5f5f2",
+  "font-heading": "Space Grotesk",
+  "font-body": "IBM Plex Sans",
+  "radius": "2",
+  "speed": "1"
+}

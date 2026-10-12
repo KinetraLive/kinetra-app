@@ -1,0 +1,63 @@
+# Canary: nightly at 03:00 UTC when main has changed since the canary that is out, or by hand
+# (Run workflow, main only) → X.Y.Z-canary.YYYYMMDD.N, fast tests, Kinetra Canary builds,
+# uploaded to releases/canary/<version>/ and updates/latest-canary.json. docs/RELEASING.md.
+name: Canary release
+
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One canary publish at a time; a newer run waits (an older waiting one is dropped).
+concurrency:
+  group: release-canary
+  cancel-in-progress: false
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      changed: ${{ steps.changed.outputs.changed }}
+    steps:
+      - name: Main only
+        if: github.ref != 'refs/heads/main'
+        run: echo "::error::Canary builds come from main, not $GITHUB_REF_NAME"; exit 1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with: { node-version: "24" }
+      - id: changed
+        name: Has main changed since the published canary?
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          # A manual run always builds; the nightly one only when main moved.
+          prev=$(curl -fsS https://download.kinetra.live/releases/canary/latest.json 2>/dev/null             | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const c=JSON.parse(s).commit;if(/^[0-9a-f]{7,40}$/.test(c))process.stdout.write(c)}catch{}})' || true)
+          if [ "$EVENT" = "schedule" ] && [ "$prev" = "$GITHUB_SHA" ]; then
+            echo "main is still at the published canary ($prev): nothing to build"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+      - id: v
+        if: steps.changed.outputs.changed == 'true'
+        env:
+          RUN: ${{ github.run_number }}
+        run: node .github/scripts/release.mjs version --channel canary --run "$RUN"
+
+  build:
+    needs: version
+    if: needs.version.outputs.changed == 'true'
+    uses: ./.github/workflows/build.yml
+    with: { channel: canary, version: "${{ needs.version.outputs.version }}", suite: fast }
+    secrets: inherit
+
+  publish:
+    needs: [version, build]
+    uses: ./.github/workflows/publish.yml
+    with: { channel: canary, version: "${{ needs.version.outputs.version }}" }
+    secrets: inherit

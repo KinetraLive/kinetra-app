@@ -1,0 +1,278 @@
+/* Corner bug, Inline style: a small white plate on one line: an optional logo on an ink chip, a
+   short tag in bold capitals ("LIVE", led by an accent dot when it stands alone) and a thin accent
+   bar along the bottom. Sizing: --u, 1px at 1080p; a smaller layer box scales the bug to fill it.
+   Motion: the plate expands from the left, the content follows, the bar fills. data-state on the
+   root (.bug); transform and opacity only; durations × --speed.
+   Variables: --position, --accent, --ink (text, chip), --plate, --font-heading, --radius (px),
+   --speed. */
+
+:host {
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --snap: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+}
+
+.bug {
+  --bar: var(--auto-out-ms, calc(1000ms * var(--speed)));
+  position: absolute;
+  inset: 0;
+  container-type: size;
+}
+
+.bug__stage {
+  --u: 1px;
+  position: absolute;
+  inset: 6cqh 5cqw;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  grid-template-rows: auto 1fr auto;
+  grid-template-areas:
+    "top-left . top-right"
+    ". . ."
+    "bottom-left . bottom-right";
+}
+
+@supports (width: 1cqmin) {
+  .bug__stage {
+    --u: max(100cqmin / 1080, 100cqw / 1920);
+  }
+}
+
+@container ((max-width: 999px) and (max-height: 999px)) or (min-aspect-ratio: 2/1) {
+  /* The bug fills the largest box of the design's aspect (240:75) in its corner: the plate takes
+     that box and the content scales contain-wise with the look's own extent (214×64 at 1080p). */
+  .bug__stage {
+    --fw: min(100cqw, 320cqh);
+    --fh: min(100cqh, 100cqw / 3.2);
+    --u: min(var(--fw) / 214, var(--fh) / 64);
+    inset: 0;
+  }
+
+  .bug__stage > .bug__box {
+    width: var(--fw);
+    height: var(--fh);
+    max-width: none;
+    min-height: 0;
+  }
+}
+
+.bug__box {
+  grid-area: var(--position);
+  position: relative;
+  display: flex;
+  align-items: center;
+  column-gap: calc(16 * var(--u));
+  max-width: calc(520 * var(--u));
+  min-width: 0;
+  min-height: calc(64 * var(--u));
+  box-sizing: border-box;
+  padding: calc(8 * var(--u)) calc(22 * var(--u)) calc(11 * var(--u)) calc(8 * var(--u));
+  color: var(--ink);
+  line-height: normal;
+  -webkit-font-smoothing: antialiased;
+}
+
+.bug__plate {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: var(--radius);
+  background: var(--plate);
+  box-shadow:
+    0 0 0 1px rgb(12 14 20 / 0.08),
+    0 calc(6 * var(--u)) calc(22 * var(--u)) rgb(12 14 20 / 0.22);
+  transform-origin: left center;
+}
+
+.bug__plate::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: max(2px, calc(4 * var(--u)));
+  background: var(--accent);
+  transform-origin: left center;
+}
+
+.bug__chip {
+  position: relative;
+  flex: none;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  padding: 0 calc(14 * var(--u));
+  border-radius: calc(var(--radius) * 0.6);
+  background: var(--ink);
+}
+
+.bug__logo {
+  display: block;
+  width: auto;
+  max-width: calc(200 * var(--u));
+  height: calc(34 * var(--u));
+  object-fit: contain;
+}
+
+.bug__text {
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-family: var(--font-heading);
+  font-size: calc(22 * var(--u));
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+/* Alone: an accent dot leads the tag. */
+.bug__chip:has(> .bug__logo[data-empty]) + .bug__text,
+.bug__chip:has(> .bug__logo[src=""]) + .bug__text {
+  padding-left: calc(38 * var(--u));
+}
+
+.bug__chip:has(> .bug__logo[data-empty]) + .bug__text::before,
+.bug__chip:has(> .bug__logo[src=""]) + .bug__text::before {
+  content: "";
+  position: absolute;
+  left: calc(14 * var(--u));
+  top: 50%;
+  width: calc(12 * var(--u));
+  height: calc(12 * var(--u));
+  margin-top: calc(-6 * var(--u));
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+/* A logo alone: no right padding for text. */
+.bug__box:has(> .bug__text[data-empty]) {
+  padding-right: calc(8 * var(--u));
+}
+
+.bug__text:empty,
+.bug__text[data-empty],
+.bug__chip:has(> .bug__logo[src=""]),
+.bug__chip:has(> .bug__logo[data-empty]) {
+  display: none;
+}
+
+.bug[data-state="in"] .bug__plate {
+  animation: bug-expand calc(420ms * var(--speed)) var(--snap) both;
+}
+
+.bug[data-state="in"] .bug__plate::after {
+  animation: bug-bar var(--bar) cubic-bezier(0.3, 0, 0.2, 1) calc(320ms * var(--speed)) both;
+}
+
+/* With an auto-out (the renderer's --auto-out-ms) the bar is its countdown: full at the take, it
+   drains linearly to empty as the graphic leaves; it stays empty while it plays out. */
+@container style(--auto-out-ms) {
+  .bug[data-state="in"] .bug__plate::after {
+    animation: bug-drain var(--bar) linear both;
+  }
+
+  .bug[data-state="out"] .bug__plate::after {
+    transform: scaleX(0);
+  }
+}
+
+.bug[data-state="in"] .bug__chip {
+  animation: bug-pop calc(320ms * var(--speed)) var(--ease) calc(120ms * var(--speed)) both;
+}
+
+.bug[data-state="in"] .bug__text {
+  animation: bug-slide calc(360ms * var(--speed)) var(--ease) calc(200ms * var(--speed)) both;
+}
+
+.bug[data-state="out"] {
+  animation: bug-out calc(320ms * var(--speed)) var(--ease-in) forwards;
+}
+
+.bug[data-state="out"] .bug__chip,
+.bug[data-state="out"] .bug__text {
+  animation: bug-fade-out calc(140ms * var(--speed)) var(--ease-in) forwards;
+}
+
+.bug[data-state="out"] .bug__plate {
+  animation: bug-fold calc(260ms * var(--speed)) var(--ease-in) calc(60ms * var(--speed)) forwards;
+}
+
+@keyframes bug-expand {
+  from {
+    opacity: 0;
+    transform: scaleX(0.08);
+  }
+  20% {
+    opacity: 1;
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes bug-fold {
+  to {
+    opacity: 0;
+    transform: scaleX(0.08);
+  }
+}
+
+@keyframes bug-bar {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: none;
+  }
+}
+
+@keyframes bug-drain {
+  from {
+    transform: none;
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+
+@keyframes bug-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes bug-slide {
+  from {
+    opacity: 0;
+    transform: translateX(calc(-10 * var(--u)));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes bug-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes bug-out {
+  0%,
+  45% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}

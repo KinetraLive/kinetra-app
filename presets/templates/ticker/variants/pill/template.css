@@ -1,0 +1,253 @@
+/* Ticker, Pill style: one white capsule strap: the label as an accent capsule at its left end,
+   then the items scrolling right to left, separated by small accent dots.
+   Sizing: --u, 1px at 1080p; a strap-shaped layer box (≤ 300px tall) is filled.
+   Motion: the label pops in (scale), the strap expands to the right (scaleX from its left), the
+   items fade in and start to scroll. data-state on the root (.tk). Transform and opacity only.
+   Capsule ends: --radius × 40. Variables: --accent (label, dots), --plate, --text (items),
+   --font-heading (label), --font-body, --radius (px), --speed (seconds per loop; this
+   template's own meaning). The loop: two identical runs, each at least the window's width; the
+   track moves by -50%. */
+
+:host {
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --pop: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --snap: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+}
+
+.tk {
+  --cap: calc(var(--radius) * 40);
+  position: absolute;
+  inset: 0;
+  container-type: size;
+}
+
+.tk__safe {
+  --u: 1px;
+  position: absolute;
+  left: 6cqw;
+  right: 6cqw;
+  bottom: 7cqh;
+}
+
+@supports (width: 1cqmin) {
+  .tk__safe {
+    --u: max(100cqmin / 1080, 100cqw / 1920);
+  }
+}
+
+@container (orientation: portrait) {
+  .tk__safe {
+    left: 3cqw;
+    right: 3cqw;
+    bottom: 14cqh;
+  }
+}
+
+@container (max-height: 300px) {
+  .tk__safe {
+    --u: min((100cqh - 2px) / 72, max(100cqw / 1920, min(100cqw / 800, 1px)));
+    left: calc(6 * var(--u));
+    right: calc(6 * var(--u));
+    top: 50%;
+    bottom: auto;
+    transform: translateY(-50%);
+  }
+}
+
+.tk__strap {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  height: calc(72 * var(--u));
+  line-height: normal;
+  -webkit-font-smoothing: antialiased;
+}
+
+.tk__plate {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--cap);
+  background: var(--plate);
+  box-shadow:
+    0 0 0 1px rgb(20 16 40 / 0.07),
+    0 calc(8 * var(--u)) calc(28 * var(--u)) rgb(20 16 40 / 0.22);
+  transform-origin: left center;
+}
+
+.tk__label {
+  position: relative;
+  flex: none;
+  display: flex;
+  align-items: center;
+  max-width: calc(400 * var(--u));
+  margin: calc(8 * var(--u)) 0 calc(8 * var(--u)) calc(8 * var(--u));
+  padding: 0 calc(26 * var(--u));
+  border-radius: var(--cap);
+  background: var(--accent);
+}
+
+.tk__ltext {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--plate);
+  font-family: var(--font-heading);
+  font-size: calc(22 * var(--u));
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.tk__label:has(> .tk__ltext:empty),
+.tk__label:has(> .tk__ltext[data-empty]) {
+  display: none;
+}
+
+.tk__window {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  margin: 0 calc(22 * var(--u)) 0 calc(6 * var(--u));
+  overflow: hidden;
+  container-type: inline-size;
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: calc(28 * var(--u));
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 1em, #000 calc(100% - 1em), transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 1em, #000 calc(100% - 1em), transparent);
+}
+
+.tk__track {
+  display: flex;
+  flex: none;
+  width: max-content;
+}
+
+.tk__run {
+  display: flex;
+  flex: none;
+  min-width: 1612px;
+  min-width: 100cqw;
+}
+
+/* Each item ends with an accent dot. */
+.tk__item {
+  flex: none;
+  display: flex;
+  align-items: center;
+  column-gap: 1em;
+  padding-left: 1em;
+  font-weight: 500;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.tk__item::after {
+  content: "";
+  flex: none;
+  width: 0.3em;
+  height: 0.3em;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.tk[data-state="in"] .tk__plate {
+  animation: tk-expand 500ms var(--snap) 100ms both;
+}
+
+.tk[data-state="in"] .tk__label {
+  animation: tk-pop 440ms var(--pop) both;
+}
+
+.tk[data-state="in"] .tk__window {
+  animation: tk-fade 400ms var(--ease) 300ms both;
+}
+
+.tk[data-state="in"] .tk__track {
+  animation: tk-scroll var(--speed) linear 300ms infinite;
+}
+
+.tk[data-state="out"] .tk__window {
+  opacity: 0;
+}
+
+.tk[data-state="out"] .tk__label {
+  animation: tk-fade-out 140ms var(--ease-in) forwards;
+}
+
+.tk[data-state="out"] .tk__plate {
+  animation: tk-fold 260ms var(--ease-in) 40ms forwards;
+}
+
+.tk[data-state="out"] {
+  animation: tk-out 300ms var(--ease-in) forwards;
+}
+
+@keyframes tk-expand {
+  from {
+    opacity: 0;
+    transform: scaleX(0.03);
+  }
+  15% {
+    opacity: 1;
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes tk-fold {
+  to {
+    opacity: 0;
+    transform: scaleX(0.03);
+  }
+}
+
+@keyframes tk-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes tk-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes tk-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes tk-scroll {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@keyframes tk-out {
+  0%,
+  40% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}

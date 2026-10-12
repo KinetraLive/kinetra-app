@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "id": "headliner-branch",
+  "name": "Headliner gets the big graphic",
+  "description": "When an item starts, items whose subtitle contains \"Headliner\" get the big graphic, others the regular one.",
+  "category": "schedule",
+  "slots": [
+    {"key":"schedule","label":"Run of show","kind":"scheduleSource"},
+    {"key":"big","label":"Headliner graphic layer","kind":"layer","prefer":{"template":"fullscreen-title"}},
+    {"key":"regular","label":"Regular graphic layer","kind":"layer","prefer":{"template":"next-up"}}
+  ],
+  "flows": [
+    {
+      "armed": false,
+      "nodes": [
+        {"id":"status","position":{"x":0,"y":0},"type":"trigger.itemStatus","config":{"sourceId":"{{schedule}}","status":"now"}},
+        {"id":"branch","position":{"x":260,"y":0},"type":"logic.branch","config":{}},
+        {"id":"takeBig","position":{"x":520,"y":0},"type":"action.take","config":{"screenId":"{{big.screenId}}","layerId":"{{big.layerId}}","forMs":10000}},
+        {"id":"takeRegular","position":{"x":520,"y":160},"type":"action.take","config":{"screenId":"{{regular.screenId}}","layerId":"{{regular.layerId}}","forMs":10000}},
+        {"id":"compare","position":{"x":260,"y":320},"type":"data.compare","config":{"op":"contains","a":"","b":""}},
+        {"id":"now","position":{"x":0,"y":320},"type":"data.scheduleItem","config":{"sourceId":"{{schedule}}","which":"now"}},
+        {"id":"word","position":{"x":0,"y":480},"type":"data.constant","config":{"value":{"kind":"text","value":"Headliner"}}}
+      ],
+      "edges": [
+        {"id":"e1","from":{"node":"status","port":"fired"},"to":{"node":"branch","port":"in"},"kind":"event"},
+        {"id":"e2","from":{"node":"branch","port":"then"},"to":{"node":"takeBig","port":"in"},"kind":"event"},
+        {"id":"e3","from":{"node":"branch","port":"else"},"to":{"node":"takeRegular","port":"in"},"kind":"event"},
+        {"id":"d1","from":{"node":"compare","port":"bool"},"to":{"node":"branch","port":"condition"},"kind":"data"},
+        {"id":"d2","from":{"node":"now","port":"subtitle"},"to":{"node":"compare","port":"a"},"kind":"data"},
+        {"id":"d3","from":{"node":"word","port":"value"},"to":{"node":"compare","port":"b"},"kind":"data"}
+      ]
+    }
+  ]
+}

@@ -1,0 +1,371 @@
+/* Lower third, Frame style: a dark translucent plate held by four accent corner brackets (the
+   Kinetra viewfinder), a mono label ("GUEST 01"), the name and a title; an optional photo on the
+   left and logo on the right. Missing parts collapse (data-empty, or an empty src / text).
+   Sizing: one unit --u, 1px at 1080p. A full frame (16:9 or 9:16, any resolution) scales with
+   its short side; a smaller layer box scales the graphic to fill it. The renderer sets
+   data-state="in" | "out" on the root (.lt). Only transform and opacity animate, every duration
+   is multiplied by --speed.
+   Variables: --accent, --secondary (title), --text, --plate, --font-heading, --font-body,
+   --radius (px), --speed (duration factor), --photo-shape (0 square, 50 round). */
+
+:host {
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --snap: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+}
+
+.lt {
+  position: absolute;
+  inset: 0;
+  container-type: size;
+}
+
+/* Full frame: title safe (left/right 6%, bottom 9%); vertical frames sit higher, clear of
+   platform UI. */
+.lt__safe {
+  --u: 1px;
+  position: absolute;
+  left: 6cqw;
+  right: 6cqw;
+  bottom: 9cqh;
+  display: flex;
+  justify-content: flex-start;
+}
+
+@supports (width: 1cqmin) {
+  .lt__safe {
+    --u: max(100cqmin / 1080, 100cqw / 1920);
+  }
+}
+
+@container (orientation: portrait) {
+  .lt__safe {
+    left: 5cqw;
+    right: 5cqw;
+    bottom: 17cqh;
+  }
+}
+
+/* A layer box smaller than a frame: the graphic fills the box, brackets inside it. */
+@container ((max-width: 999px) and (max-height: 999px)) or (min-aspect-ratio: 2/1) {
+  .lt__safe {
+    /* The graphic's frame: the largest box of the design's aspect (4.8:1) in the layer box, at
+       its bottom left; the look scales to fill it by its own extent at 1080p. */
+    --fw: min(100cqw, 480cqh);
+    --fh: min(100cqh, 100cqw / 4.8);
+    --u: min(var(--fw) / 977, var(--fh) / 221);
+    left: 0;
+    right: auto;
+    bottom: 0;
+    width: var(--fw);
+    height: var(--fh);
+  }
+}
+
+.lt__box {
+  --gap: calc(10 * var(--u));
+  --arm: calc(26 * var(--u));
+  --bw: max(2px, calc(3 * var(--u)));
+  --fly: calc(34 * var(--u));
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  max-width: 100%;
+  min-width: 0;
+  color: var(--text);
+  line-height: normal;
+  -webkit-font-smoothing: antialiased;
+}
+
+.lt__plate {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius);
+  background: var(--plate);
+}
+
+/* Viewfinder brackets: four L-shaped corners just outside the plate. */
+.lt__br {
+  position: absolute;
+  inset: calc(-1 * var(--gap));
+  pointer-events: none;
+  /* A hairline of shade keeps the brackets visible on light backgrounds. */
+  filter: drop-shadow(0 0 1px rgb(0 0 0 / 0.45));
+}
+
+.lt__br > i {
+  position: absolute;
+  box-sizing: border-box;
+  width: var(--arm);
+  height: var(--arm);
+  border: 0 solid var(--accent);
+}
+
+.lt__br > i:nth-child(1) {
+  --x: -1;
+  --y: -1;
+  left: 0;
+  top: 0;
+  border-width: var(--bw) 0 0 var(--bw);
+  border-top-left-radius: var(--radius);
+}
+
+.lt__br > i:nth-child(2) {
+  --x: 1;
+  --y: -1;
+  right: 0;
+  top: 0;
+  border-width: var(--bw) var(--bw) 0 0;
+  border-top-right-radius: var(--radius);
+}
+
+.lt__br > i:nth-child(3) {
+  --x: -1;
+  --y: 1;
+  left: 0;
+  bottom: 0;
+  border-width: 0 0 var(--bw) var(--bw);
+  border-bottom-left-radius: var(--radius);
+}
+
+.lt__br > i:nth-child(4) {
+  --x: 1;
+  --y: 1;
+  right: 0;
+  bottom: 0;
+  border-width: 0 var(--bw) var(--bw) 0;
+  border-bottom-right-radius: var(--radius);
+}
+
+/* Photo: flush with the plate's left edge and as tall as it (square: a fixed width, cropped);
+   round: a circle inset in the plate. */
+.lt__photo {
+  position: relative;
+  flex: none;
+  align-self: stretch;
+  width: calc(172 * var(--u));
+  min-height: calc(172 * var(--u));
+  height: auto;
+  object-fit: cover;
+  border-radius: var(--radius) 0 0 var(--radius);
+}
+
+@container style(--photo-shape: 50) {
+  .lt__photo {
+    align-self: center;
+    width: calc(136 * var(--u));
+    height: calc(136 * var(--u));
+    min-height: 0;
+    margin-left: calc(22 * var(--u));
+    border-radius: 50%;
+  }
+}
+
+.lt__text {
+  position: relative;
+  align-self: center;
+  flex: 0 1 auto;
+  min-width: calc(380 * var(--u));
+  max-width: calc(1180 * var(--u));
+  box-sizing: border-box;
+  padding: calc(24 * var(--u)) calc(44 * var(--u)) calc(28 * var(--u)) calc(36 * var(--u));
+}
+
+.lt__label {
+  display: flex;
+  align-items: center;
+  column-gap: calc(12 * var(--u));
+  margin-bottom: calc(10 * var(--u));
+  overflow: hidden;
+  white-space: nowrap;
+  color: var(--accent);
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: calc(20 * var(--u));
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.lt__label::before {
+  content: "";
+  flex: none;
+  width: calc(8 * var(--u));
+  height: calc(8 * var(--u));
+  background: var(--accent);
+}
+
+.lt__name {
+  overflow-wrap: anywhere;
+  font-family: var(--font-heading);
+  font-size: calc(64 * var(--u));
+  font-weight: 600;
+  line-height: 1.05;
+  letter-spacing: -0.015em;
+}
+
+.lt__title {
+  overflow-wrap: anywhere;
+  margin-top: calc(8 * var(--u));
+  color: var(--secondary);
+  font-family: var(--font-body);
+  font-size: calc(30 * var(--u));
+  font-weight: 400;
+  line-height: 1.25;
+}
+
+/* Logo: right of the text. */
+.lt__logo {
+  position: relative;
+  flex: none;
+  align-self: center;
+  box-sizing: content-box;
+  width: auto;
+  max-width: calc(220 * var(--u));
+  height: calc(64 * var(--u));
+  padding: 0 calc(40 * var(--u)) 0 calc(36 * var(--u));
+  border-left: 1px solid color-mix(in srgb, var(--text) 16%, transparent);
+  object-fit: contain;
+}
+
+@container (orientation: portrait) {
+  .lt__logo {
+    max-width: calc(140 * var(--u));
+    height: calc(52 * var(--u));
+    padding: 0 calc(30 * var(--u)) 0 calc(26 * var(--u));
+  }
+}
+
+.lt__label:empty,
+.lt__name:empty,
+.lt__title:empty,
+.lt__label[data-empty],
+.lt__name[data-empty],
+.lt__title[data-empty],
+.lt__photo[src=""],
+.lt__photo[data-empty],
+.lt__logo[src=""],
+.lt__logo[data-empty] {
+  display: none;
+}
+
+/* In: the brackets snap in from outside, the plate fades up, then label, name, title, logo. */
+.lt[data-state="in"] .lt__br > i {
+  animation: lt-snap calc(380ms * var(--speed)) var(--snap) both;
+}
+
+.lt[data-state="in"] .lt__plate {
+  animation: lt-plate calc(320ms * var(--speed)) var(--ease) calc(60ms * var(--speed)) both;
+}
+
+.lt[data-state="in"] .lt__photo {
+  animation: lt-photo calc(360ms * var(--speed)) var(--ease) calc(120ms * var(--speed)) both;
+}
+
+.lt[data-state="in"] .lt__label {
+  animation: lt-rise calc(360ms * var(--speed)) var(--ease) calc(170ms * var(--speed)) both;
+}
+
+.lt[data-state="in"] .lt__name {
+  animation: lt-rise calc(400ms * var(--speed)) var(--ease) calc(220ms * var(--speed)) both;
+}
+
+.lt[data-state="in"] .lt__title,
+.lt[data-state="in"] .lt__logo {
+  animation: lt-rise calc(400ms * var(--speed)) var(--ease) calc(280ms * var(--speed)) both;
+}
+
+/* Out: the text goes first, the brackets fly back out, the plate fades; the root animation's end
+   is the end of the layer. */
+.lt[data-state="out"] {
+  animation: lt-out calc(320ms * var(--speed)) var(--ease-in) forwards;
+}
+
+.lt[data-state="out"] .lt__text,
+.lt[data-state="out"] .lt__logo,
+.lt[data-state="out"] .lt__photo {
+  animation: lt-fade-out calc(140ms * var(--speed)) var(--ease-in) forwards;
+}
+
+.lt[data-state="out"] .lt__br > i {
+  animation: lt-snap-out calc(220ms * var(--speed)) var(--ease-in) calc(60ms * var(--speed)) forwards;
+}
+
+@keyframes lt-snap {
+  from {
+    opacity: 0;
+    transform: translate(calc(var(--x) * var(--fly)), calc(var(--y) * var(--fly)));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes lt-snap-out {
+  to {
+    opacity: 0;
+    transform: translate(calc(var(--x) * var(--fly) * 0.6), calc(var(--y) * var(--fly) * 0.6));
+  }
+}
+
+@keyframes lt-plate {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes lt-photo {
+  from {
+    opacity: 0;
+    transform: translateX(calc(-14 * var(--u)));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes lt-rise {
+  from {
+    opacity: 0;
+    transform: translateY(calc(14 * var(--u)));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes lt-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes lt-out {
+  0%,
+  45% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* A layer box smaller than a frame, part 2: the plate fills the frame inside its brackets, the logo flush right. */
+@container ((max-width: 999px) and (max-height: 999px)) or (min-aspect-ratio: 2/1) {
+  .lt__box {
+    flex: 1 1 auto;
+    margin: var(--gap);
+  }
+
+  .lt__text {
+    flex: 1 1 auto;
+  }
+}

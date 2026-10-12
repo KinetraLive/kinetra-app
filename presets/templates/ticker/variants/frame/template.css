@@ -1,0 +1,320 @@
+/* Ticker, Frame style: a full-width plate strap; at its left a label block held by accent corner
+   brackets (mono "LATEST"), then the items scrolling right to left, each led by an accent square.
+   Sizing: one unit --u, 1px at 1080p; a strap-shaped layer box (≤ 300px tall) is filled.
+   The renderer sets data-state="in" | "out" on the root (.tk). Only transform and opacity animate.
+   Variables: --accent (brackets, markers, label text), --plate, --text (items),
+   --font-body, --radius (px), --speed (seconds per loop; this template's own meaning).
+
+   The loop: the track holds two identical runs of the items, each at least as wide as the window
+   (a container, so a run's min-width is 100cqw of it). The track moves left by -50%, exactly one
+   run, then starts over: the jump is invisible. CSS only, and only while the layer is on air. */
+
+:host {
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --snap: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+}
+
+.tk {
+  position: absolute;
+  inset: 0;
+  container-type: size;
+}
+
+/* Title safe, along the bottom; vertical frames sit higher, clear of platform UI. */
+.tk__safe {
+  --u: 1px;
+  position: absolute;
+  left: 6cqw;
+  right: 6cqw;
+  bottom: 7cqh;
+}
+
+@supports (width: 1cqmin) {
+  .tk__safe {
+    --u: max(100cqmin / 1080, 100cqw / 1920);
+  }
+}
+
+@container (orientation: portrait) {
+  .tk__safe {
+    left: 0;
+    right: 0;
+    bottom: 14cqh;
+  }
+}
+
+/* A strap-shaped layer box: the strap fills it. */
+@container (max-height: 300px) {
+  .tk__safe {
+    --u: min((100cqh - 2px) / 72, max(100cqw / 1920, min(100cqw / 800, 1px)));
+    left: 0;
+    right: 0;
+    top: 50%;
+    bottom: auto;
+    transform: translateY(-50%);
+  }
+}
+
+.tk__strap {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  height: calc(72 * var(--u));
+  line-height: normal;
+  -webkit-font-smoothing: antialiased;
+}
+
+.tk__plate {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius);
+  background: var(--plate);
+}
+
+@container (orientation: portrait) {
+  .tk__plate {
+    border-radius: 0;
+  }
+}
+
+/* The label block: brackets on its corners, inside the plate. */
+.tk__label {
+  --arm: calc(16 * var(--u));
+  --bw: max(2px, calc(3 * var(--u)));
+  --fly: calc(18 * var(--u));
+  position: relative;
+  z-index: 1;
+  flex: none;
+  display: flex;
+  align-items: center;
+  max-width: calc(420 * var(--u));
+  margin: calc(8 * var(--u)) 0 calc(8 * var(--u)) calc(8 * var(--u));
+  padding: 0 calc(24 * var(--u));
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border-radius: var(--radius);
+}
+
+.tk__br {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.tk__br > i {
+  position: absolute;
+  box-sizing: border-box;
+  width: var(--arm);
+  height: var(--arm);
+  border: 0 solid var(--accent);
+}
+
+.tk__br > i:nth-child(1) {
+  --x: -1;
+  --y: -1;
+  left: 0;
+  top: 0;
+  border-width: var(--bw) 0 0 var(--bw);
+  border-top-left-radius: var(--radius);
+}
+
+.tk__br > i:nth-child(2) {
+  --x: 1;
+  --y: -1;
+  right: 0;
+  top: 0;
+  border-width: var(--bw) var(--bw) 0 0;
+  border-top-right-radius: var(--radius);
+}
+
+.tk__br > i:nth-child(3) {
+  --x: -1;
+  --y: 1;
+  left: 0;
+  bottom: 0;
+  border-width: 0 0 var(--bw) var(--bw);
+  border-bottom-left-radius: var(--radius);
+}
+
+.tk__br > i:nth-child(4) {
+  --x: 1;
+  --y: 1;
+  right: 0;
+  bottom: 0;
+  border-width: 0 var(--bw) var(--bw) 0;
+  border-bottom-right-radius: var(--radius);
+}
+
+.tk__ltext {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--accent);
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: calc(24 * var(--u));
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+/* Without a label the block goes. */
+.tk__label:has(> .tk__ltext:empty),
+.tk__label:has(> .tk__ltext[data-empty]) {
+  display: none;
+}
+
+/* The visible part of the track. Its font size is set here (from the root's units); inside it,
+   sizes are in em because the window is itself a container. */
+.tk__window {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  margin: 0 calc(8 * var(--u));
+  overflow: hidden;
+  container-type: inline-size;
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: calc(30 * var(--u));
+  /* Items fade at both edges instead of being cut. */
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 1em, #000 calc(100% - 1em), transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 1em, #000 calc(100% - 1em), transparent);
+}
+
+.tk__track {
+  display: flex;
+  flex: none;
+  width: max-content;
+}
+
+.tk__run {
+  display: flex;
+  flex: none;
+  /* At least the window's width, so short lists never show a gap; 1612px where container units
+     are not supported. */
+  min-width: 1612px;
+  min-width: 100cqw;
+}
+
+.tk__item {
+  flex: none;
+  display: flex;
+  align-items: center;
+  column-gap: 0.8em;
+  padding: 0 0.8em;
+  font-weight: 400;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.tk__item::before {
+  content: "";
+  flex: none;
+  width: 0.27em;
+  height: 0.27em;
+  background: var(--accent);
+}
+
+/* In: the plate fades up, the label brackets snap in, then the items fade in and start to scroll. */
+.tk[data-state="in"] .tk__plate {
+  animation: tk-plate 340ms var(--ease) both;
+}
+
+.tk[data-state="in"] .tk__br > i {
+  animation: tk-snap 360ms var(--snap) 80ms both;
+}
+
+.tk[data-state="in"] .tk__ltext {
+  animation: tk-rise 360ms var(--ease) 180ms both;
+}
+
+.tk[data-state="in"] .tk__window {
+  animation: tk-fade 400ms var(--ease) 280ms both;
+}
+
+.tk[data-state="in"] .tk__track {
+  animation: tk-scroll var(--speed) linear 280ms infinite;
+}
+
+/* Out: the scroll stops (its animation ends with the in state), so the items are hidden at once
+   rather than seen jumping back; then one animation on the root, whose end is the layer's end. */
+.tk[data-state="out"] .tk__window {
+  opacity: 0;
+}
+
+.tk[data-state="out"] .tk__br > i {
+  animation: tk-snap-out 200ms var(--ease-in) forwards;
+}
+
+.tk[data-state="out"] {
+  animation: tk-out 300ms var(--ease-in) forwards;
+}
+
+@keyframes tk-plate {
+  from {
+    opacity: 0;
+    transform: translateY(calc(16 * var(--u)));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes tk-snap {
+  from {
+    opacity: 0;
+    transform: translate(calc(var(--x) * var(--fly)), calc(var(--y) * var(--fly)));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes tk-snap-out {
+  to {
+    opacity: 0;
+    transform: translate(calc(var(--x) * var(--fly) * 0.6), calc(var(--y) * var(--fly) * 0.6));
+  }
+}
+
+@keyframes tk-rise {
+  from {
+    opacity: 0;
+    transform: translateY(calc(8 * var(--u)));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes tk-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes tk-scroll {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@keyframes tk-out {
+  0%,
+  35% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}

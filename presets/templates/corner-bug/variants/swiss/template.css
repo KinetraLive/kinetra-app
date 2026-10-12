@@ -1,0 +1,173 @@
+/* Corner bug, Swiss style: a compact white plate. The logo stands on a field of accent, the text
+   ("Live") follows flush left; without a logo the text is led by the accent square.
+   Sizing: one unit --u, 1px at 1080p; a smaller layer box scales the bug to fill it.
+   Motion: a hard mask wipe (the box slides inside a clipping wrapper that slides the other way),
+   then the text. Transform and opacity only, durations × --speed.
+   Variables: --position (top-left | top-right | bottom-left | bottom-right), --accent, --ink (text),
+   --plate, --font-body, --radius (px), --speed (duration factor). */
+
+:host {
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --wipe: cubic-bezier(0.7, 0, 0.2, 1);
+}
+
+.bug {
+  position: absolute;
+  inset: 0;
+  container-type: size;
+}
+
+.bug__stage {
+  --u: 1px;
+  position: absolute;
+  inset: 6cqh 5cqw;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  grid-template-rows: auto 1fr auto;
+  grid-template-areas:
+    "top-left . top-right"
+    ". . ."
+    "bottom-left . bottom-right";
+}
+
+@supports (width: 1cqmin) {
+  .bug__stage {
+    --u: max(100cqmin / 1080, 100cqw / 1920);
+  }
+}
+
+@container ((max-width: 999px) and (max-height: 999px)) or (min-aspect-ratio: 2/1) {
+  /* The bug fills the largest box of the design's aspect (240:75) in its corner: the plate takes
+     that box and the content scales contain-wise with the look's own extent (218×72 at 1080p). */
+  .bug__stage {
+    --fw: min(100cqw, 320cqh);
+    --fh: min(100cqh, 100cqw / 3.2);
+    --u: min(var(--fw) / 218, var(--fh) / 72);
+    inset: 0;
+  }
+
+  .bug__stage > .bug__wipe {
+    width: var(--fw);
+    height: var(--fh);
+    max-width: none;
+  }
+
+  .bug__wipe > .bug__box {
+    height: 100%;
+  }
+
+  .bug__box > .bug__text {
+    flex: 1;
+  }
+}
+
+.bug__wipe {
+  grid-area: var(--position);
+  min-width: 0;
+  max-width: calc(560 * var(--u));
+  overflow: hidden;
+  border-radius: var(--radius);
+}
+
+.bug__box {
+  display: flex;
+  align-items: stretch;
+  height: calc(72 * var(--u));
+  background: var(--plate);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ink) 10%, transparent);
+  border-radius: var(--radius);
+  color: var(--ink);
+  line-height: normal;
+  -webkit-font-smoothing: antialiased;
+}
+
+.bug__field {
+  flex: none;
+  display: grid;
+  place-items: center;
+  padding: 0 calc(20 * var(--u));
+  background: var(--accent);
+}
+
+.bug__logo {
+  display: block;
+  width: auto;
+  max-width: calc(220 * var(--u));
+  height: calc(40 * var(--u));
+  object-fit: contain;
+}
+
+.bug__text {
+  display: flex;
+  align-items: center;
+  column-gap: calc(14 * var(--u));
+  min-width: 0;
+  padding: 0 calc(24 * var(--u)) 0 calc(20 * var(--u));
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-family: var(--font-body);
+  font-size: calc(26 * var(--u));
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.005em;
+}
+
+/* Text alone: led by the accent square. */
+.bug__text::before {
+  content: "";
+  flex: none;
+  width: calc(12 * var(--u));
+  height: calc(12 * var(--u));
+  background: var(--accent);
+}
+
+.bug__field:not(:has(> [data-empty], > [src=""])) + .bug__text::before {
+  display: none;
+}
+
+.bug__text:empty,
+.bug__text[data-empty],
+.bug__field:has(> .bug__logo[src=""]),
+.bug__field:has(> .bug__logo[data-empty]) {
+  display: none;
+}
+
+/* In: the wipe, then logo and text. */
+.bug[data-state="in"] .bug__wipe {
+  animation: bug-mask calc(460ms * var(--speed)) var(--wipe) both;
+}
+
+.bug[data-state="in"] .bug__box {
+  animation: bug-unmask calc(460ms * var(--speed)) var(--wipe) both;
+}
+
+.bug[data-state="in"] .bug__logo,
+.bug[data-state="in"] .bug__text {
+  animation: bug-in calc(340ms * var(--speed)) var(--ease) calc(300ms * var(--speed)) both;
+}
+
+/* Out: the plate wipes off; the root animation's end is the end of the layer. */
+.bug[data-state="out"] {
+  animation: bug-out calc(340ms * var(--speed)) linear forwards;
+}
+
+.bug[data-state="out"] .bug__wipe {
+  animation: bug-mask-out calc(320ms * var(--speed)) var(--wipe) forwards;
+}
+
+.bug[data-state="out"] .bug__box {
+  animation: bug-unmask-out calc(320ms * var(--speed)) var(--wipe) forwards;
+}
+
+@keyframes bug-mask { from { transform: translateX(-101%); } to { transform: none; } }
+
+@keyframes bug-unmask { from { transform: translateX(101%); } to { transform: none; } }
+
+@keyframes bug-mask-out { to { transform: translateX(101%); } }
+
+@keyframes bug-unmask-out { to { transform: translateX(-101%); } }
+
+@keyframes bug-in { from { opacity: 0; transform: translateX(calc(-10 * var(--u))); } to { opacity: 1; transform: none; } }
+
+@keyframes bug-out { 0%, 90% { opacity: 1; } 100% { opacity: 0; } }

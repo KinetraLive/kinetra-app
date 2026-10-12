@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Kinetra output</title>
+    <link rel="icon" href="data:," />
+    <!--
+      A display output with nothing to show (no project, no server, the screen is missing), and
+      Identify displays. ?bg=rrggbb (default black) &mode=key (black) [&dual=h|v: first half bg,
+      second black; hr|vr: the black half first]; Identify adds &name= [&display=] [&res=WxH] [&hz=], shown big and centered.
+      No IPC: output windows have no capability.
+    -->
+    <style>
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #000; cursor: none; }
+      body { display: flex; }
+      body.v { flex-direction: column; }
+      body.hr { flex-direction: row-reverse; }
+      body.vr { flex-direction: column-reverse; }
+      body > div { flex: 1 1 0; min-width: 0; min-height: 0; display: flex; flex-direction: column;
+        align-items: center; justify-content: center; gap: 2vmin; color: #fff; text-align: center;
+        font: 4vmin/1.2 system-ui, "Segoe UI", sans-serif; }
+      b { font-size: 10vmin; font-weight: 600; }
+      span { color: #ccc; }
+    </style>
+  </head>
+  <body>
+    <script>
+      (function () {
+        var q = new URLSearchParams(location.search);
+        var bg = q.get("bg") || "", dual = q.get("dual"), key = q.get("mode") === "key";
+        bg = /^[0-9a-f]{6}$/i.test(bg) ? "#" + bg : "#000";
+        var add = function (black) {
+          var d = document.createElement("div");
+          d.style.background = black ? "#000" : bg;
+          var name = q.get("name");
+          if (name && !black) {
+            var hz = q.get("hz"), res = (q.get("res") || "").replace("x", "×");
+            var lines = [["b", name], ["span", q.get("display")], ["span", res + (hz ? (res ? " · " : "") + hz + " Hz" : "")]];
+            lines.forEach(function (l) {
+              if (!l[1]) return;
+              var e = document.createElement(l[0]);
+              e.textContent = l[1];
+              d.appendChild(e);
+            });
+          }
+          document.body.appendChild(d);
+        };
+        if (/^[hv]r?$/.test(dual)) {
+          document.body.className = dual;
+          add(false);
+          add(true);
+        } else add(key);
+      })();
+    </script>
+  </body>
+</html>

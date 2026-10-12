@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "id": "match-end-results",
+  "name": "Match end results",
+  "description": "When the match clock hits zero, clears the screen, shows the result for 15 s, then the standings.",
+  "category": "sports",
+  "slots": [
+    {"key":"clock","label":"Match clock timer","kind":"timer","prefer":{"template":"scoreboard"}},
+    {"key":"screen","label":"Program screen","kind":"screen"},
+    {"key":"result","label":"Result layer","kind":"layer","prefer":{"template":"fullscreen-title"}},
+    {"key":"standings","label":"Standings layer","kind":"layer","prefer":{"template":"leaderboard"}}
+  ],
+  "flows": [
+    {
+      "armed": false,
+      "nodes": [
+        {"id":"zero","position":{"x":0,"y":0},"type":"trigger.timerZero","config":{"screenId":"{{clock.screenId}}","layerId":"{{clock.layerId}}","key":"{{clock.key}}"}},
+        {"id":"clearScreen","position":{"x":260,"y":0},"type":"action.clearScreen","config":{"screenId":"{{screen}}"}},
+        {"id":"take1","position":{"x":520,"y":0},"type":"action.take","config":{"screenId":"{{result.screenId}}","layerId":"{{result.layerId}}"}},
+        {"id":"wait","position":{"x":780,"y":0},"type":"logic.delay","config":{"ms":15000}},
+        {"id":"clear","position":{"x":1040,"y":0},"type":"action.clear","config":{"screenId":"{{result.screenId}}","layerId":"{{result.layerId}}"}},
+        {"id":"take2","position":{"x":1300,"y":0},"type":"action.take","config":{"screenId":"{{standings.screenId}}","layerId":"{{standings.layerId}}"}}
+      ],
+      "edges": [
+        {"id":"e1","from":{"node":"zero","port":"fired"},"to":{"node":"clearScreen","port":"in"},"kind":"event"},
+        {"id":"e2","from":{"node":"clearScreen","port":"done"},"to":{"node":"take1","port":"in"},"kind":"event"},
+        {"id":"e3","from":{"node":"take1","port":"done"},"to":{"node":"wait","port":"in"},"kind":"event"},
+        {"id":"e4","from":{"node":"wait","port":"out"},"to":{"node":"clear","port":"in"},"kind":"event"},
+        {"id":"e5","from":{"node":"clear","port":"done"},"to":{"node":"take2","port":"in"},"kind":"event"}
+      ]
+    }
+  ]
+}

@@ -1,0 +1,299 @@
+/* Lower third, Elegant style: centred on a translucent dark plate: the label in tracked caps in
+   the accent, the name in italic serif, the title in tracked caps between two thin accent rules.
+   An optional photo sits inset at the left inside a fine accent frame, an optional logo at the
+   right after a hairline. Missing parts collapse (data-empty, or an empty src / text).
+   Sizing: one unit --u, 1px at 1080p; a smaller layer box scales the graphic to fill it.
+   Motion: a slow fade; the rules extend outward from the title. Transform and opacity only,
+   every duration × --speed.
+   Variables: --accent (label, rules, frame), --secondary (title), --text (name), --plate,
+   --font-heading (name), --font-body (caps), --radius (px), --speed, --photo-shape. */
+
+:host {
+  --soft: cubic-bezier(0.33, 0, 0.2, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+}
+
+.lt {
+  position: absolute;
+  inset: 0;
+  container-type: size;
+}
+
+.lt__safe {
+  --u: 1px;
+  position: absolute;
+  left: 6cqw;
+  right: 6cqw;
+  bottom: 8cqh;
+  display: flex;
+  justify-content: center;
+}
+
+@supports (width: 1cqmin) {
+  .lt__safe {
+    --u: max(100cqmin / 1080, 100cqw / 1920);
+  }
+}
+
+@container (orientation: portrait) {
+  .lt__safe {
+    left: 5cqw;
+    right: 5cqw;
+    bottom: 17cqh;
+  }
+}
+
+@container ((max-width: 999px) and (max-height: 999px)) or (min-aspect-ratio: 2/1) {
+  .lt__safe {
+    /* The graphic's frame: the largest box of the design's aspect (4.8:1) in the layer box, at
+       its bottom centre; the look scales to fill it by its own extent at 1080p. */
+    --fw: min(100cqw, 480cqh);
+    --fh: min(100cqh, 100cqw / 4.8);
+    --u: min(var(--fw) / 1236, var(--fh) / 200);
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: var(--fw);
+    height: var(--fh);
+    margin-inline: auto;
+  }
+}
+
+.lt__box {
+  position: relative;
+  display: flex;
+  align-items: center;
+  max-width: 100%;
+  min-width: 0;
+  color: var(--text);
+  line-height: normal;
+  -webkit-font-smoothing: antialiased;
+}
+
+.lt__plate {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius);
+  background: var(--plate);
+}
+
+.lt__photo {
+  position: relative;
+  flex: none;
+  width: calc(124 * var(--u));
+  height: calc(124 * var(--u));
+  margin: calc(24 * var(--u)) 0 calc(24 * var(--u)) calc(30 * var(--u));
+  object-fit: cover;
+  border-radius: calc(var(--photo-shape) * 1%);
+  outline: max(1px, calc(1.5 * var(--u))) solid var(--accent);
+  outline-offset: calc(5 * var(--u));
+}
+
+.lt__text {
+  position: relative;
+  flex: 0 1 auto;
+  min-width: calc(520 * var(--u));
+  max-width: calc(1200 * var(--u));
+  box-sizing: border-box;
+  padding: calc(26 * var(--u)) calc(60 * var(--u)) calc(30 * var(--u));
+  text-align: center;
+}
+
+.lt__label {
+  margin-bottom: calc(8 * var(--u));
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--accent);
+  font-family: var(--font-body);
+  font-size: calc(17 * var(--u));
+  font-weight: 500;
+  line-height: 1.3;
+  letter-spacing: 0.34em;
+  text-transform: uppercase;
+}
+
+.lt__name {
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+  font-family: var(--font-heading);
+  font-size: calc(64 * var(--u));
+  font-style: italic;
+  font-weight: 400;
+  line-height: 1.12;
+}
+
+/* The title between two rules that grow from it. */
+.lt__line {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  column-gap: calc(22 * var(--u));
+  margin-top: calc(12 * var(--u));
+}
+
+.lt__rule {
+  /* No width of their own: they take what the title leaves, within bounds. */
+  flex: 1 1 0;
+  min-width: calc(64 * var(--u));
+  max-width: calc(150 * var(--u));
+  height: max(1px, calc(1.5 * var(--u)));
+  background: var(--accent);
+}
+
+.lt__rule--l {
+  transform-origin: right center;
+}
+
+.lt__rule--r {
+  transform-origin: left center;
+}
+
+.lt__title {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+  color: var(--secondary);
+  font-family: var(--font-body);
+  font-size: calc(20 * var(--u));
+  font-weight: 500;
+  line-height: 1.5;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  /* The tracking after the last letter, matched on the left so the line stays centred. */
+  padding-left: 0.28em;
+}
+
+.lt__logo {
+  position: relative;
+  flex: none;
+  box-sizing: content-box;
+  width: auto;
+  max-width: calc(200 * var(--u));
+  height: calc(56 * var(--u));
+  padding: 0 calc(36 * var(--u)) 0 calc(32 * var(--u));
+  border-left: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  object-fit: contain;
+}
+
+@container (orientation: portrait) {
+  .lt__text {
+    min-width: 0;
+    padding: calc(24 * var(--u)) calc(36 * var(--u)) calc(28 * var(--u));
+  }
+  .lt__photo {
+    width: calc(104 * var(--u));
+    height: calc(104 * var(--u));
+    margin-left: calc(24 * var(--u));
+  }
+  .lt__logo {
+    max-width: calc(120 * var(--u));
+    height: calc(44 * var(--u));
+    padding: 0 calc(24 * var(--u)) 0 calc(22 * var(--u));
+  }
+}
+
+.lt__label:empty,
+.lt__label[data-empty],
+.lt__name:empty,
+.lt__name[data-empty],
+.lt__line:has(> .lt__title:empty),
+.lt__line:has(> .lt__title[data-empty]),
+.lt__photo[src=""],
+.lt__photo[data-empty],
+.lt__logo[src=""],
+.lt__logo[data-empty] {
+  display: none;
+}
+
+/* In: a slow fade, the name settles, the rules extend outward from the title. */
+.lt[data-state="in"] .lt__plate {
+  animation: lt-fade calc(700ms * var(--speed)) var(--soft) both;
+}
+
+.lt[data-state="in"] .lt__photo,
+.lt[data-state="in"] .lt__logo {
+  animation: lt-fade calc(800ms * var(--speed)) var(--soft) calc(250ms * var(--speed)) both;
+}
+
+.lt[data-state="in"] .lt__label {
+  animation: lt-fade calc(800ms * var(--speed)) var(--soft) calc(200ms * var(--speed)) both;
+}
+
+.lt[data-state="in"] .lt__name {
+  animation: lt-settle calc(1000ms * var(--speed)) var(--soft) calc(260ms * var(--speed)) both;
+}
+
+.lt[data-state="in"] .lt__rule {
+  animation: lt-extend calc(1000ms * var(--speed)) var(--soft) calc(480ms * var(--speed)) both;
+}
+
+.lt[data-state="in"] .lt__title {
+  animation: lt-fade calc(900ms * var(--speed)) var(--soft) calc(560ms * var(--speed)) both;
+}
+
+/* Out: the text and rules fade first, the plate with the root. */
+.lt[data-state="out"] {
+  animation: lt-out calc(400ms * var(--speed)) var(--ease-in) forwards;
+}
+
+.lt[data-state="out"] .lt__text,
+.lt[data-state="out"] .lt__photo,
+.lt[data-state="out"] .lt__logo {
+  animation: lt-fade-out calc(240ms * var(--speed)) var(--ease-in) forwards;
+}
+
+@keyframes lt-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes lt-settle {
+  from {
+    opacity: 0;
+    transform: translateY(calc(8 * var(--u)));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes lt-extend {
+  from {
+    opacity: 0;
+    transform: scaleX(0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes lt-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes lt-out {
+  0%,
+  40% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* A layer box smaller than a frame, part 2: the plate fills the frame's height, the content centred on it. */
+@container ((max-width: 999px) and (max-height: 999px)) or (min-aspect-ratio: 2/1) {
+  .lt__box {
+    flex: 0 1 auto;
+  }
+}

@@ -1,0 +1,283 @@
+/* Next up countdown: label badge (UP NEXT / DELAYED), title, subtitle, a big countdown to the start
+   (a timer field) and the location. Full screen, or a compact card in the bottom-right corner.
+   The card carries data-status from the `status` field: "delayed" turns the label and the digits
+   to the warning colour.
+   The renderer sets data-state="in" | "out" on the root (.nu). Only transform and opacity animate.
+   Variables: --layout (full | corner), --accent, --warning (DELAYED), --ink (text on the label),
+   --panel, --text, --font, --scale (unitless), --radius (px, corner card only). */
+
+:host {
+  /* One scaled pixel; --scale resizes the content while the layout stays in its place. */
+  --u: calc(1px * var(--scale));
+  --r: calc(var(--radius) * var(--scale));
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+}
+
+/* The root fills the layer box and is its size container; .nu__safe holds the layout. */
+.nu {
+  position: absolute;
+  inset: 0;
+  container: nu-layer / size;
+}
+
+/* Named grid lines give the two --layout values: `full` is the whole frame, `corner` the cell in
+   the bottom-right corner of the safe area (8%). */
+.nu__safe {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: [full-start] minmax(0, 1fr) [corner-start] calc(620 * var(--u)) [corner-end] 154px [full-end];
+  grid-template-rows: [full-start] minmax(0, 1fr) [corner-start] auto [corner-end] 86px [full-end];
+}
+
+/* A layer box smaller than a frame (or a wide bar): the card fills the box whatever the layout,
+   and the unit scales the full card's content (about 952 × 742 at 1px, plus a small inset) to the
+   box. Small boxes switch to the compact card below. */
+@container ((max-width: 999px) and (max-height: 999px)) or (min-aspect-ratio: 2/1) {
+  .nu__safe {
+    --u: calc(min(100cqw / 1000, 100cqh / 790) * var(--scale));
+  }
+
+  .nu__box {
+    grid-area: full;
+  }
+}
+
+/* The box is the layout cell and a size container; the card inside adapts to it. */
+.nu__box {
+  grid-area: var(--layout);
+  display: flex;
+  min-width: 0;
+  container: nu / inline-size;
+}
+
+.nu__card {
+  --tone: var(--accent);
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 86px 154px;
+  background: var(--panel);
+  color: var(--text);
+  font-family: var(--font);
+  line-height: normal;
+  text-align: center;
+  -webkit-font-smoothing: antialiased;
+}
+
+.nu__card[data-status="delayed"] {
+  --tone: var(--warning);
+}
+
+.nu__label {
+  margin-bottom: calc(28 * var(--u));
+  padding: calc(6 * var(--u)) calc(18 * var(--u));
+  border-radius: calc(var(--r) * 0.5);
+  background: var(--tone);
+  color: var(--ink);
+  font-size: calc(30 * var(--u));
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.nu__title {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+  font-size: calc(104 * var(--u));
+  font-weight: 600;
+  line-height: 1.05;
+  text-transform: uppercase;
+}
+
+.nu__sub {
+  max-width: 100%;
+  margin-top: calc(18 * var(--u));
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+  font-size: calc(40 * var(--u));
+  font-weight: 400;
+  line-height: 1.25;
+  opacity: 0.8;
+}
+
+.nu__rule {
+  flex: none;
+  width: calc(120 * var(--u));
+  height: calc(6 * var(--u));
+  margin: calc(44 * var(--u)) 0 calc(28 * var(--u));
+  background: var(--tone);
+}
+
+.nu__time {
+  font-size: calc(220 * var(--u));
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+  color: var(--tone);
+}
+
+.nu__loc {
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  /* Room for descenders and accented capitals inside the clip; the margin cancels it. */
+  padding-block: 0.2em;
+  margin-block: -0.2em;
+  margin-top: calc(28 * var(--u));
+  font-size: calc(34 * var(--u));
+  font-weight: 400;
+  line-height: 1.2;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  opacity: 0.8;
+}
+
+.nu__label:empty,
+.nu__title:empty,
+.nu__sub:empty,
+.nu__loc:empty {
+  display: none;
+}
+
+/* A wide layer box (a bar): the full card with a small inset instead of the safe area. */
+@container nu-layer (min-aspect-ratio: 2/1) {
+  .nu__card {
+    padding: calc(24 * var(--u));
+  }
+}
+
+/* A small layer box: the card fills it in its compact form, scaled to the box. */
+@container nu-layer (max-width: 999px) and (max-height: 999px) {
+  .nu__card {
+    --u: calc(min(100cqw / 620, 100cqh / 400) * var(--scale));
+  }
+}
+
+/* Corner card: left-aligned, compact, rounded; the countdown stays the largest element. */
+@container nu (max-width: 1000px) {
+  .nu__card {
+    align-items: flex-start;
+    padding: calc(26 * var(--u)) calc(32 * var(--u)) calc(28 * var(--u));
+    border-radius: var(--r);
+    text-align: left;
+  }
+
+  .nu__label {
+    margin-bottom: calc(14 * var(--u));
+    padding: calc(3 * var(--u)) calc(10 * var(--u));
+    font-size: calc(18 * var(--u));
+  }
+
+  .nu__title {
+    font-size: calc(44 * var(--u));
+    line-height: 1.1;
+    text-wrap: pretty;
+  }
+
+  .nu__sub {
+    margin-top: calc(6 * var(--u));
+    font-size: calc(22 * var(--u));
+  }
+
+  .nu__rule {
+    width: calc(64 * var(--u));
+    height: calc(4 * var(--u));
+    margin: calc(18 * var(--u)) 0 calc(12 * var(--u));
+    transform-origin: left center;
+  }
+
+  .nu__time {
+    font-size: calc(96 * var(--u));
+  }
+
+  .nu__loc {
+    margin-top: calc(12 * var(--u));
+    font-size: calc(20 * var(--u));
+  }
+}
+
+/* In: the card fades up, the content follows in a stagger and the rule draws. */
+.nu[data-state="in"] .nu__card {
+  animation: nu-fade 420ms var(--ease) both;
+}
+
+.nu[data-state="in"] .nu__label {
+  animation: nu-rise 420ms var(--ease) 120ms both;
+}
+
+.nu[data-state="in"] .nu__title,
+.nu[data-state="in"] .nu__sub {
+  animation: nu-rise 460ms var(--ease) 180ms both;
+}
+
+.nu[data-state="in"] .nu__rule {
+  animation: nu-draw 420ms var(--ease) 280ms both;
+}
+
+.nu[data-state="in"] .nu__time {
+  animation: nu-zoom 520ms var(--ease) 320ms both;
+}
+
+.nu[data-state="in"] .nu__loc {
+  animation: nu-rise 420ms var(--ease) 420ms both;
+}
+
+/* Out: one animation on the root, so its animationend marks the end of the layer. */
+.nu[data-state="out"] {
+  animation: nu-out 360ms var(--ease-in) forwards;
+}
+
+@keyframes nu-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* No `to` frame: dimmed texts end at their own opacity. */
+@keyframes nu-rise {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+}
+
+@keyframes nu-draw {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+@keyframes nu-zoom {
+  from {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes nu-out {
+  to {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+}

@@ -1,0 +1,172 @@
+{
+  "schemaVersion": 2,
+  "name": "Corner bug",
+  "description": "A small corner tag for a channel or event.",
+  "preset": { "id": "corner-bug", "version": 3 },
+  "fields": [
+    { "key": "text", "label": "Text", "type": "text", "default": "" },
+    { "key": "logo", "label": "Logo", "type": "image", "default": "" }
+  ],
+  "variables": [
+    {
+      "key": "position",
+      "label": "Corner",
+      "type": "select",
+      "options": [
+        { "value": "top-left", "label": "Top left" },
+        { "value": "top-right", "label": "Top right" },
+        { "value": "bottom-left", "label": "Bottom left" },
+        { "value": "bottom-right", "label": "Bottom right" }
+      ],
+      "default": "top-right"
+    },
+    { "key": "accent", "label": "Accent", "type": "color", "default": "#22b8cf" },
+    { "key": "panel", "label": "Background", "type": "color", "default": "#0b0e13cc" },
+    { "key": "ink", "label": "Text color", "type": "color", "default": "#ffffff" },
+    { "key": "font", "label": "Font", "type": "font", "default": "IBM Plex Sans Condensed" },
+    { "key": "scale", "label": "Size", "type": "range", "min": 0.5, "max": 1.5, "step": 0.05, "unit": "", "default": "1" },
+    { "key": "radius", "label": "Corner radius", "type": "range", "min": 0, "max": 24, "step": 1, "unit": "px", "default": "4" },
+    { "key": "secondary", "label": "Secondary", "type": "color", "default": "#b3bac5" },
+    { "key": "plate", "label": "Plate", "type": "color", "default": "#0c0d11d9" },
+    { "key": "font-heading", "label": "Heading font", "type": "font", "default": "Space Grotesk" },
+    { "key": "font-body", "label": "Body font", "type": "font", "default": "IBM Plex Sans" },
+    { "key": "speed", "label": "Animation speed", "type": "range", "min": 0.5, "max": 2, "step": 0.1, "unit": "", "default": "1" }
+  ],
+  "autoOutMs": null,
+  "design": { "w": 240, "h": 75, "x": 1584, "y": 65, "sizing": "fit" },
+  "defaultVariant": "classic",
+  "variants": [
+    {
+      "id": "classic",
+      "name": "Classic",
+      "vars": {}
+    },
+    {
+      "id": "minimal",
+      "name": "Minimal",
+      "vars": {
+        "accent": "#ff5a3c",
+        "secondary": "#e4e7ec",
+        "plate": "#06080c",
+        "font-heading": "Manrope",
+        "font-body": "Manrope",
+        "radius": "2",
+        "speed": "1",
+        "ink": "#ffffff"
+      }
+    },
+    {
+      "id": "corporate",
+      "name": "Corporate",
+      "vars": {
+        "accent": "#2563eb",
+        "secondary": "#16202e",
+        "plate": "#ffffff",
+        "font-heading": "IBM Plex Sans",
+        "font-body": "IBM Plex Sans",
+        "radius": "8",
+        "speed": "1",
+        "ink": "#16202e"
+      }
+    },
+    {
+      "id": "news",
+      "name": "News",
+      "vars": {
+        "accent": "#c8102e",
+        "secondary": "#16202e",
+        "plate": "#ffffff",
+        "font-heading": "Archivo",
+        "font-body": "Archivo",
+        "radius": "0",
+        "speed": "1",
+        "ink": "#ffffff"
+      }
+    },
+    {
+      "id": "elegant",
+      "name": "Elegant",
+      "vars": {
+        "accent": "#d9bc7a",
+        "secondary": "#d6cdbb",
+        "plate": "#0d0c0bc7",
+        "font-heading": "Playfair Display",
+        "font-body": "Jost",
+        "radius": "2",
+        "speed": "1",
+        "ink": "#f5f0e6"
+      }
+    },
+    {
+      "id": "swiss",
+      "name": "Swiss",
+      "vars": {
+        "accent": "#e2231a",
+        "secondary": "#6b6b6b",
+        "plate": "#ffffff",
+        "font-heading": "Instrument Sans",
+        "font-body": "Instrument Sans",
+        "radius": "0",
+        "speed": "1",
+        "ink": "#111111"
+      }
+    },
+    {
+      "id": "editorial",
+      "name": "Editorial",
+      "vars": {
+        "accent": "#ff7a4d",
+        "secondary": "#a8a49b",
+        "plate": "#111214",
+        "font-heading": "Source Serif 4",
+        "font-body": "Instrument Sans",
+        "radius": "0",
+        "speed": "1",
+        "ink": "#f4f1ea"
+      }
+    },
+    {
+      "id": "inline",
+      "name": "Inline",
+      "vars": {
+        "accent": "#2b59ff",
+        "secondary": "#5b6270",
+        "plate": "#ffffff",
+        "font-heading": "Plus Jakarta Sans",
+        "font-body": "Plus Jakarta Sans",
+        "radius": "8",
+        "speed": "1",
+        "ink": "#12141a"
+      }
+    },
+    {
+      "id": "frame",
+      "name": "Frame",
+      "vars": {
+        "accent": "#33d6ff",
+        "secondary": "#b3bac5",
+        "plate": "#0c0d11d9",
+        "font-heading": "Space Grotesk",
+        "font-body": "IBM Plex Sans",
+        "radius": "2",
+        "speed": "1",
+        "ink": "#f5f5f2"
+      }
+    },
+    {
+      "id": "pill",
+      "name": "Pill",
+      "vars": {
+        "accent": "#6c4cff",
+        "secondary": "#6b6880",
+        "plate": "#ffffff",
+        "font-heading": "Outfit",
+        "font-body": "Outfit",
+        "radius": "24",
+        "speed": "1",
+        "ink": "#1d1a2e"
+      }
+    }
+  ],
+  "updatedAt": ""
+}

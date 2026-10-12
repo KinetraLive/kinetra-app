@@ -1,0 +1,203 @@
+/* Ticker, Swiss style: a full-width white strap; at its left the label on a field of accent, then
+   the items scrolling right to left, each led by a small accent square.
+   Sizing: one unit --u, 1px at 1080p; a strap-shaped layer box (≤ 300px tall) is filled.
+   Motion: a hard mask wipe (the strap slides inside a clipping wrapper that slides the other way),
+   the label, then the items fade in and scroll. Transform and opacity only.
+   Variables: --accent (label field, markers), --plate, --text (items), --font-body,
+   --radius (px), --speed (seconds per loop; this template's own meaning).
+
+   The loop: the track holds two identical runs of the items, each at least as wide as the window
+   (a container, so a run's min-width is 100cqw of it). The track moves left by -50%, exactly one
+   run, then starts over: the jump is invisible. CSS only, and only while the layer is on air. */
+
+:host {
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --wipe: cubic-bezier(0.7, 0, 0.2, 1);
+}
+
+.tk {
+  position: absolute;
+  inset: 0;
+  container-type: size;
+}
+
+.tk__safe {
+  --u: 1px;
+  position: absolute;
+  left: 6cqw;
+  right: 6cqw;
+  bottom: 7cqh;
+}
+
+@supports (width: 1cqmin) {
+  .tk__safe {
+    --u: max(100cqmin / 1080, 100cqw / 1920);
+  }
+}
+
+@container (orientation: portrait) {
+  .tk__safe {
+    left: 0;
+    right: 0;
+    bottom: 14cqh;
+  }
+}
+
+@container (max-height: 300px) {
+  .tk__safe {
+    --u: min((100cqh - 2px) / 72, max(100cqw / 1920, min(100cqw / 800, 1px)));
+    left: 0;
+    right: 0;
+    top: 50%;
+    bottom: auto;
+    transform: translateY(-50%);
+  }
+}
+
+.tk__wipe {
+  overflow: hidden;
+  border-radius: var(--radius);
+}
+
+.tk__strap {
+  display: flex;
+  align-items: stretch;
+  height: calc(72 * var(--u));
+  background: var(--plate);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 10%, transparent);
+  line-height: normal;
+  -webkit-font-smoothing: antialiased;
+}
+
+@container (orientation: portrait) {
+  .tk__wipe {
+    border-radius: 0;
+  }
+}
+
+.tk__label {
+  flex: none;
+  display: flex;
+  align-items: center;
+  max-width: calc(420 * var(--u));
+  padding: 0 calc(28 * var(--u));
+  background: var(--accent);
+}
+
+.tk__ltext {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--plate);
+  font-family: var(--font-body);
+  font-size: calc(26 * var(--u));
+  font-weight: 600;
+  letter-spacing: -0.005em;
+}
+
+.tk__label:has(> .tk__ltext:empty),
+.tk__label:has(> .tk__ltext[data-empty]) {
+  display: none;
+}
+
+.tk__window {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  container-type: inline-size;
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: calc(28 * var(--u));
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 1em, #000 calc(100% - 1em), transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 1em, #000 calc(100% - 1em), transparent);
+}
+
+.tk__track {
+  display: flex;
+  flex: none;
+  width: max-content;
+}
+
+.tk__run {
+  display: flex;
+  flex: none;
+  min-width: 1612px;
+  min-width: 100cqw;
+}
+
+.tk__item {
+  flex: none;
+  display: flex;
+  align-items: center;
+  column-gap: 0.75em;
+  padding: 0 0.75em;
+  font-weight: 400;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.tk__item::before {
+  content: "";
+  flex: none;
+  width: 0.36em;
+  height: 0.36em;
+  background: var(--accent);
+}
+
+/* In: the wipe, the label, then the items fade in and start to scroll. */
+.tk[data-state="in"] .tk__wipe {
+  animation: tk-mask 520ms var(--wipe) both;
+}
+
+.tk[data-state="in"] .tk__strap {
+  animation: tk-unmask 520ms var(--wipe) both;
+}
+
+.tk[data-state="in"] .tk__ltext {
+  animation: tk-in 340ms var(--ease) 300ms both;
+}
+
+.tk[data-state="in"] .tk__window {
+  animation: tk-fade 400ms var(--ease) 380ms both;
+}
+
+.tk[data-state="in"] .tk__track {
+  animation: tk-scroll var(--speed) linear 380ms infinite;
+}
+
+/* Out: the items go at once (no jump back), the strap wipes off; the root animation's end is the
+   layer's end. */
+.tk[data-state="out"] .tk__window {
+  opacity: 0;
+}
+
+.tk[data-state="out"] .tk__wipe {
+  animation: tk-mask-out 320ms var(--wipe) forwards;
+}
+
+.tk[data-state="out"] .tk__strap {
+  animation: tk-unmask-out 320ms var(--wipe) forwards;
+}
+
+.tk[data-state="out"] {
+  animation: tk-out 340ms linear forwards;
+}
+
+@keyframes tk-mask { from { transform: translateX(-101%); } to { transform: none; } }
+
+@keyframes tk-unmask { from { transform: translateX(101%); } to { transform: none; } }
+
+@keyframes tk-mask-out { to { transform: translateX(101%); } }
+
+@keyframes tk-unmask-out { to { transform: translateX(-101%); } }
+
+@keyframes tk-in { from { opacity: 0; transform: translateX(calc(-10 * var(--u))); } to { opacity: 1; transform: none; } }
+
+@keyframes tk-fade { from { opacity: 0; } to { opacity: 1; } }
+
+@keyframes tk-scroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+
+@keyframes tk-out { 0%, 90% { opacity: 1; } 100% { opacity: 0; } }

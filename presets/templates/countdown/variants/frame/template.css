@@ -1,0 +1,287 @@
+/* Countdown, Frame style: the frame dimmed by the plate colour and a centred block held by large
+   accent corner brackets: an optional logo, the title as a mono label ("DOORS OPEN IN"), the
+   digits in large IBM Plex Mono (fixed width, so they never jitter) and a subtitle.
+   Sizing: one unit --u, 1px at 1080p on the frame's short side (16:9 and 9:16 alike; a smaller
+   layer box scales the whole block). The digits also stay within the frame's width, so an hour
+   counter fits a vertical frame. The renderer sets data-state="in" | "out" on the root (.cd).
+   Only transform and opacity animate; every duration is multiplied by --speed.
+   Variables: --accent (brackets, title), --secondary (subtitle), --text (digits), --plate
+   (background), --font-body, --radius (px), --speed (duration factor). */
+
+:host {
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --snap: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --mono: "IBM Plex Mono", ui-monospace, monospace;
+}
+
+.cd {
+  position: absolute;
+  inset: 0;
+  container-type: size;
+}
+
+.cd__bg {
+  position: absolute;
+  inset: 0;
+  background: var(--plate);
+}
+
+/* Title safe: the block stays inside 86% × 84% of the frame. */
+.cd__stage {
+  --u: 1px;
+  position: absolute;
+  inset: 8cqh 7cqw;
+  display: grid;
+  place-items: center;
+}
+
+@supports (width: 1cqmin) {
+  .cd__stage {
+    --u: calc(100cqmin / 1080);
+  }
+}
+
+@container (orientation: portrait) {
+  .cd__stage {
+    inset: 10cqh 6cqw;
+  }
+}
+
+/* A layer box smaller than a frame (or a wide bar): no title-safe margins, a small inset, and
+   the unit scales the block (1009 × 736 at 1px: a block with room, plus the inset) to the box. */
+@container ((max-width: 999px) and (max-height: 999px)) or (min-aspect-ratio: 2/1) {
+  .cd__stage {
+    --u: min(100cqw / 1057, 100cqh / 784);
+    inset: calc(24 * var(--u));
+  }
+}
+
+
+
+.cd__block {
+  --arm: calc(72 * var(--u));
+  --bw: max(2px, calc(4 * var(--u)));
+  --fly: calc(64 * var(--u));
+  position: relative;
+  box-sizing: border-box;
+  max-width: min(100%, calc(1500 * var(--u)));
+  padding: calc(72 * var(--u)) calc(104 * var(--u)) calc(80 * var(--u));
+  text-align: center;
+  color: var(--text);
+  line-height: normal;
+  -webkit-font-smoothing: antialiased;
+}
+
+@container (orientation: portrait) {
+  .cd__block {
+    padding: calc(72 * var(--u)) calc(56 * var(--u)) calc(80 * var(--u));
+  }
+}
+
+/* Viewfinder brackets on the block's corners. */
+.cd__br {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.cd__br > i {
+  position: absolute;
+  box-sizing: border-box;
+  width: var(--arm);
+  height: var(--arm);
+  border: 0 solid var(--accent);
+}
+
+.cd__br > i:nth-child(1) {
+  --x: -1;
+  --y: -1;
+  left: 0;
+  top: 0;
+  border-width: var(--bw) 0 0 var(--bw);
+  border-top-left-radius: var(--radius);
+}
+
+.cd__br > i:nth-child(2) {
+  --x: 1;
+  --y: -1;
+  right: 0;
+  top: 0;
+  border-width: var(--bw) var(--bw) 0 0;
+  border-top-right-radius: var(--radius);
+}
+
+.cd__br > i:nth-child(3) {
+  --x: -1;
+  --y: 1;
+  left: 0;
+  bottom: 0;
+  border-width: 0 0 var(--bw) var(--bw);
+  border-bottom-left-radius: var(--radius);
+}
+
+.cd__br > i:nth-child(4) {
+  --x: 1;
+  --y: 1;
+  right: 0;
+  bottom: 0;
+  border-width: 0 var(--bw) var(--bw) 0;
+  border-bottom-right-radius: var(--radius);
+}
+
+.cd__logo {
+  display: block;
+  width: auto;
+  max-width: calc(380 * var(--u));
+  height: calc(76 * var(--u));
+  margin: 0 auto calc(44 * var(--u));
+  object-fit: contain;
+}
+
+.cd__title {
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: calc(34 * var(--u));
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+}
+
+/* The digits: as large as the frame allows (an hour counter, 7 characters, fits 9:16). */
+.cd__time {
+  margin: calc(6 * var(--u)) 0 calc(4 * var(--u));
+  white-space: nowrap;
+  font-family: var(--mono);
+  font-size: min(calc(272 * var(--u)), 17cqw);
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums;
+}
+
+.cd__sub {
+  max-width: calc(1100 * var(--u));
+  margin: calc(8 * var(--u)) auto 0;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+  color: var(--secondary);
+  font-family: var(--font-body);
+  font-size: calc(36 * var(--u));
+  font-weight: 400;
+  line-height: 1.3;
+}
+
+.cd__title:empty,
+.cd__sub:empty,
+.cd__title[data-empty],
+.cd__sub[data-empty],
+.cd__logo[src=""],
+.cd__logo[data-empty] {
+  display: none;
+}
+
+/* In: the background dims, the brackets snap in from outside, then logo, title, digits, subtitle. */
+.cd[data-state="in"] .cd__bg {
+  animation: cd-fade calc(420ms * var(--speed)) var(--ease) both;
+}
+
+.cd[data-state="in"] .cd__br > i {
+  animation: cd-snap calc(460ms * var(--speed)) var(--snap) calc(80ms * var(--speed)) both;
+}
+
+.cd[data-state="in"] .cd__logo,
+.cd[data-state="in"] .cd__title {
+  animation: cd-rise calc(420ms * var(--speed)) var(--ease) calc(200ms * var(--speed)) both;
+}
+
+.cd[data-state="in"] .cd__time {
+  animation: cd-digits calc(480ms * var(--speed)) var(--ease) calc(260ms * var(--speed)) both;
+}
+
+.cd[data-state="in"] .cd__sub {
+  animation: cd-rise calc(420ms * var(--speed)) var(--ease) calc(340ms * var(--speed)) both;
+}
+
+/* Out: the content goes first, the brackets fly back out, then the background; the root
+   animation's end is the end of the layer. */
+.cd[data-state="out"] {
+  animation: cd-out calc(360ms * var(--speed)) var(--ease-in) forwards;
+}
+
+.cd[data-state="out"] .cd__block > :not(.cd__br) {
+  animation: cd-fade-out calc(160ms * var(--speed)) var(--ease-in) forwards;
+}
+
+.cd[data-state="out"] .cd__br > i {
+  animation: cd-snap-out calc(240ms * var(--speed)) var(--ease-in) calc(60ms * var(--speed)) forwards;
+}
+
+@keyframes cd-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes cd-snap {
+  from {
+    opacity: 0;
+    transform: translate(calc(var(--x) * var(--fly)), calc(var(--y) * var(--fly)));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes cd-snap-out {
+  to {
+    opacity: 0;
+    transform: translate(calc(var(--x) * var(--fly) * 0.6), calc(var(--y) * var(--fly) * 0.6));
+  }
+}
+
+@keyframes cd-rise {
+  from {
+    opacity: 0;
+    transform: translateY(calc(16 * var(--u)));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes cd-digits {
+  from {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes cd-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes cd-out {
+  0%,
+  40% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}

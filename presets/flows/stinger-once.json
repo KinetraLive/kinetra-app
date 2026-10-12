@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "id": "stinger-once",
+  "name": "Stinger without double-fire",
+  "description": "Plays the stinger for 3 s; presses within 2 s of the last one are ignored.",
+  "category": "show",
+  "slots": [
+    {"key":"stinger","label":"Stinger layer","kind":"layer","prefer":{"template":"fullscreen-title"}}
+  ],
+  "flows": [
+    {
+      "armed": "cue",
+      "nodes": [
+        {"id":"cue","position":{"x":0,"y":0},"type":"trigger.cue","config":{"label":"Stinger"}},
+        {"id":"throttle","position":{"x":260,"y":0},"type":"logic.throttle","config":{"ms":2000}},
+        {"id":"take","position":{"x":520,"y":0},"type":"action.take","config":{"screenId":"{{stinger.screenId}}","layerId":"{{stinger.layerId}}","forMs":3000}}
+      ],
+      "edges": [
+        {"id":"e1","from":{"node":"cue","port":"fired"},"to":{"node":"throttle","port":"in"},"kind":"event"},
+        {"id":"e2","from":{"node":"throttle","port":"out"},"to":{"node":"take","port":"in"},"kind":"event"}
+      ]
+    }
+  ]
+}

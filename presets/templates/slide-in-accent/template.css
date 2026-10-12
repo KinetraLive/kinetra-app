@@ -1,0 +1,189 @@
+/* Slide-in accent: an accent block (with an optional tag) slides in, then the name panel
+   wipes out from behind it.
+   The renderer sets data-state="in" | "out" on the root (.sa). Only transform and opacity animate.
+   Variables: --accent, --ink (tag text), --panel, --text, --font, --scale (unitless),
+   --radius (px), --align (left | center | right). */
+
+:host {
+  /* One scaled pixel; --scale resizes the graphic while it stays anchored to the safe area. */
+  --u: calc(1px * var(--scale));
+  --r: calc(var(--radius) * var(--scale));
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+}
+
+/* The root fills the layer box and is its size container; .sa__safe holds the layout. */
+.sa {
+  position: absolute;
+  inset: 0;
+  container-type: size;
+}
+
+/* Safe area: 8% of 1920 left/right, 8% of 1080 from the bottom. text-align places the graphic. */
+.sa__safe {
+  position: absolute;
+  left: 154px;
+  right: 154px;
+  bottom: 86px;
+  text-align: var(--align);
+  line-height: 0;
+}
+
+/* A layer box smaller than a frame (or a wide bar): the graphic scales to fill it. */
+@container ((max-width: 999px) and (max-height: 999px)) or (min-aspect-ratio: 2/1) {
+  .sa__safe {
+    /* The graphic fills the box: its extent at 1080p with the sample (accent block and name panel). */
+    --u: calc(min(100cqw / 656, 100cqh / 133) * var(--scale));
+    left: 0;
+    right: 0;
+    bottom: 0;
+  }
+}
+
+.sa__box {
+  display: inline-flex;
+  align-items: stretch;
+  vertical-align: bottom;
+  max-width: min(100%, calc(1320 * var(--u)));
+  font-family: var(--font);
+  line-height: normal;
+  text-align: left;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* The accent sits above the panel so the panel appears to come out from behind it. */
+.sa__accent {
+  position: relative;
+  z-index: 1;
+  flex: none;
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  min-width: calc(44 * var(--u));
+  padding: 0 calc(22 * var(--u));
+  background: var(--accent);
+  color: var(--ink);
+  border-radius: var(--r) 0 0 var(--r);
+}
+
+.sa__tag {
+  max-width: calc(360 * var(--u));
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  padding-block: 0.2em; /* descender/accent room inside the clip */
+  margin-block: -0.2em;
+  font-size: calc(22 * var(--u));
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.sa__panel {
+  position: relative;
+  flex: 0 1 auto;
+  min-width: calc(360 * var(--u));
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  row-gap: calc(4 * var(--u));
+  padding: calc(20 * var(--u)) calc(40 * var(--u)) calc(22 * var(--u)) calc(30 * var(--u));
+  color: var(--text);
+}
+
+.sa__bg {
+  position: absolute;
+  inset: 0;
+  background: var(--panel);
+  border-radius: 0 var(--r) var(--r) 0;
+  transform-origin: left center;
+}
+
+.sa__name,
+.sa__title {
+  position: relative; /* paint above the absolutely positioned background */
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  /* Room for descenders and accented capitals inside the clip; the margin cancels it. */
+  padding-block: 0.2em;
+  margin-block: -0.2em;
+}
+
+.sa__name {
+  font-size: calc(48 * var(--u));
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+}
+
+.sa__title {
+  font-size: calc(26 * var(--u));
+  font-weight: 400;
+  line-height: 1.2;
+  opacity: 0.72;
+}
+
+.sa__tag:empty,
+.sa__name:empty,
+.sa__title:empty {
+  display: none;
+}
+
+/* In: the accent slides in, the panel wipes out from behind it, then the text follows. */
+.sa[data-state="in"] .sa__accent {
+  animation: sa-slide 380ms var(--ease) both;
+}
+
+.sa[data-state="in"] .sa__bg {
+  animation: sa-wipe 450ms var(--ease) 180ms both;
+}
+
+.sa[data-state="in"] .sa__name {
+  animation: sa-text-in 380ms var(--ease) 300ms both;
+}
+
+.sa[data-state="in"] .sa__title {
+  animation: sa-text-in 340ms var(--ease) 360ms both;
+}
+
+/* Out: one animation on the root, so its animationend marks the end of the layer. */
+.sa[data-state="out"] {
+  animation: sa-out 300ms var(--ease-in) forwards;
+}
+
+@keyframes sa-slide {
+  from {
+    opacity: 0;
+    transform: translateX(-48px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes sa-wipe {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+/* No `to` frame: the title ends at its own (dimmed) opacity. */
+@keyframes sa-text-in {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+}
+
+@keyframes sa-out {
+  to {
+    opacity: 0;
+    transform: translateX(-32px);
+  }
+}

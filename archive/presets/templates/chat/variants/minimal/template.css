@@ -1,0 +1,294 @@
+/* Chat, Minimal style: no plates. A stack of messages on the right of the safe area, newest at the
+   bottom; each is led by a 3px bar in the user's colour (else the accent): the user, the platform
+   in small capitals, then the text. White type with a soft halo (blurred shadows and a feathered
+   shade behind each message, in the plate colour) so it reads on light pictures too.
+   Highlighted messages (row mark _highlight, or highlighted = "true") get a wider accent bar and
+   the user in the accent. Older messages leave over the top edge; at most 8 show.
+   Sizing: one unit --u, 1px at 1080p; a smaller layer box scales the stack to fill it.
+   The renderer sets data-state="in" | "out" on the root (.ch); rows get --i and data-row.
+   Only transform and opacity animate; every duration is multiplied by --speed.
+   Variables: --accent, --secondary (platform), --text, --plate (halo colour), --font-heading,
+   --font-body, --speed. */
+
+:host {
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --halo: 0 0 0.04em color-mix(in srgb, var(--plate) 90%, transparent),
+    0 0 0.1em color-mix(in srgb, var(--plate) 75%, transparent),
+    0 0.02em 0.22em color-mix(in srgb, var(--plate) 55%, transparent);
+  --shade: drop-shadow(0 0 2px color-mix(in srgb, var(--plate) 70%, transparent))
+    drop-shadow(0 0 8px color-mix(in srgb, var(--plate) 40%, transparent));
+}
+
+.ch {
+  position: absolute;
+  inset: 0;
+  container-type: size;
+}
+
+/* Right side of the safe area; vertical frames: the lower half, clear of platform UI. */
+.ch__safe {
+  --u: 1px;
+  position: absolute;
+  top: 10cqh;
+  right: 5cqw;
+  bottom: 9cqh;
+  width: calc(600 * var(--u));
+}
+
+@supports (width: 1cqmin) {
+  .ch__safe {
+    --u: max(100cqmin / 1080, 100cqw / 1920);
+  }
+}
+
+@container (orientation: portrait) {
+  .ch__safe {
+    --u: calc(125cqw / 1080);
+    top: 42cqh;
+    left: 6cqw;
+    bottom: 17cqh;
+    width: auto;
+  }
+}
+
+/* A layer box smaller than a frame: the stack fills the box. */
+@container ((max-width: 999px) and (max-height: 999px)) or (min-aspect-ratio: 2/1) {
+  .ch__safe {
+    --u: min(100cqw / 600, (100cqh - 6px) / 491);
+    inset: 0;
+    width: auto;
+  }
+}
+
+.ch__panel {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  height: 100%;
+  color: var(--text);
+  line-height: normal;
+  -webkit-font-smoothing: antialiased;
+}
+
+.ch__head {
+  flex: none;
+  margin-bottom: calc(26 * var(--u));
+  overflow: clip;
+  overflow-clip-margin: 0.6em;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--accent);
+  font-family: var(--font-heading);
+  font-size: calc(18 * var(--u));
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  text-shadow: var(--halo);
+}
+
+.ch__head:empty,
+.ch__head[data-empty] {
+  display: none;
+}
+
+/* The messages: bottom-aligned; what does not fit is clipped at the top (the padding leaves
+   room for the halo inside the clip; the margin cancels it). */
+.ch__list {
+  flex: 0 1 auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  row-gap: calc(22 * var(--u));
+  min-height: 0;
+  overflow: clip;
+  padding: calc(56 * var(--u));
+  margin: calc(-56 * var(--u));
+}
+
+.ch__msg {
+  position: relative;
+  isolation: isolate;
+  flex: none;
+  display: flex;
+  align-items: stretch;
+  column-gap: calc(20 * var(--u));
+}
+
+.ch__msg:nth-last-child(n + 9) {
+  display: none;
+}
+
+/* The halo: a feathered shade behind each message. */
+.ch__msg::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: calc(6 * var(--u)) 0;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--plate) 30%, transparent);
+  filter: blur(calc(22 * var(--u)));
+}
+
+/* The user's colour (an invalid or empty colour leaves the accent). */
+.ch__bar {
+  flex: none;
+  width: max(2px, calc(3 * var(--u)));
+  color: var(--accent);
+  background: currentColor;
+  filter: var(--shade);
+  transform-origin: 50% 100%;
+}
+
+.ch__msg[data-highlight] .ch__bar,
+.ch__msg[data-hl="true"] .ch__bar {
+  width: max(4px, calc(6 * var(--u)));
+  background: var(--accent);
+}
+
+.ch__body {
+  min-width: 0;
+  flex: 1 1 auto;
+  text-shadow: var(--halo);
+}
+
+.ch__meta {
+  display: flex;
+  align-items: baseline;
+  column-gap: calc(14 * var(--u));
+  min-width: 0;
+  margin-bottom: calc(4 * var(--u));
+  white-space: nowrap;
+  line-height: 1.2;
+}
+
+.ch__user {
+  min-width: 0;
+  overflow: clip;
+  overflow-clip-margin: 0.6em;
+  text-overflow: ellipsis;
+  font-family: var(--font-heading);
+  font-size: calc(21 * var(--u));
+  font-weight: 600;
+}
+
+.ch__msg[data-highlight] .ch__user,
+.ch__msg[data-hl="true"] .ch__user {
+  color: var(--accent);
+}
+
+.ch__platform {
+  flex: none;
+  color: var(--secondary);
+  font-family: var(--font-heading);
+  font-size: calc(13 * var(--u));
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  opacity: 0.8;
+}
+
+.ch__text {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  font-family: var(--font-body);
+  font-size: calc(26 * var(--u));
+  font-weight: 500;
+  line-height: 1.32;
+}
+
+.ch__user:empty,
+.ch__user[data-empty],
+.ch__platform:empty,
+.ch__platform[data-empty],
+.ch__text:empty,
+.ch__text[data-empty] {
+  display: none;
+}
+
+/* In: the title, then each message: its bar grows, its text fades up 12px. A message added on
+   air does the same on its own; a removed one fades. */
+.ch[data-state="in"] .ch__head {
+  animation: ch-rise calc(400ms * var(--speed)) var(--ease) both;
+}
+
+.ch[data-state="in"] .ch__bar {
+  animation: ch-grow calc(320ms * var(--speed)) var(--ease) calc(60ms * var(--speed)) both;
+}
+
+.ch[data-state="in"] .ch__msg::before {
+  animation: ch-fade calc(400ms * var(--speed)) var(--ease) calc(60ms * var(--speed)) both;
+}
+
+.ch[data-state="in"] .ch__body {
+  animation: ch-rise calc(420ms * var(--speed)) var(--ease) calc(180ms * var(--speed)) both;
+}
+
+.ch__msg[data-row="out"] {
+  animation: ch-fade-out calc(200ms * var(--speed)) var(--ease-in) forwards;
+}
+
+/* Out: everything fades; the root animation's end is the end of the layer. */
+.ch[data-state="out"] {
+  animation: ch-out calc(300ms * var(--speed)) var(--ease-in) forwards;
+}
+
+.ch[data-state="out"] .ch__bar {
+  transform-origin: 50% 0;
+  animation: ch-shrink calc(220ms * var(--speed)) var(--ease-in) forwards;
+}
+
+@keyframes ch-grow {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: none;
+  }
+}
+
+@keyframes ch-shrink {
+  to {
+    transform: scaleY(0);
+  }
+}
+
+@keyframes ch-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes ch-rise {
+  from {
+    opacity: 0;
+    transform: translateY(calc(12 * var(--u)));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes ch-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes ch-out {
+  0%,
+  30% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}

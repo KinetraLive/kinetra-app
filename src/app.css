@@ -1,0 +1,500 @@
+/*
+ * Kinetra design tokens + base styles. Components use these tokens, never raw values.
+ *
+ * Theme: dark is the default. Light applies when the OS prefers light and the user hasn't chosen
+ * dark, or whenever <html data-theme="light"> is set (an explicit choice always wins). The two
+ * light blocks below must stay identical.
+ *
+ * Colour rules
+ * - --tally-program (on air) and --tally-preview (preview/ready/connected) are reserved for
+ *   status. Never decorative, never for success messages or buttons.
+ * - --accent is used sparingly: selection, active state and key actions (TAKE). Text ON an accent
+ *   fill uses --accent-ink; accent used AS text uses --accent-text (light: 4.5:1 on bg/surface-1/2,
+ *   not on surface-3). Primary buttons are neutral (--primary: light on dark, dark on light).
+ * - --focus draws the focus ring; --accent the selection border of list items and cards.
+ * - Screen tiles and cards: --selected-line (neutral, 3:1 on its surfaces) when selected,
+ *   --program-line (solid) on air, --preview-line (dashed) with a Studio Preview pending.
+ * - --danger is only for destructive actions and errors: a softer red than tally red, and never a
+ *   dot or a status fill (status is always a TallyDot with text). Tally red stays on air only.
+ * - No shadows, no gradients. Depth comes from the surfaces (bg < surface-1 < 2 < 3) and 1px lines.
+ * - Type: every heading and label uses --font-heading (IBM Plex Sans, semibold); the logo is
+ *   an outlined SVG (src/assets/brand/), no display font. Mono (IBM Plex Mono) only for technical values.
+ *   Every font is bundled (fonts.css); nothing loads from a CDN.
+ * src/lib/styles/tokens.test.ts checks every contrast pair this file relies on.
+ */
+
+@import "./lib/styles/fonts.css";
+
+:root {
+  /* ---- Type ---- */
+  --font-body: "IBM Plex Sans", system-ui, "Segoe UI", sans-serif;
+  /* Page titles, section labels, dialog and panel headings. */
+  --font-heading: var(--font-body);
+  --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --fs-label: 11px;
+  --fs-xs: 11px;
+  --fs-sm: 12px;
+  --fs-md: 13px;
+  --fs-lg: 15px;
+  --fs-xl: 18px;
+  --fs-title: 22px;
+  --lh: 1.45;
+  --tracking-label: 0.06em;
+
+  /* ---- Space: 8px base, 4px half-step ---- */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 24px;
+  --s-6: 32px;
+  --s-7: 40px;
+  --s-8: 48px;
+
+  /* ---- Density / layout ---- */
+  --row-h: 32px;
+  --control-h: 32px;
+  --control-h-sm: 24px;
+  --topbar-h: 44px;
+  --rail-w: 48px;
+  --sidebar-w: 208px;
+
+  /* ---- Shape ---- */
+  --r-control: 6px;
+  --r-panel: 10px;
+  --r-full: 999px;
+
+  /* ---- Motion: 120–220 ms, transform/opacity only ---- */
+  --dur-fast: 120ms;
+  --dur: 160ms;
+  --dur-slow: 220ms;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --page-shift: 8px;
+  --tally-pulse: 1.2s;
+  --delay-tooltip: 400ms;
+  --period-spin: 800ms;
+  --period-indeterminate: 1400ms;
+
+  /* ---- Focus ring and tally lines (outside the element) ---- */
+  --vf-stroke: 2px;
+  --vf-gap: 3px;
+  /* Room a grid leaves around tiles: the tally line, then the focus ring outside it. */
+  --vf-room: calc(2 * var(--vf-gap) + var(--vf-stroke));
+
+  /* ---- Tally (both themes; reserved for status) ---- */
+  --tally-program: #ff4545;
+  --tally-preview: #2fd27a;
+  --tally-ink: #0c0d11; /* text on a tally fill (5.7:1 on program) */
+
+  /* ---- Dark checkerboard (both themes) ----
+     Static output thumbnails (the New template gallery) are judged as they will air: over dark
+     video. White graphics would vanish on the light theme's checkerboard, so these two neutral
+     greys (the dark theme's --surface-1 and --line) stay the same in both themes. */
+  --checker-dark-1: #121318;
+  --checker-dark-2: #2a2c35;
+  --checker-dark-ink: #9a9da6; /* text on it: the dark theme's --text-muted */
+
+  /* ---- Dark (default) ---- */
+  color-scheme: dark;
+  --bg: #141518;
+  --surface-1: #1a1b1f;
+  --surface-2: #202125;
+  --surface-3: #292a2f;
+  --line: #33353b;
+  --line-strong: #474950;
+  --text: #ededea;
+  --text-muted: #a2a4aa;
+  --accent: #3d9fbd;
+  --accent-hover: #52adc8;
+  --accent-ink: #111214;
+  --accent-text: #5db6d1;
+  --accent-soft: color-mix(in srgb, var(--accent) 14%, transparent);
+  --focus: var(--accent-text);
+  --selected-bg: var(--surface-3);
+  --primary: #e6e6e3;
+  --primary-hover: #f4f4f2;
+  --primary-ink: #111214;
+  --tally-program-ring: transparent;
+  --tally-preview-ring: transparent;
+  --selected-line: #7a7c84;
+  --program-line: var(--tally-program);
+  --preview-line: var(--tally-preview);
+  --danger: #f2676d;
+  --danger-hover: #f57e83;
+  --danger-ink: #111214;
+  --danger-soft: color-mix(in srgb, var(--danger) 12%, transparent);
+  --warning: #f5b83d;
+  --overlay: rgb(5 6 8 / 0.6);
+  --tint: 14%;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    color-scheme: light;
+    --bg: #ededeb;
+    --surface-1: #ffffff;
+    --surface-2: #f7f7f5;
+    --surface-3: #e5e5e2;
+    --line: #d5d5d1;
+    --line-strong: #b3b3ae;
+    --text: #141518;
+    --text-muted: #585a60;
+    --accent: #1b7490;
+    --accent-hover: #16677f;
+    --accent-ink: #ffffff;
+    --accent-text: #17708b;
+    --accent-soft: color-mix(in srgb, var(--accent) 12%, transparent);
+    --focus: var(--accent-text);
+    --selected-bg: var(--surface-2);
+    --primary: #1d1e22;
+    --primary-hover: #34353b;
+    --primary-ink: #ffffff;
+    --tally-program-ring: #c42b2b;
+    --tally-preview-ring: #178a4c;
+    --selected-line: #7d7d78;
+    --program-line: var(--tally-program-ring);
+    --preview-line: var(--tally-preview-ring);
+    --danger: #bd2a33;
+    --danger-hover: #a5222a;
+    --danger-ink: #ffffff;
+    --danger-soft: color-mix(in srgb, var(--danger) 10%, transparent);
+    --warning: #8a5800;
+    --overlay: rgb(16 17 22 / 0.35);
+    --tint: 12%;
+  }
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #ededeb;
+  --surface-1: #ffffff;
+  --surface-2: #f7f7f5;
+  --surface-3: #e5e5e2;
+  --line: #d5d5d1;
+  --line-strong: #b3b3ae;
+  --text: #141518;
+  --text-muted: #585a60;
+  --accent: #1b7490;
+  --accent-hover: #16677f;
+  --accent-ink: #ffffff;
+  --accent-text: #17708b;
+  --accent-soft: color-mix(in srgb, var(--accent) 12%, transparent);
+  --focus: var(--accent-text);
+  --selected-bg: var(--surface-2);
+  --primary: #1d1e22;
+  --primary-hover: #34353b;
+  --primary-ink: #ffffff;
+  --tally-program-ring: #c42b2b;
+  --tally-preview-ring: #178a4c;
+  --selected-line: #7d7d78;
+  --program-line: var(--tally-program-ring);
+  --preview-line: var(--tally-preview-ring);
+  --danger: #bd2a33;
+  --danger-hover: #a5222a;
+  --danger-ink: #ffffff;
+  --danger-soft: color-mix(in srgb, var(--danger) 10%, transparent);
+  --warning: #8a5800;
+  --overlay: rgb(16 17 22 / 0.35);
+  --tint: 12%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-fast: 0ms;
+    --dur: 0ms;
+    --dur-slow: 0ms;
+    --page-shift: 0px;
+    --period-spin: 1600ms;
+    --period-indeterminate: 2800ms;
+  }
+}
+
+/* ---- Reset ------------------------------------------------------------------------------------- */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+* {
+  margin: 0;
+}
+
+html {
+  background: var(--bg);
+  color: var(--text);
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  font-family: var(--font-body);
+  font-size: var(--fs-md);
+  line-height: var(--lh);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden; /* desktop app: panes scroll, not the window */
+}
+
+img,
+picture,
+video,
+canvas,
+svg {
+  display: block;
+  max-width: 100%;
+}
+
+input,
+button,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+  background: none;
+  border: 0;
+  padding: 0;
+}
+
+button:disabled {
+  cursor: default;
+}
+
+a {
+  color: var(--accent-text);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-weight: 600;
+  line-height: 1.25;
+  text-wrap: balance;
+  overflow-wrap: break-word;
+}
+
+/* Page titles: the heading face (IBM Plex Sans semibold). */
+h1 {
+  font-family: var(--font-heading);
+  font-size: var(--fs-title);
+  letter-spacing: -0.005em;
+}
+h2 {
+  font-size: var(--fs-xl);
+}
+h3 {
+  font-size: var(--fs-lg);
+}
+h4 {
+  font-size: var(--fs-md);
+}
+
+p {
+  text-wrap: pretty;
+  overflow-wrap: break-word;
+}
+
+code,
+kbd,
+samp,
+pre {
+  font-family: var(--font-mono);
+  font-size: 0.95em;
+}
+
+/* ---- Focus, selection, scrollbars -------------------------------------------------------------- */
+:focus {
+  outline: none;
+}
+
+/* Fallback for anything not drawn with viewfinder brackets: focus is never invisible. */
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--accent) 30%, transparent);
+  color: var(--text);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+
+/* ---- View transition for the theme switch (opacity crossfade only) ----------------------------- */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: var(--dur);
+  animation-timing-function: var(--ease);
+}
+
+/* ---- Focus ring, selection border, viewfinder brackets ----------------------------------------
+ * Add class "vf" to anything that can be focused or selected.
+ * - Keyboard focus: a 2px --focus ring just outside the element.
+ * - Selected cards and list items ([aria-selected=true], [data-selected]): a subtle surface
+ *   (--selected-bg) and a 1px accent border on the element's edge.
+ * - "vf vf-live": live previews / outputs (and Control's screen tiles): no accent mark when
+ *   selected (no viewfinder brackets); screen tiles and cards mark
+ *   selection with --selected-line and their tally with data-tally (below); keyboard focus: the ring.
+ * Never navigation state ([aria-current]): the sidebar marks its active item with accent text and
+ * a dot. Set --vf-radius to the element's own radius (default: control radius). Elements that
+ * can't have ::after (input, select, textarea) put "vf vf-within" on a wrapper.
+ */
+.vf {
+  position: relative;
+}
+
+.vf::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: 1px solid var(--accent);
+  border-radius: var(--vf-radius, var(--r-control));
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease);
+}
+
+.vf.vf[aria-selected="true"],
+.vf.vf[data-selected] {
+  background-color: var(--selected-bg);
+}
+
+.vf:focus-visible,
+.vf-within :focus-visible {
+  outline: none;
+}
+
+.vf:focus-visible::after,
+.vf.vf-within:has(:focus-visible)::after {
+  inset: calc(-1 * var(--vf-gap));
+  border: var(--vf-stroke) solid var(--focus);
+  border-radius: calc(var(--vf-radius, var(--r-control)) + var(--vf-gap));
+}
+
+.vf:focus-visible::after,
+.vf[aria-selected="true"]::after,
+.vf[data-selected]::after,
+.vf.vf-within:has(:focus-visible)::after {
+  opacity: 1;
+}
+
+/* Live previews / outputs: the focus ring on keyboard focus (on the element or inside it), no
+   accent mark while merely selected. */
+.vf.vf-live::after {
+  inset: calc(-1 * var(--vf-gap));
+  border: var(--vf-stroke) solid var(--focus);
+  border-radius: calc(var(--vf-radius, var(--r-control)) + var(--vf-gap));
+}
+.vf.vf.vf-live[aria-selected="true"],
+.vf.vf.vf-live[data-selected] {
+  background-color: transparent;
+}
+.vf.vf-live[aria-selected="true"]:not(:focus-visible, :has(:focus-visible))::after,
+.vf.vf-live[data-selected]:not(:focus-visible, :has(:focus-visible))::after {
+  opacity: 0;
+}
+
+/* Tally lines on screen tiles and cards (data-tally): Program = a solid --program-line just
+   outside the edge, Preview (Studio, pending) = a dashed --preview-line; always with the
+   TallyDot + text. The focus ring then sits outside the line, so focus never hides it. */
+.vf-live[data-tally]::before {
+  content: "";
+  position: absolute;
+  inset: calc(-1 * var(--vf-gap));
+  border: var(--vf-stroke) solid var(--program-line);
+  border-radius: calc(var(--vf-radius, var(--r-control)) + var(--vf-gap));
+  pointer-events: none;
+}
+.vf-live[data-tally="preview"]::before {
+  border-style: dashed;
+  border-color: var(--preview-line);
+}
+.vf.vf.vf-live[data-tally]::after {
+  inset: calc(-1 * var(--vf-room));
+  border-radius: calc(var(--vf-radius, var(--r-control)) + var(--vf-room));
+}
+
+/* ---- Utilities ------------------------------------------------------------------------------- */
+
+/* Section label: heading face, 11px semibold, uppercase, lightly tracked, muted. */
+.section-label {
+  font-family: var(--font-heading);
+  font-size: var(--fs-label);
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* Technical values only: URLs, ports, IDs, resolutions, paths, timecode, durations, versions.
+   Relative times ("1 hour ago") and counts ("11 fields") use the body font. */
+.mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+
+/* Simple mode (AppShell sets data-ui-mode on <html>): small links to hidden features (e.g. Control's
+   "Manage in Flows") go, without JS in the page. Larger hidden parts show AdvancedHint instead. */
+:root[data-ui-mode="simple"] .advanced-only {
+  display: none !important;
+}
+
+/* Live-updating numbers in the body font (counters, "updated 4 s ago"): fixed-width digits, so
+   the text does not jitter as it changes. .mono has them already. */
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Transparency checkerboard behind output previews and thumbnails (the conic-gradient is only a
+   two-colour tile pattern, not a gradient fill). */
+.checker {
+  background-color: var(--surface-1);
+  background-image: conic-gradient(
+    var(--line) 25%,
+    transparent 0 50%,
+    var(--line) 0 75%,
+    transparent 0
+  );
+  background-size: var(--s-4) var(--s-4);
+}
+
+/* The same pattern in fixed dark greys, for static thumbnails in both themes (see the tokens). */
+.checker-dark {
+  background-color: var(--checker-dark-1);
+  background-image: conic-gradient(
+    var(--checker-dark-2) 25%,
+    transparent 0 50%,
+    var(--checker-dark-2) 0 75%,
+    transparent 0
+  );
+  background-size: var(--s-4) var(--s-4);
+}
+
+.visually-hidden {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0 0 0 0) !important;
+  clip-path: inset(50%) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}

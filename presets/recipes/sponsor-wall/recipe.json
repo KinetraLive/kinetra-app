@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "id": "sponsor-wall",
+  "name": "Sponsor wall",
+  "description": "A full-screen grid of sponsor logos, highlighted in turn.",
+  "panel": "slideshow",
+  "version": 1,
+  "source": {
+    "kind": "text",
+    "name": "Sponsors",
+    "columns": [
+      { "key": "logo", "label": "Logo", "kind": "image" },
+      { "key": "name", "label": "Name" },
+      { "key": "tier", "label": "Tier" },
+      { "key": "duration", "label": "Duration" }
+    ],
+    "rows": [
+      { "logo": "/assets/northwind-audio.svg", "name": "[Sponsor 1]", "tier": "main" },
+      { "logo": "/assets/polaris-networks.svg", "name": "[Sponsor 2]", "tier": "partner" },
+      { "logo": "/assets/fjord-energy.svg", "name": "[Sponsor 3]", "tier": "partner" },
+      { "logo": "/assets/kite-and-key.svg", "name": "[Sponsor 4]", "tier": "supporter" }
+    ],
+    "auto": { "everyMs": 4000, "loop": true, "transition": "update" }
+  },
+  "screen": { "name": "Sponsors", "width": 1920, "height": 1080 },
+  "layers": [
+    {
+      "name": "Sponsor wall",
+      "preset": "sponsor-wall",
+      "rect": { "x": 0, "y": 0, "w": 1920, "h": 1080 },
+      "fields": { "title": "Thank you to our partners" },
+      "vars": {},
+      "bindings": {
+        "logos": { "sourceId": "$source", "column": "" }
+      }
+    }
+  ],
+  "rules": []
+}

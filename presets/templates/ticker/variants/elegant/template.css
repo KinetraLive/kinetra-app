@@ -1,0 +1,237 @@
+/* Ticker, Elegant style: a translucent strap between two thin accent rules; at its left the label
+   in italic serif in the accent, after a hairline the items drift right to left in a light sans,
+   each led by a small accent diamond, fading at both edges.
+   Sizing: one unit --u, 1px at 1080p; a strap-shaped layer box (≤ 300px tall) is filled.
+   Motion: a slow fade; the rules extend outward from the centre. Transform and opacity only.
+   Variables: --accent (rules, label, diamonds), --text (items), --plate, --font-heading (label),
+   --font-body (items), --radius (px), --speed (seconds per loop; this template's own meaning).
+   The loop: the track holds two identical runs of the items, each at least as wide as the window
+   (a container, so a run's min-width is 100cqw of it). The track moves left by -50%, exactly one
+   run, then starts over: the jump is invisible. CSS only, and only while the layer is on air. */
+
+:host {
+  --soft: cubic-bezier(0.33, 0, 0.2, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+}
+
+.tk {
+  position: absolute;
+  inset: 0;
+  container-type: size;
+}
+
+.tk__safe {
+  --u: 1px;
+  position: absolute;
+  left: 6cqw;
+  right: 6cqw;
+  bottom: 7cqh;
+}
+
+@supports (width: 1cqmin) {
+  .tk__safe {
+    --u: max(100cqmin / 1080, 100cqw / 1920);
+  }
+}
+
+@container (orientation: portrait) {
+  .tk__safe {
+    left: 0;
+    right: 0;
+    bottom: 14cqh;
+  }
+}
+
+@container (max-height: 300px) {
+  .tk__safe {
+    --u: min((100cqh - 2px) / 72, max(100cqw / 1920, min(100cqw / 800, 1px)));
+    left: 0;
+    right: 0;
+    top: 50%;
+    bottom: auto;
+    transform: translateY(-50%);
+  }
+}
+
+.tk__strap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: calc(72 * var(--u));
+  line-height: normal;
+  -webkit-font-smoothing: antialiased;
+}
+
+.tk__plate {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius);
+  background: var(--plate);
+}
+
+@container (orientation: portrait) {
+  .tk__plate {
+    border-radius: 0;
+  }
+}
+
+.tk__rule {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: max(1px, calc(1.5 * var(--u)));
+  background: var(--accent);
+}
+
+.tk__rule--top {
+  top: 0;
+}
+
+.tk__rule--bottom {
+  bottom: 0;
+}
+
+.tk__label {
+  position: relative;
+  flex: none;
+  display: flex;
+  align-items: center;
+  max-width: calc(420 * var(--u));
+  height: calc(36 * var(--u));
+  padding: 0 calc(30 * var(--u)) 0 calc(34 * var(--u));
+  border-right: 1px solid color-mix(in srgb, var(--accent) 50%, transparent);
+}
+
+.tk__ltext {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--accent);
+  font-family: var(--font-heading);
+  font-size: calc(32 * var(--u));
+  font-style: italic;
+  font-weight: 400;
+}
+
+.tk__label:has(> .tk__ltext:empty),
+.tk__label:has(> .tk__ltext[data-empty]) {
+  display: none;
+}
+
+.tk__window {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  margin: 0 calc(10 * var(--u));
+  overflow: hidden;
+  container-type: inline-size;
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: calc(28 * var(--u));
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 1.5em, #000 calc(100% - 1.5em), transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 1.5em, #000 calc(100% - 1.5em), transparent);
+}
+
+.tk__track {
+  display: flex;
+  flex: none;
+  width: max-content;
+}
+
+.tk__run {
+  display: flex;
+  flex: none;
+  min-width: 1612px;
+  min-width: 100cqw;
+}
+
+.tk__item {
+  flex: none;
+  display: flex;
+  align-items: center;
+  column-gap: 1em;
+  padding: 0 1em;
+  font-weight: 400;
+  line-height: 1.2;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.tk__item::before {
+  content: "";
+  flex: none;
+  width: 0.24em;
+  height: 0.24em;
+  background: var(--accent);
+  transform: rotate(45deg);
+}
+
+/* In: the plate fades, the rules extend from the centre, the label and the items fade in. */
+.tk[data-state="in"] .tk__plate {
+  animation: tk-fade 700ms var(--soft) both;
+}
+
+.tk[data-state="in"] .tk__rule {
+  animation: tk-extend 1000ms var(--soft) 150ms both;
+}
+
+.tk[data-state="in"] .tk__label {
+  animation: tk-fade 800ms var(--soft) 300ms both;
+}
+
+.tk[data-state="in"] .tk__window {
+  animation: tk-fade 900ms var(--soft) 450ms both;
+}
+
+.tk[data-state="in"] .tk__track {
+  animation: tk-scroll var(--speed) linear 450ms infinite;
+}
+
+.tk[data-state="out"] .tk__window {
+  opacity: 0;
+}
+
+.tk[data-state="out"] {
+  animation: tk-out 400ms var(--ease-in) forwards;
+}
+
+@keyframes tk-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes tk-extend {
+  from {
+    opacity: 0;
+    transform: scaleX(0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes tk-scroll {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@keyframes tk-out {
+  0%,
+  30% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}

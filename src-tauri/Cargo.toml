@@ -1,0 +1,94 @@
+[package]
+name = "kinetra"
+version = "0.1.0"
+description = "Kinetra: broadcast graphics for OBS and vMix"
+authors = ["Rørvik Medieteknikk"]
+edition = "2021"
+
+[lib]
+# The `_lib` suffix may seem redundant but it is necessary
+# to make the lib name unique and wouldn't conflict with the bin name.
+# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+name = "kinetra_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+tauri-plugin-dialog = "2.8.1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2.0.21"
+tracing = { version = "0.1.44", default-features = false, features = ["std"] }
+tracing-subscriber = { version = "0.3.23", default-features = false, features = ["fmt", "std"] }
+time = { version = "0.3.55", default-features = false, features = ["std", "formatting", "parsing"] }
+walkdir = "2.5.0"
+nanoid = "0.5.0"
+axum = { version = "0.8.9", default-features = false, features = ["http1", "tokio", "ws", "query", "json"] }
+# The body trait axum builds on (already compiled through axum): /assets/* streams files in
+# 64 KB chunks with it.
+http-body = "1"
+# Already compiled for Tauri; these features add the socket, timer and select! support the server needs.
+tokio = { version = "1.53", default-features = false, features = ["rt", "sync", "net", "time", "macros"] }
+rust-embed = "8.12"
+# Project folder watcher (ReadDirectoryChangesW on Windows); debounced on our own thread.
+notify = { version = "8.2.0", default-features = false }
+# API sources: HTTP client on Tauri's tokio runtime; Windows TLS (schannel) via native-tls,
+# gzip responses. No http2, no system proxy, no rustls.
+reqwest = { version = "0.13.5", default-features = false, features = ["native-tls", "gzip"] }
+# Secrets in the OS keychain: Windows Credential Manager here, the macOS Keychain below.
+keyring = { version = "3.6.3", default-features = false, features = ["windows-native"] }
+# Licensing (verification only: no "sign" feature). Private repo, fetched with the git CLI
+# (.cargo/config.toml); tags are license-vX.Y.Z.
+kinetra-license = { git = "https://github.com/KinetraLive/kinetra-license.git", tag = "license-v0.2.0" }
+# OS randomness for license request nonces (already compiled through other crates).
+getrandom = "0.3"
+# Live polls: QR codes for the voting link, made locally (Nayuki's encoder; MIT, no
+# dependencies, no features).
+qrcodegen = "1.8.0"
+# OSC control: packet decode/encode only (no_std + alloc; the UDP socket is tokio's).
+rosc = { version = "0.11.4", default-features = false }
+# MIDI control (WinMM backend; no features: no WinRT, no JACK). Its `windows` dependency is the
+# same 0.62 Tauri compiles, plus the Win32_Media features WinMM needs.
+midir = { version = "0.11.0", default-features = false }
+# Manual update checks (Help › Check for updates). Our reqwest 0.13 + native-tls (schannel): no
+# rustls, no system proxy, no zip (Windows updates are the signed installer itself).
+tauri-plugin-updater = { version = "2.13.2", default-features = false, features = ["native-tls"] }
+
+# MIDI hot-plug (a message-only window receiving device notifications) and display outputs
+# (GDI display enumeration, the monitor EDID in the registry, a hidden window for display
+# broadcasts). Only features Tauri already compiles (tao uses Registry too).
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", default-features = false, features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_UI_WindowsAndMessaging", "Win32_System_LibraryLoader", "Win32_System_Registry", "Win32_System_Com"] }
+# WebView2 COM APIs of the output windows (the version wry already compiles; no features): the
+# stored microphone permission state that lets pages see audio output devices (`setSinkId`), and
+# `ProcessFailed` for output window crash recovery. `Win32_System_Com` above is compiled by it.
+webview2-com = "0.39"
+
+# macOS updates are .app.tar.gz archives: the updater needs its archive support there.
+[target.'cfg(target_os = "macos")'.dependencies]
+tauri-plugin-updater = { version = "2.13.2", default-features = false, features = ["native-tls", "zip"] }
+# Secrets in the macOS Keychain (without it keyring falls back to a store that forgets them on
+# quit). Adds security-framework 2.11 and core-foundation 0.9 on macOS only.
+keyring = { version = "3.6.3", default-features = false, features = ["apple-native"] }
+# The project watcher's macOS backend (FSEvents; notify compiles it on macOS but needs this
+# feature for fsevent-sys). Adds fsevent-sys 4 on macOS only.
+notify = { version = "8.2.0", default-features = false, features = ["macos_fsevent"] }
+
+[dev-dependencies]
+# Tests sign license tokens with throwaway keys; the app itself never signs.
+kinetra-license = { git = "https://github.com/KinetraLive/kinetra-license.git", tag = "license-v0.2.0", features = ["sign"] }
+# Test signing keys (the version kinetra-license already compiles).
+ed25519-dalek = { version = "3.0.0", default-features = false, features = ["fast", "zeroize"] }
+tempfile = "3"
+
+# Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+panic = "abort"
+strip = true

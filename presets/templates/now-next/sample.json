@@ -1,0 +1,13 @@
+{
+  "now_label": "Now",
+  "now_title": "Keynote: The live production stack",
+  "now_location": "Main stage",
+  "now_end": "10:45",
+  "next_label": "Up next",
+  "next_status": "next",
+  "next_title": "Panel: Remote production at scale",
+  "next_location": "Studio B",
+  "next_start": "11:00",
+  "next_new_start": "",
+  "next_countdown": "{\"run\":false,\"at\":0,\"base\":754000,\"dir\":\"down\",\"end\":\"stop\"}"
+}

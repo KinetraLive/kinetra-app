@@ -1,0 +1,261 @@
+/* Full-screen title, Pill style: the frame dimmed with the ink colour and a centred stack of
+   rounded shapes: an optional logo on an ink capsule, the kicker as an accent capsule, the title
+   on a big white rounded card and the subtitle on a white capsule.
+   Sizing: one unit --u, 1px at 1080p on the frame's short side. Motion: the capsules pop in
+   (scale), the card expands from the middle, the title and subtitle follow. data-state on the
+   root (.ft); transform and opacity only; durations × --speed. Capsule ends: --radius × 40.
+   Variables: --accent, --secondary (subtitle), --text (ink), --plate (card), --font-heading,
+   --font-body, --radius (px), --speed. */
+
+:host {
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --pop: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --snap: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+}
+
+.ft {
+  --cap: calc(var(--radius) * 40);
+  position: absolute;
+  inset: 0;
+  container-type: size;
+}
+
+.ft__bg {
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--text) 60%, transparent);
+}
+
+.ft__stage {
+  --u: 1px;
+  position: absolute;
+  inset: 8cqh 7cqw;
+  display: grid;
+  place-items: center;
+}
+
+@supports (width: 1cqmin) {
+  .ft__stage {
+    --u: calc(100cqmin / 1080);
+  }
+}
+
+@container (orientation: portrait) {
+  .ft__stage {
+    inset: 10cqh 5cqw;
+  }
+}
+
+/* A layer box smaller than a frame (or a wide bar): no title-safe margins, a small inset, and
+   the unit scales the block (1423 × 572 at 1px: a block with room, plus the inset) to the box. */
+@container ((max-width: 999px) and (max-height: 999px)) or (min-aspect-ratio: 2/1) {
+  .ft__stage {
+    --u: min(100cqw / 1471, 100cqh / 620);
+    inset: calc(24 * var(--u));
+  }
+}
+
+
+
+.ft__block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  max-width: min(100%, calc(1560 * var(--u)));
+  text-align: center;
+  color: var(--text);
+  line-height: normal;
+  -webkit-font-smoothing: antialiased;
+}
+
+.ft__chip {
+  display: flex;
+  align-items: center;
+  margin-bottom: calc(34 * var(--u));
+  padding: calc(16 * var(--u)) calc(34 * var(--u));
+  border-radius: var(--cap);
+  background: var(--text);
+  box-shadow: 0 0 0 calc(4 * var(--u)) var(--plate);
+}
+
+.ft__logo {
+  display: block;
+  width: auto;
+  max-width: calc(300 * var(--u));
+  height: calc(52 * var(--u));
+  object-fit: contain;
+}
+
+.ft__kicker {
+  position: relative;
+  z-index: 1;
+  max-width: calc(100% - 80 * var(--u));
+  box-sizing: border-box;
+  margin-bottom: calc(-26 * var(--u));
+  padding: calc(12 * var(--u)) calc(30 * var(--u));
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  border-radius: var(--cap);
+  background: var(--accent);
+  color: var(--plate);
+  font-family: var(--font-heading);
+  font-size: calc(28 * var(--u));
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.ft__card {
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: calc(62 * var(--u)) calc(84 * var(--u)) calc(58 * var(--u));
+  border-radius: min(var(--cap), calc(80 * var(--u)));
+  background: var(--plate);
+  box-shadow:
+    0 0 0 1px rgb(20 16 40 / 0.07),
+    0 calc(18 * var(--u)) calc(60 * var(--u)) rgb(20 16 40 / 0.3);
+}
+
+@container (orientation: portrait) {
+  .ft__card {
+    width: 100%;
+    padding: calc(62 * var(--u)) calc(54 * var(--u)) calc(56 * var(--u));
+  }
+}
+
+.ft__title {
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+  font-family: var(--font-heading);
+  font-size: calc(108 * var(--u));
+  font-weight: 600;
+  line-height: 1.04;
+  letter-spacing: -0.02em;
+}
+
+.ft__subtitle {
+  max-width: calc(100% - 80 * var(--u));
+  box-sizing: border-box;
+  margin-top: calc(18 * var(--u));
+  padding: calc(14 * var(--u)) calc(36 * var(--u));
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+  border-radius: min(var(--cap), calc(40 * var(--u)));
+  background: var(--plate);
+  box-shadow: 0 calc(10 * var(--u)) calc(34 * var(--u)) rgb(20 16 40 / 0.24);
+  color: var(--secondary);
+  font-family: var(--font-body);
+  font-size: calc(36 * var(--u));
+  font-weight: 400;
+  line-height: 1.3;
+}
+
+.ft__kicker:empty,
+.ft__title:empty,
+.ft__subtitle:empty,
+.ft__kicker[data-empty],
+.ft__title[data-empty],
+.ft__subtitle[data-empty],
+.ft__chip:has(> .ft__logo[src=""]),
+.ft__chip:has(> .ft__logo[data-empty]) {
+  display: none;
+}
+
+.ft[data-state="in"] .ft__bg {
+  animation: ft-fade calc(380ms * var(--speed)) var(--ease) both;
+}
+
+.ft[data-state="in"] .ft__chip {
+  animation: ft-pop calc(440ms * var(--speed)) var(--pop) calc(80ms * var(--speed)) both;
+}
+
+.ft[data-state="in"] .ft__card {
+  animation: ft-expand calc(560ms * var(--speed)) var(--snap) calc(120ms * var(--speed)) both;
+}
+
+.ft[data-state="in"] .ft__kicker {
+  animation: ft-pop calc(420ms * var(--speed)) var(--pop) calc(260ms * var(--speed)) both;
+}
+
+.ft[data-state="in"] .ft__title {
+  animation: ft-rise calc(460ms * var(--speed)) var(--ease) calc(300ms * var(--speed)) both;
+}
+
+.ft[data-state="in"] .ft__subtitle {
+  animation: ft-pop calc(440ms * var(--speed)) var(--pop) calc(380ms * var(--speed)) both;
+}
+
+.ft[data-state="out"] {
+  animation: ft-out calc(360ms * var(--speed)) var(--ease-in) forwards;
+}
+
+.ft[data-state="out"] .ft__block > * {
+  animation: ft-shrink calc(240ms * var(--speed)) var(--ease-in) forwards;
+}
+
+@keyframes ft-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes ft-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes ft-expand {
+  from {
+    opacity: 0;
+    transform: scaleX(0.1);
+  }
+  15% {
+    opacity: 1;
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes ft-rise {
+  from {
+    opacity: 0;
+    transform: translateY(calc(18 * var(--u)));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes ft-shrink {
+  to {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+}
+
+@keyframes ft-out {
+  0%,
+  45% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}

@@ -1,0 +1,316 @@
+/* Scoreboard, Frame style: a compact score bug on one plate held by accent corner brackets: each
+   team with its colour edge, name and a mono score, then the period and the game clock in mono.
+   Sizing: one unit --u, 1px at 1080p; a smaller layer box scales the bug to fill it.
+   The renderer sets data-state="in" | "out" on the root (.sb). Only transform and opacity
+   animate; every duration is multiplied by --speed.
+   Variables: --position (top-left | top-center | top-right), --home_color, --away_color, --accent
+   (brackets, period), --text, --plate, --font-heading, --radius (px), --speed (duration factor). */
+
+:host {
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --snap: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --mono: "IBM Plex Mono", ui-monospace, monospace;
+}
+
+.sb {
+  position: absolute;
+  inset: 0;
+  container-type: size;
+}
+
+/* Along the top of the safe area; empty auto columns collapse, so the three positions are the
+   left edge, the centre and the right edge. */
+.sb__stage {
+  --u: 1px;
+  position: absolute;
+  inset: 6cqh 5cqw auto;
+  display: grid;
+  grid-template-columns: auto 1fr auto 1fr auto;
+  grid-template-areas: "top-left . top-center . top-right";
+  align-items: start;
+}
+
+@supports (width: 1cqmin) {
+  .sb__stage {
+    --u: max(100cqmin / 1080, 100cqw / 1920);
+  }
+}
+
+/* A layer box smaller than a frame: the bug fills the box. */
+@container ((max-width: 999px) and (max-height: 999px)) or (min-aspect-ratio: 2/1) {
+  /* The bug fills the largest box of the design's aspect (700:68) in its place: the plate takes
+     that box and the content scales contain-wise with the look's own extent (836×84 at 1080p). */
+  .sb__stage {
+    --fw: min(100cqw, 100cqh * 700 / 68);
+    --fh: min(100cqh, 100cqw * 68 / 700);
+    --u: min(var(--fw) / 836, var(--fh) / 84);
+    inset: 0;
+  }
+
+  /* The brackets stand 8 units outside the plate, inside the box. */
+  .sb__stage > .sb__box {
+    width: calc(var(--fw) - 2 * var(--gap));
+    height: calc(var(--fh) - 2 * var(--gap));
+    margin: var(--gap);
+  }
+
+  .sb__box > .sb__team,
+  .sb__team > .sb__name {
+    flex-grow: 1;
+  }
+}
+
+.sb__box {
+  --gap: calc(8 * var(--u));
+  --arm: calc(20 * var(--u));
+  --bw: max(2px, calc(3 * var(--u)));
+  --fly: calc(24 * var(--u));
+  grid-area: var(--position);
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  height: calc(68 * var(--u));
+  min-width: 0;
+  color: var(--text);
+  line-height: normal;
+  -webkit-font-smoothing: antialiased;
+}
+
+.sb__plate {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius);
+  background: var(--plate);
+}
+
+/* Viewfinder brackets: four L-shaped corners just outside the plate. */
+.sb__br {
+  position: absolute;
+  inset: calc(-1 * var(--gap));
+  pointer-events: none;
+  filter: drop-shadow(0 0 1px rgb(0 0 0 / 0.45));
+}
+
+.sb__br > i {
+  position: absolute;
+  box-sizing: border-box;
+  width: var(--arm);
+  height: var(--arm);
+  border: 0 solid var(--accent);
+}
+
+.sb__br > i:nth-child(1) {
+  --x: -1;
+  --y: -1;
+  left: 0;
+  top: 0;
+  border-width: var(--bw) 0 0 var(--bw);
+  border-top-left-radius: var(--radius);
+}
+
+.sb__br > i:nth-child(2) {
+  --x: 1;
+  --y: -1;
+  right: 0;
+  top: 0;
+  border-width: var(--bw) var(--bw) 0 0;
+  border-top-right-radius: var(--radius);
+}
+
+.sb__br > i:nth-child(3) {
+  --x: -1;
+  --y: 1;
+  left: 0;
+  bottom: 0;
+  border-width: 0 0 var(--bw) var(--bw);
+  border-bottom-left-radius: var(--radius);
+}
+
+.sb__br > i:nth-child(4) {
+  --x: 1;
+  --y: 1;
+  right: 0;
+  bottom: 0;
+  border-width: 0 var(--bw) var(--bw) 0;
+  border-bottom-right-radius: var(--radius);
+}
+
+/* A team: colour edge, name, score. */
+.sb__team {
+  position: relative;
+  display: flex;
+  align-items: center;
+  column-gap: calc(18 * var(--u));
+  padding-left: calc(24 * var(--u));
+}
+
+.sb__team::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: calc(14 * var(--u));
+  bottom: calc(14 * var(--u));
+  width: calc(6 * var(--u));
+  background: var(--home_color);
+}
+
+.sb__team--away::before {
+  background: var(--away_color);
+}
+
+.sb__team--away {
+  margin-left: calc(2 * var(--u));
+}
+
+.sb__name {
+  width: calc(190 * var(--u));
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-family: var(--font-heading);
+  font-size: calc(28 * var(--u));
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.sb__score {
+  align-self: stretch;
+  display: grid;
+  place-items: center;
+  min-width: calc(76 * var(--u));
+  box-sizing: border-box;
+  padding: 0 calc(14 * var(--u));
+  background: color-mix(in srgb, var(--text) 9%, transparent);
+  font-family: var(--mono);
+  font-size: calc(38 * var(--u));
+  font-weight: 600;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Period and clock. */
+.sb__game {
+  position: relative;
+  display: flex;
+  align-items: center;
+  column-gap: calc(16 * var(--u));
+  padding: 0 calc(26 * var(--u)) 0 calc(24 * var(--u));
+  white-space: nowrap;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.sb__period {
+  color: var(--accent);
+  font-size: calc(20 * var(--u));
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.sb__time {
+  min-width: 5ch;
+  font-size: calc(30 * var(--u));
+  font-weight: 400;
+  line-height: 1.2;
+}
+
+.sb__period:empty,
+.sb__period[data-empty] {
+  display: none;
+}
+
+/* In: the brackets snap in from outside, the plate fades up, then the teams and the clock. */
+.sb[data-state="in"] .sb__br > i {
+  animation: sb-snap calc(360ms * var(--speed)) var(--snap) both;
+}
+
+.sb[data-state="in"] .sb__plate {
+  animation: sb-plate calc(300ms * var(--speed)) var(--ease) calc(60ms * var(--speed)) both;
+}
+
+.sb[data-state="in"] .sb__team--home {
+  animation: sb-rise calc(360ms * var(--speed)) var(--ease) calc(150ms * var(--speed)) both;
+}
+
+.sb[data-state="in"] .sb__team--away {
+  animation: sb-rise calc(360ms * var(--speed)) var(--ease) calc(210ms * var(--speed)) both;
+}
+
+.sb[data-state="in"] .sb__game {
+  animation: sb-rise calc(360ms * var(--speed)) var(--ease) calc(270ms * var(--speed)) both;
+}
+
+/* Out: content first, the brackets fly back out; the root animation's end is the layer's end. */
+.sb[data-state="out"] {
+  animation: sb-out calc(300ms * var(--speed)) var(--ease-in) forwards;
+}
+
+.sb[data-state="out"] .sb__team,
+.sb[data-state="out"] .sb__game {
+  animation: sb-fade-out calc(140ms * var(--speed)) var(--ease-in) forwards;
+}
+
+.sb[data-state="out"] .sb__br > i {
+  animation: sb-snap-out calc(200ms * var(--speed)) var(--ease-in) calc(60ms * var(--speed)) forwards;
+}
+
+@keyframes sb-snap {
+  from {
+    opacity: 0;
+    transform: translate(calc(var(--x) * var(--fly)), calc(var(--y) * var(--fly)));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes sb-snap-out {
+  to {
+    opacity: 0;
+    transform: translate(calc(var(--x) * var(--fly) * 0.6), calc(var(--y) * var(--fly) * 0.6));
+  }
+}
+
+@keyframes sb-plate {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes sb-rise {
+  from {
+    opacity: 0;
+    transform: translateY(calc(10 * var(--u)));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes sb-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes sb-out {
+  0%,
+  45% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}

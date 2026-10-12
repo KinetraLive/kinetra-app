@@ -1,0 +1,224 @@
+# Reusable: tests + Windows (NSIS) and macOS (universal) builds of one channel, uploaded as
+# workflow artifacts (release-windows, release-macos). Uploads nothing anywhere else.
+# docs/RELEASING.md. Secrets reach only the steps that need them, as environment variables.
+name: Build
+
+on:
+  workflow_call:
+    inputs:
+      channel: { type: string, required: true } # stable | canary
+      version: { type: string, required: true }
+      suite: { type: string, required: true } # full | fast
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: never
+  NODE_VERSION: "24"
+  PNPM_VERSION: "12.8.1"
+
+jobs:
+  test:
+    name: Tests (${{ inputs.suite }})
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - name: License crate access
+        shell: bash
+        env:
+          TOKEN: ${{ secrets.KINETRA_LICENSE_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then echo "::error::KINETRA_LICENSE_TOKEN is not set (docs/RELEASING.md)"; exit 1; fi
+          git config --global url."https://x-access-token:${TOKEN}@github.com/KinetraLive/kinetra-license".insteadOf "https://github.com/KinetraLive/kinetra-license"
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with: { version: "${{ env.PNPM_VERSION }}" }
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with: { node-version: "${{ env.NODE_VERSION }}", cache: pnpm }
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master 2026-10-09 (no releases)
+        with: { toolchain: stable, components: "clippy, rustfmt" }
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with: { workspaces: "src-tauri -> target", shared-key: tests-windows }
+      - run: pnpm install --frozen-lockfile
+      - name: Versions agree
+        run: pnpm run version:check
+      - name: Frontend and renderer build
+        run: pnpm build:renderer && pnpm build
+      - name: cargo fmt
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+      - name: cargo audit
+        # Every build: fails on a known vulnerability in Cargo.lock (RustSec advisory database);
+        # unmaintained / yanked crates are reported as warnings. Pinned; rust-cache keeps the binary.
+        shell: bash
+        run: |
+          cargo audit --version 2>/dev/null | grep -q "0.22.2" || cargo install cargo-audit --version 0.22.2 --locked --quiet
+          cd src-tauri && cargo audit
+      - name: cargo clippy
+        run: cargo clippy --manifest-path src-tauri/Cargo.toml --locked --quiet -- -D warnings
+      - name: cargo test
+        # ~5 min to compile + ~3 to run; a hung test fails here instead of holding the release.
+        timeout-minutes: 20
+        run: cargo test --manifest-path src-tauri/Cargo.toml --locked --quiet
+      - name: pnpm check
+        run: pnpm check
+      - name: pnpm test
+        run: pnpm test
+      - name: pnpm test:e2e
+        if: inputs.suite == 'full'
+        run: pnpm test:e2e
+
+  windows:
+    name: Windows x64
+    runs-on: windows-latest
+    timeout-minutes: 90
+    env:
+      HAS_UPDATER_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
+      HAS_AZURE: ${{ secrets.AZURE_TENANT_ID != '' && secrets.AZURE_CLIENT_ID != '' && secrets.AZURE_CLIENT_SECRET != '' && secrets.AZURE_SIGNING_ENDPOINT != '' && secrets.AZURE_SIGNING_ACCOUNT != '' && secrets.AZURE_SIGNING_PROFILE != '' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - name: License crate access
+        shell: bash
+        env:
+          TOKEN: ${{ secrets.KINETRA_LICENSE_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then echo "::error::KINETRA_LICENSE_TOKEN is not set (docs/RELEASING.md)"; exit 1; fi
+          git config --global url."https://x-access-token:${TOKEN}@github.com/KinetraLive/kinetra-license".insteadOf "https://github.com/KinetraLive/kinetra-license"
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with: { version: "${{ env.PNPM_VERSION }}" }
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with: { node-version: "${{ env.NODE_VERSION }}", cache: pnpm }
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master 2026-10-09 (no releases)
+        with: { toolchain: stable }
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with: { workspaces: "src-tauri -> target", shared-key: release-windows }
+      - run: pnpm install --frozen-lockfile
+      - name: Signing status
+        shell: bash
+        run: |
+          if [ "$HAS_UPDATER_KEY" != "true" ]; then echo "::warning::Updater signing skipped: no TAURI_SIGNING_PRIVATE_KEY (no update manifest can be published)"; fi
+          if [ "$HAS_AZURE" != "true" ]; then echo "::warning::Windows code signing skipped: no Azure Trusted Signing secrets (the installer is unsigned; SmartScreen will warn)"; fi
+      - name: Install trusted-signing-cli
+        if: env.HAS_AZURE == 'true'
+        run: cargo install trusted-signing-cli --locked --quiet
+      - name: Build config
+        shell: bash
+        env:
+          CHANNEL: ${{ inputs.channel }}
+          VERSION: ${{ inputs.version }}
+        run: >
+          node .github/scripts/release.mjs config --channel "$CHANNEL" --version "$VERSION"
+          --updater "$HAS_UPDATER_KEY" --sign-windows "$HAS_AZURE" --out "$RUNNER_TEMP/ci.conf.json"
+      - name: tauri build
+        shell: bash
+        env:
+          KINETRA_CHANNEL: ${{ inputs.channel }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_SIGNING_ENDPOINT: ${{ secrets.AZURE_SIGNING_ENDPOINT }}
+          AZURE_SIGNING_ACCOUNT: ${{ secrets.AZURE_SIGNING_ACCOUNT }}
+          AZURE_SIGNING_PROFILE: ${{ secrets.AZURE_SIGNING_PROFILE }}
+        run: |
+          # Empty secrets are unset, so tools never see an empty key or identity.
+          for v in TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD AZURE_TENANT_ID AZURE_CLIENT_ID AZURE_CLIENT_SECRET AZURE_SIGNING_ENDPOINT AZURE_SIGNING_ACCOUNT AZURE_SIGNING_PROFILE; do
+            if [ -z "${!v}" ]; then unset "$v"; fi
+          done
+          # No local build paths in panic locations (scripts/release-rustflags.mjs).
+          export CARGO_ENCODED_RUSTFLAGS="$(node scripts/release-rustflags.mjs)"
+          pnpm tauri build --ci --bundles nsis --config "$RUNNER_TEMP/ci.conf.json"
+      - name: Channel check (no CANARY badge in stable builds)
+        shell: bash
+        env:
+          CHANNEL: ${{ inputs.channel }}
+        run: node scripts/check-channel-build.mjs build --channel "$CHANNEL"
+      - name: Collect
+        shell: bash
+        env:
+          CHANNEL: ${{ inputs.channel }}
+          VERSION: ${{ inputs.version }}
+        run: >
+          node .github/scripts/release.mjs collect --platform windows --channel "$CHANNEL" --version "$VERSION"
+          --bundle-dir src-tauri/target/release/bundle --updater "$HAS_UPDATER_KEY" --out release-out
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with: { name: release-windows, path: release-out/, retention-days: 7, if-no-files-found: error }
+
+  macos:
+    name: macOS universal (optional)
+    runs-on: macos-latest
+    timeout-minutes: 120
+    # Optional (docs/RELEASING.md): a failure here doesn't stop a Windows release.
+    continue-on-error: true
+    env:
+      HAS_UPDATER_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
+      HAS_APPLE_SIGNING: ${{ secrets.APPLE_CERTIFICATE != '' && secrets.APPLE_CERTIFICATE_PASSWORD != '' && secrets.APPLE_SIGNING_IDENTITY != '' }}
+      HAS_APPLE_NOTARY: ${{ secrets.APPLE_ID != '' && secrets.APPLE_PASSWORD != '' && secrets.APPLE_TEAM_ID != '' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - name: License crate access
+        shell: bash
+        env:
+          TOKEN: ${{ secrets.KINETRA_LICENSE_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then echo "::error::KINETRA_LICENSE_TOKEN is not set (docs/RELEASING.md)"; exit 1; fi
+          git config --global url."https://x-access-token:${TOKEN}@github.com/KinetraLive/kinetra-license".insteadOf "https://github.com/KinetraLive/kinetra-license"
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with: { version: "${{ env.PNPM_VERSION }}" }
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with: { node-version: "${{ env.NODE_VERSION }}", cache: pnpm }
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master 2026-10-09 (no releases)
+        with: { toolchain: stable, targets: "aarch64-apple-darwin, x86_64-apple-darwin" }
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with: { workspaces: "src-tauri -> target", shared-key: release-macos }
+      - run: pnpm install --frozen-lockfile
+      - name: Signing status
+        run: |
+          if [ "$HAS_UPDATER_KEY" != "true" ]; then echo "::warning::Updater signing skipped: no TAURI_SIGNING_PRIVATE_KEY"; fi
+          if [ "$HAS_APPLE_SIGNING" != "true" ]; then echo "::warning::macOS code signing skipped: no Apple Developer ID secrets (Gatekeeper will block the app)"; fi
+          if [ "$HAS_APPLE_SIGNING" = "true" ] && [ "$HAS_APPLE_NOTARY" != "true" ]; then echo "::warning::macOS notarization skipped: no APPLE_ID / APPLE_PASSWORD / APPLE_TEAM_ID"; fi
+      - name: Build config
+        env:
+          CHANNEL: ${{ inputs.channel }}
+          VERSION: ${{ inputs.version }}
+        run: >
+          node .github/scripts/release.mjs config --channel "$CHANNEL" --version "$VERSION"
+          --updater "$HAS_UPDATER_KEY" --sign-windows false --out "$RUNNER_TEMP/ci.conf.json"
+      - name: tauri build
+        env:
+          KINETRA_CHANNEL: ${{ inputs.channel }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          # Signing needs all three certificate values, notarization all three account values;
+          # an incomplete set is dropped so tauri builds unsigned instead of failing halfway.
+          if [ "$HAS_APPLE_SIGNING" != "true" ]; then unset APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY; fi
+          if [ "$HAS_APPLE_SIGNING" != "true" ] || [ "$HAS_APPLE_NOTARY" != "true" ]; then unset APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; fi
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then unset TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD; fi
+          # No local build paths in panic locations (scripts/release-rustflags.mjs).
+          export CARGO_ENCODED_RUSTFLAGS="$(node scripts/release-rustflags.mjs)"
+          pnpm tauri build --ci --target universal-apple-darwin --bundles app,dmg --config "$RUNNER_TEMP/ci.conf.json"
+      - name: Channel check (no CANARY badge in stable builds)
+        shell: bash
+        env:
+          CHANNEL: ${{ inputs.channel }}
+        run: node scripts/check-channel-build.mjs build --channel "$CHANNEL"
+      - name: Collect
+        env:
+          CHANNEL: ${{ inputs.channel }}
+          VERSION: ${{ inputs.version }}
+        run: >
+          node .github/scripts/release.mjs collect --platform macos --channel "$CHANNEL" --version "$VERSION"
+          --bundle-dir src-tauri/target/universal-apple-darwin/release/bundle --updater "$HAS_UPDATER_KEY" --out release-out
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with: { name: release-macos, path: release-out/, retention-days: 7, if-no-files-found: error }

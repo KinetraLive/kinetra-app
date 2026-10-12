@@ -1,0 +1,421 @@
+/* Poll, Editorial style: a dark panel: a kicker (LIVE POLL, STARTING SOON,
+   VOTING CLOSED or RESULTS from `status`) run out by a fine rule to the total votes, the question as a serif headline, then one
+   row per option: the label in a sans, the votes in grey and the share in serif figures over a
+   fine accent bar on a hairline. A bar's length comes from its row's `pct` (a number, 0-100)
+   through a bound --p; a changed share glides to its new length. When closed, the winner (row
+   mark _winner) keeps the accent; the others turn grey.
+   Sizing: one unit --u, 1px at 1080p; a smaller layer box scales the panel to fill it.
+   The renderer sets data-state="in" | "out" on the root (.pl); rows get --i and data-row.
+   Motion: the plate settles, the kicker first, the question, then each option with its bar
+   growing. Transform and opacity only; durations × --speed.
+   Variables: --accent, --secondary, --text, --plate, --font-heading, --font-body, --radius (px),
+   --speed (duration factor). */
+
+:host {
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+}
+
+.pl {
+  position: absolute;
+  inset: 0;
+  container-type: size;
+}
+
+.pl__safe {
+  --u: 1px;
+  position: absolute;
+  inset: 8cqh 6cqw;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+@supports (width: 1cqmin) {
+  .pl__safe {
+    --u: max(100cqmin / 1080, 100cqw / 1920);
+  }
+}
+
+@container (orientation: portrait) {
+  .pl__safe {
+    inset: 10cqh 5cqw 17cqh;
+    align-items: flex-end;
+    justify-content: center;
+  }
+}
+
+@container ((max-width: 999px) and (max-height: 999px)) or (min-aspect-ratio: 2/1) {
+  .pl__safe {
+    --u: min(100cqw / 760, (100cqh - 6px) / 422);
+    inset: 0;
+    justify-content: center;
+  }
+}
+
+.pl__box {
+  position: relative;
+  flex: 0 1 calc(760 * var(--u));
+  min-width: 0;
+  box-sizing: border-box;
+  padding: calc(30 * var(--u)) calc(42 * var(--u)) calc(38 * var(--u));
+  color: var(--text);
+  line-height: normal;
+  -webkit-font-smoothing: antialiased;
+}
+
+.pl__plate {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius);
+  background: var(--plate);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 7%, transparent);
+}
+
+.pl__head {
+  position: relative;
+  display: flex;
+  align-items: center;
+  column-gap: calc(16 * var(--u));
+  margin-bottom: calc(16 * var(--u));
+  white-space: nowrap;
+  font-family: var(--font-body);
+  font-size: calc(17 * var(--u));
+  line-height: 1.2;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.pl__state {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.pl:is([data-poll="closed"], [data-poll="full"]) .pl__state {
+  color: var(--secondary);
+}
+
+.pl__rule {
+  flex: 1 1 auto;
+  min-width: calc(30 * var(--u));
+  height: 1px;
+  background: color-mix(in srgb, var(--text) 26%, transparent);
+  transform-origin: left center;
+}
+
+.pl__total {
+  color: var(--secondary);
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  font-variant-numeric: tabular-nums;
+}
+
+.pl__total::after {
+  content: " votes";
+}
+
+.pl__suml::after {
+  content: "votes";
+}
+
+.pl[data-votes="1"] .pl__total::after {
+  content: " vote";
+}
+
+.pl[data-votes="1"] .pl__suml::after {
+  content: "vote";
+}
+
+.pl__q {
+  position: relative;
+  margin-bottom: calc(30 * var(--u));
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+  font-family: var(--font-heading);
+  font-size: calc(44 * var(--u));
+  font-weight: 600;
+  line-height: 1.12;
+}
+
+.pl__opts {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  row-gap: calc(22 * var(--u));
+}
+
+.pl__row {
+  display: flex;
+  align-items: baseline;
+  column-gap: calc(16 * var(--u));
+  margin-bottom: calc(10 * var(--u));
+  white-space: nowrap;
+}
+
+.pl__label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--font-body);
+  font-size: calc(25 * var(--u));
+  font-weight: 400;
+  line-height: 1.25;
+}
+
+.pl__votes {
+  color: var(--secondary);
+  font-family: var(--font-body);
+  font-size: calc(18 * var(--u));
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
+.pl__pct {
+  min-width: 3.2ch;
+  text-align: right;
+  font-family: var(--font-heading);
+  font-size: calc(32 * var(--u));
+  font-weight: 600;
+  line-height: 1;
+  font-variant-numeric: lining-nums tabular-nums;
+}
+
+.pl__pct::after {
+  content: "%";
+  margin-left: 0.04em;
+  color: var(--secondary);
+  font-size: 0.6em;
+  font-weight: 400;
+}
+
+.pl__track {
+  position: relative;
+  height: max(2px, calc(4 * var(--u)));
+  background: color-mix(in srgb, var(--text) 14%, transparent);
+}
+
+.pl__bar {
+  --p: 0;
+  position: absolute;
+  inset: 0;
+  transform: scaleX(clamp(0, var(--p) / 100, 1));
+  transform-origin: left center;
+  transition: transform 700ms var(--ease);
+}
+
+.pl__fill {
+  position: absolute;
+  inset: 0;
+  background: var(--accent);
+  transform-origin: left center;
+}
+
+.pl__label:empty,
+.pl__label[data-empty],
+.pl__votes:empty,
+.pl__votes[data-empty],
+.pl__total:empty,
+.pl__total[data-empty],
+.pl__q:empty,
+.pl__q[data-empty],
+.pl__opts[data-empty] {
+  display: none;
+}
+
+/* Closed: the winner keeps the accent, the other options turn grey. */
+.pl[data-poll="closed"] .pl__opt:not([data-winner]) .pl__fill {
+  background: var(--secondary);
+  opacity: 0.6;
+}
+
+.pl[data-poll="closed"] .pl__opt:not([data-winner]) .pl__row {
+  color: var(--secondary);
+}
+
+.pl[data-poll="closed"] .pl__opt[data-winner] .pl__label {
+  font-weight: 600;
+}
+
+.pl[data-poll="closed"] .pl__opt[data-winner] .pl__pct {
+  color: var(--accent);
+}
+
+/* In: the plate, the kicker and its rule, the question, then each option with its bar. */
+.pl[data-state="in"] .pl__plate {
+  animation: pl-plate calc(420ms * var(--speed)) var(--ease) both;
+}
+
+.pl[data-state="in"] .pl__head > :not(.pl__rule) {
+  animation: pl-rise calc(420ms * var(--speed)) var(--ease) calc(120ms * var(--speed)) both;
+}
+
+.pl[data-state="in"] .pl__rule {
+  animation: pl-draw calc(620ms * var(--speed)) var(--ease) calc(180ms * var(--speed)) both;
+}
+
+.pl[data-state="in"] .pl__q {
+  animation: pl-rise calc(520ms * var(--speed)) var(--ease) calc(240ms * var(--speed)) both;
+}
+
+.pl[data-state="in"] .pl__row {
+  animation: pl-rise calc(440ms * var(--speed)) var(--ease) calc((340ms + min(var(--i), 8) * 80ms) * var(--speed)) both;
+}
+
+.pl[data-state="in"] .pl__fill {
+  animation: pl-draw calc(700ms * var(--speed)) var(--ease) calc((400ms + min(var(--i), 8) * 80ms) * var(--speed)) both;
+}
+
+.pl__opt[data-row="out"] {
+  animation: pl-fade-out calc(200ms * var(--speed)) var(--ease-in) forwards;
+}
+
+/* Out: the text first, then the plate; the root animation's end is the layer's end. */
+.pl[data-state="out"] {
+  animation: pl-out calc(340ms * var(--speed)) var(--ease-in) forwards;
+}
+
+.pl[data-state="out"] .pl__head,
+.pl[data-state="out"] .pl__q,
+.pl[data-state="out"] .pl__opts {
+  animation: pl-fade-out calc(160ms * var(--speed)) var(--ease-in) forwards;
+}
+
+@keyframes pl-plate { from { opacity: 0; transform: translateY(calc(10 * var(--u))); } to { opacity: 1; transform: none; } }
+
+@keyframes pl-rise { from { opacity: 0; transform: translateY(calc(14 * var(--u))); } to { opacity: 1; transform: none; } }
+
+@keyframes pl-draw { from { transform: scaleX(0); } to { transform: none; } }
+
+@keyframes pl-fade-out { to { opacity: 0; } }
+
+@keyframes pl-out { 0%, 45% { opacity: 1; } 100% { opacity: 0; } }
+
+/* The voting tile beside the poll: the QR (black on white) with VOTE AT and the short link while
+   voting; full or closed, the total takes its place. No QR: one column. */
+.pl__cols {
+  display: flex;
+  align-items: flex-start;
+  column-gap: calc(28 * var(--u));
+}
+
+.pl__main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.pl__side {
+  --qr: calc(176 * var(--u));
+  position: relative;
+  flex: none;
+  width: var(--qr);
+  height: calc(var(--qr) + 50 * var(--u));
+}
+
+.pl__cols:has(.pl__qr[data-empty]) .pl__side {
+  display: none;
+}
+
+.pl__vote,
+.pl__sum {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  transition-property: opacity, transform;
+  transition-duration: calc(360ms * var(--speed));
+  transition-timing-function: var(--ease);
+}
+
+.pl__qr {
+  display: block;
+  width: var(--qr);
+  height: var(--qr);
+  border-radius: var(--radius);
+  background: #fff;
+  image-rendering: pixelated;
+}
+
+.pl__at,
+.pl__suml {
+  margin-top: calc(10 * var(--u));
+  color: var(--secondary);
+  font-family: var(--font-body);
+  font-size: calc(13 * var(--u));
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.pl__url {
+  margin-top: calc(2 * var(--u));
+  white-space: nowrap;
+  font-family: var(--font-body);
+  font-size: calc(16 * var(--u));
+  font-weight: 600;
+}
+
+.pl__sum {
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transform: scale(0.96);
+}
+
+.pl__sumn {
+  font-family: var(--font-heading);
+  font-size: calc(54 * var(--u));
+  font-weight: 600;
+  line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+}
+
+.pl:is([data-poll="closed"], [data-poll="full"]) .pl__vote {
+  opacity: 0;
+  transform: scale(0.96);
+}
+
+.pl:is([data-poll="closed"], [data-poll="full"]) .pl__sum {
+  opacity: 1;
+  transform: none;
+}
+
+/* Voting over: the total moves to the tile. */
+.pl:is([data-poll="closed"], [data-poll="full"]) :has(.pl__qr:not([data-empty])) .pl__total {
+  visibility: hidden;
+}
+
+.pl[data-state="in"] .pl__side {
+  animation: pl-rise calc(380ms * var(--speed)) var(--ease) calc(320ms * var(--speed)) both;
+}
+
+.pl[data-state="out"] .pl__side {
+  animation: pl-fade-out calc(150ms * var(--speed)) var(--ease-in) forwards;
+}
+
+/* Any other status reads as a live poll. */
+.pl__state::after {
+  content: "Live poll";
+}
+
+.pl[data-poll="draft"] .pl__state::after {
+  content: "Starting soon";
+}
+
+.pl[data-poll="full"] .pl__state::after {
+  content: "Voting closed";
+}
+
+.pl[data-poll="closed"] .pl__state::after {
+  content: "Results";
+}
+
+/* Rounded when given, else exact. */
+.pl__pct--raw,
+.pl__pct--round[data-empty] {
+  display: none;
+}
+
+.pl__pct--round[data-empty] + .pl__pct--raw {
+  display: inline;
+}

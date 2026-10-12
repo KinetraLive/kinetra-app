@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 2,
+  "name": "Sponsor wall",
+  "description": "A full-screen wall of sponsor logos that adapts to the count, with optional tiers.",
+  "preset": { "id": "sponsor-wall", "version": 2 },
+  "fields": [
+    { "key": "title", "label": "Title", "type": "text", "default": "" },
+    {
+      "key": "logos",
+      "label": "Logos",
+      "type": "list",
+      "columns": [
+        { "key": "logo", "label": "Logo", "kind": "image" },
+        { "key": "name", "label": "Name" },
+        { "key": "tier", "label": "Tier" },
+        { "key": "duration", "label": "Duration" }
+      ],
+      "default": "[]"
+    }
+  ],
+  "variables": [
+    { "key": "accent", "label": "Highlight", "type": "color", "default": "#f2c14e" },
+    { "key": "secondary", "label": "Secondary", "type": "color", "default": "#9aa3b2" },
+    { "key": "text", "label": "Title text", "type": "color", "default": "#ffffff" },
+    { "key": "plate", "label": "Background", "type": "color", "default": "#0b0e13f2" },
+    { "key": "tile", "label": "Tiles", "type": "color", "default": "#ffffff" },
+    {
+      "key": "logo-bg",
+      "label": "Logo background",
+      "type": "select",
+      "options": [
+        { "value": "off", "label": "Off" },
+        { "value": "on", "label": "On" }
+      ],
+      "default": "off"
+    },
+    { "key": "font-heading", "label": "Heading font", "type": "font", "default": "Montserrat" },
+    { "key": "font-body", "label": "Body font", "type": "font", "default": "Montserrat" },
+    { "key": "radius", "label": "Corner radius", "type": "range", "min": 0, "max": 24, "step": 1, "unit": "px", "default": "10" },
+    { "key": "speed", "label": "Animation speed", "type": "range", "min": 0.5, "max": 2, "step": 0.1, "unit": "", "default": "1" }
+  ],
+  "autoOutMs": null,
+  "design": { "w": 1920, "h": 1080, "sizing": "reflow" },
+  "defaultVariant": "classic",
+  "variants": [
+    {
+      "id": "classic",
+      "name": "Classic",
+      "vars": {}
+    },
+    {
+      "id": "frame",
+      "name": "Frame",
+      "vars": {
+        "accent": "#33d6ff",
+        "secondary": "#b3bac5",
+        "text": "#f5f5f2",
+        "plate": "#0c0d11d9",
+        "tile": "#f5f5f2",
+        "font-heading": "Space Grotesk",
+        "font-body": "IBM Plex Sans",
+        "radius": "2",
+        "speed": "1"
+      }
+    }
+  ],
+  "updatedAt": ""
+}

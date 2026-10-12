@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "name": "Leaderboard",
+  "description": "Ranked standings with the top three highlighted.",
+  "preset": { "id": "leaderboard", "version": 3 },
+  "fields": [
+    { "key": "title", "label": "Title", "type": "text", "default": "" },
+    {
+      "key": "rows",
+      "label": "Rows",
+      "type": "list",
+      "columns": [
+        { "key": "name", "label": "Name" },
+        { "key": "team", "label": "Team" },
+        { "key": "score", "label": "Score" }
+      ],
+      "default": "[]"
+    }
+  ],
+  "variables": [
+    {
+      "key": "position",
+      "label": "Position",
+      "type": "select",
+      "options": [
+        { "value": "left", "label": "Left" },
+        { "value": "center", "label": "Center" },
+        { "value": "right", "label": "Right" }
+      ],
+      "default": "right"
+    },
+    { "key": "accent", "label": "Accent", "type": "color", "default": "#f2c14e" },
+    { "key": "ink", "label": "Text on accent", "type": "color", "default": "#0b0e13" },
+    { "key": "panel", "label": "Background", "type": "color", "default": "#0b0e13e6" },
+    { "key": "text", "label": "Text", "type": "color", "default": "#ffffff" },
+    { "key": "font", "label": "Font", "type": "font", "default": "Barlow Condensed" },
+    { "key": "scale", "label": "Size", "type": "range", "min": 0.5, "max": 1.5, "step": 0.05, "unit": "", "default": "1" },
+    { "key": "radius", "label": "Corner radius", "type": "range", "min": 0, "max": 24, "step": 1, "unit": "px", "default": "6" }
+  ],
+  "autoOutMs": null,
+  "design": { "w": 760, "h": 430, "x": 1026, "y": 325, "sizing": "reflow" },
+  "updatedAt": ""
+}

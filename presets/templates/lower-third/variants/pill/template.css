@@ -1,0 +1,353 @@
+/* Lower third, Pill style: a white capsule with a circular photo at its left end, the name and
+   title, the label as a small accent capsule on the top edge and an optional logo on an ink
+   capsule at the right end. Without a photo the circle shows the name's first letter on the
+   accent (a second copy of the name whose ::first-letter alone has a size).
+   Sizing: one unit --u, 1px at 1080p; a smaller layer box scales the graphic to fill it.
+   Motion: the circle pops in (scale), the capsule expands to the right (scaleX from its left),
+   then label, name, title and logo. data-state on the root (.lt); transform and opacity only;
+   durations × --speed. Capsule ends: --radius × 40 (0 = square corners, otherwise round).
+   Variables: --accent, --secondary (title), --text, --plate, --font-heading, --font-body,
+   --radius (px), --speed. */
+
+:host {
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --pop: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --snap: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+}
+
+.lt {
+  --cap: calc(var(--radius) * 40);
+  position: absolute;
+  inset: 0;
+  container-type: size;
+}
+
+.lt__safe {
+  --u: 1px;
+  position: absolute;
+  left: 6cqw;
+  right: 6cqw;
+  bottom: 9cqh;
+  display: flex;
+}
+
+@supports (width: 1cqmin) {
+  .lt__safe {
+    --u: max(100cqmin / 1080, 100cqw / 1920);
+  }
+}
+
+@container (orientation: portrait) {
+  .lt__safe {
+    left: 5cqw;
+    right: 5cqw;
+    bottom: 17cqh;
+  }
+}
+
+@container ((max-width: 999px) and (max-height: 999px)) or (min-aspect-ratio: 2/1) {
+  .lt__safe {
+    /* The graphic's frame: the largest box of the design's aspect (4.8:1) in the layer box, at
+       its bottom left; the look scales to fill it by its own extent at 1080p. */
+    --fw: min(100cqw, 480cqh);
+    --fh: min(100cqh, 100cqw / 4.8);
+    --u: min(var(--fw) / 798, var(--fh) / 160);
+    left: 0;
+    right: auto;
+    bottom: 0;
+    width: var(--fw);
+    height: var(--fh);
+  }
+}
+
+.lt__box {
+  --d: calc(120 * var(--u));
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+  min-height: var(--d);
+  padding-top: calc(10 * var(--u));
+  color: var(--text);
+  line-height: normal;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* The capsule: from the circle's centre to the right end. */
+.lt__pill {
+  position: absolute;
+  left: calc(var(--d) / 2);
+  right: 0;
+  top: calc(20 * var(--u));
+  bottom: calc(10 * var(--u));
+  border-radius: var(--cap);
+  background: var(--plate);
+  box-shadow:
+    0 0 0 1px rgb(20 16 40 / 0.07),
+    0 calc(10 * var(--u)) calc(34 * var(--u)) rgb(20 16 40 / 0.22);
+  transform-origin: left center;
+}
+
+.lt__avatar {
+  position: relative;
+  flex: none;
+  display: grid;
+  width: var(--d);
+  height: var(--d);
+  overflow: hidden;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow:
+    0 0 0 calc(5 * var(--u)) var(--plate),
+    0 calc(8 * var(--u)) calc(26 * var(--u)) rgb(20 16 40 / 0.25);
+}
+
+/* Initial: the name at size 0, its first letter large. */
+.lt__init {
+  grid-area: 1 / 1;
+  display: block;
+  overflow: hidden;
+  font-size: 0;
+  line-height: 0;
+  text-align: center;
+  white-space: nowrap;
+  color: var(--plate);
+  font-family: var(--font-heading);
+  font-weight: 600;
+}
+
+.lt__init::first-letter {
+  font-size: calc(56 * var(--u));
+  line-height: var(--d);
+  text-transform: uppercase;
+}
+
+.lt__photo {
+  grid-area: 1 / 1;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.lt__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: calc(28 * var(--u)) calc(52 * var(--u)) calc(22 * var(--u)) calc(28 * var(--u));
+}
+
+/* The label: a small accent capsule sitting on the capsule's top edge. */
+.lt__label {
+  position: absolute;
+  left: calc(var(--d) + 24 * var(--u));
+  top: calc(20 * var(--u));
+  translate: 0 -50%;
+  max-width: calc(100% - var(--d) - 60 * var(--u));
+  box-sizing: border-box;
+  padding: calc(6 * var(--u)) calc(16 * var(--u));
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  border-radius: var(--cap);
+  background: var(--accent);
+  color: var(--plate);
+  font-family: var(--font-heading);
+  font-size: calc(18 * var(--u));
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.lt__name {
+  max-width: calc(900 * var(--u));
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-family: var(--font-heading);
+  font-size: calc(46 * var(--u));
+  font-weight: 600;
+  line-height: 1.12;
+  letter-spacing: -0.01em;
+}
+
+.lt__title {
+  max-width: calc(900 * var(--u));
+  margin-top: calc(2 * var(--u));
+  overflow-wrap: anywhere;
+  color: var(--secondary);
+  font-family: var(--font-body);
+  font-size: calc(28 * var(--u));
+  font-weight: 400;
+  line-height: 1.25;
+}
+
+/* Logo: on an ink capsule at the right end. */
+.lt__chip {
+  position: relative;
+  flex: none;
+  display: flex;
+  align-items: center;
+  height: calc(66 * var(--u));
+  margin: calc(10 * var(--u)) calc(17 * var(--u)) 0 calc(-24 * var(--u));
+  padding: 0 calc(26 * var(--u));
+  border-radius: var(--cap);
+  background: var(--text);
+}
+
+.lt__logo {
+  display: block;
+  width: auto;
+  max-width: calc(170 * var(--u));
+  height: calc(36 * var(--u));
+  object-fit: contain;
+}
+
+@container (orientation: portrait) {
+  .lt__box {
+    --d: calc(108 * var(--u));
+  }
+  .lt__name {
+    font-size: calc(40 * var(--u));
+  }
+  .lt__chip {
+    height: calc(56 * var(--u));
+    padding: 0 calc(18 * var(--u));
+  }
+  .lt__logo {
+    max-width: calc(110 * var(--u));
+    height: calc(30 * var(--u));
+  }
+}
+
+.lt__label:empty,
+.lt__name:empty,
+.lt__title:empty,
+.lt__label[data-empty],
+.lt__name[data-empty],
+.lt__title[data-empty],
+.lt__photo[src=""],
+.lt__photo[data-empty],
+.lt__avatar:has(> .lt__init[data-empty]):has(> .lt__photo[data-empty]),
+.lt__chip:has(> .lt__logo[src=""]),
+.lt__chip:has(> .lt__logo[data-empty]) {
+  display: none;
+}
+
+/* In: the circle pops, the capsule expands to the right, then the text and the logo. */
+.lt[data-state="in"] .lt__avatar {
+  animation: lt-pop calc(460ms * var(--speed)) var(--pop) both;
+}
+
+.lt[data-state="in"] .lt__pill {
+  animation: lt-expand calc(520ms * var(--speed)) var(--snap) calc(140ms * var(--speed)) both;
+}
+
+.lt[data-state="in"] .lt__label {
+  animation: lt-pop calc(380ms * var(--speed)) var(--pop) calc(360ms * var(--speed)) both;
+}
+
+.lt[data-state="in"] .lt__name {
+  animation: lt-slide calc(400ms * var(--speed)) var(--ease) calc(260ms * var(--speed)) both;
+}
+
+.lt[data-state="in"] .lt__title {
+  animation: lt-slide calc(400ms * var(--speed)) var(--ease) calc(320ms * var(--speed)) both;
+}
+
+.lt[data-state="in"] .lt__chip {
+  animation: lt-pop calc(380ms * var(--speed)) var(--pop) calc(420ms * var(--speed)) both;
+}
+
+/* Out: the text fades, the capsule folds back into the circle, the circle shrinks. */
+.lt[data-state="out"] {
+  animation: lt-out calc(360ms * var(--speed)) var(--ease-in) forwards;
+}
+
+.lt[data-state="out"] :is(.lt__text, .lt__label, .lt__chip) {
+  animation: lt-fade-out calc(140ms * var(--speed)) var(--ease-in) forwards;
+}
+
+.lt[data-state="out"] .lt__pill {
+  animation: lt-fold calc(240ms * var(--speed)) var(--ease-in) calc(40ms * var(--speed)) forwards;
+}
+
+.lt[data-state="out"] .lt__avatar {
+  animation: lt-shrink calc(200ms * var(--speed)) var(--ease-in) calc(160ms * var(--speed)) forwards;
+}
+
+@keyframes lt-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.2);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes lt-expand {
+  from {
+    opacity: 0;
+    transform: scaleX(0.05);
+  }
+  15% {
+    opacity: 1;
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes lt-fold {
+  to {
+    opacity: 0;
+    transform: scaleX(0.05);
+  }
+}
+
+@keyframes lt-shrink {
+  to {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+}
+
+@keyframes lt-slide {
+  from {
+    opacity: 0;
+    transform: translateX(calc(-18 * var(--u)));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes lt-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes lt-out {
+  0%,
+  60% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* A layer box smaller than a frame, part 2: a larger avatar (150 units) brings the capsule close to the frame's aspect. */
+@container ((max-width: 999px) and (max-height: 999px)) or (min-aspect-ratio: 2/1) {
+  .lt__box {
+    --d: calc(150 * var(--u));
+  }
+}

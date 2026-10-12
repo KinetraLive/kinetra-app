@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "clean-all-log",
+  "name": "Clean all with a log",
+  "description": "Clears every screen and confirms it with a log toast.",
+  "category": "blocks",
+  "slots": [],
+  "flows": [
+    {
+      "armed": "cue",
+      "nodes": [
+        {"id":"cue","position":{"x":0,"y":0},"type":"trigger.cue","config":{"label":"Clear all"}},
+        {"id":"clearAll","position":{"x":260,"y":0},"type":"action.clearAll","config":{}},
+        {"id":"log","position":{"x":520,"y":0},"type":"action.log","config":{"message":"Cleared all screens","toast":true}}
+      ],
+      "edges": [
+        {"id":"e1","from":{"node":"cue","port":"fired"},"to":{"node":"clearAll","port":"in"},"kind":"event"},
+        {"id":"e2","from":{"node":"clearAll","port":"done"},"to":{"node":"log","port":"in"},"kind":"event"}
+      ]
+    }
+  ]
+}
