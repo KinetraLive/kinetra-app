@@ -6,6 +6,7 @@ import type { LicenseView, PollData, PollQuota, SourceSummary } from "$lib/types
 
 const handlers = vi.hoisted(() => new Map<string, (p: unknown) => void>());
 vi.mock("$lib/api", () => ({
+  call: vi.fn(() => Promise.resolve([])),
   on: (name: string, f: (p: unknown) => void) => {
     handlers.set(name, f);
     return () => handlers.delete(name);
