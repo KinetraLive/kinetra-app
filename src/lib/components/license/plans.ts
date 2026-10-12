@@ -1,5 +1,6 @@
 // Display names for license plans and states (display only; nothing is gated on them).
 
+/** Names for licenses cached before the server sent `plan_name`. */
 const PLANS: Readonly<Record<string, string>> = {
   free: "Free",
   beta: "Beta",
@@ -7,13 +8,20 @@ const PLANS: Readonly<Record<string, string>> = {
   pro_yearly: "Pro (yearly)",
   pro_perpetual: "Pro (perpetual)",
   day_pass: "Day pass",
+  business: "Kinetra Team",
+  business_monthly: "Kinetra Team",
   enterprise: "Enterprise",
   nfr: "Not for resale",
   nonprofit: "Nonprofit",
 };
 
-export const planName = (plan: string | null | undefined) =>
-  !plan ? "No license" : (PLANS[plan] ?? plan.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase()));
+/** The plan's name: the server's `plan_name` when it sent one, never the raw code. */
+export const planName = (plan: string | null | undefined, name?: string | null) =>
+  name?.trim()
+    ? name.trim()
+    : !plan
+      ? "No license"
+      : (PLANS[plan] ?? plan.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase()));
 
 const STATUS: Readonly<Record<string, string>> = {
   none: "No license on this computer",

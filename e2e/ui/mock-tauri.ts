@@ -1777,6 +1777,7 @@ export function installMockTauri(s: MockScenario): void {
         status: "active",
         access: "full",
         plan: "pro_yearly",
+        planName: "Kinetra Pro (yearly)",
         entitlements: ["core.app", "pro.ai", "pro.polls"],
         features: { ai: true, polls: true },
         pending: null,

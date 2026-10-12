@@ -40,6 +40,7 @@ function view(over: Partial<LicenseView> = {}): LicenseView {
     status: "none",
     access: "free",
     plan: null,
+    planName: null,
     entitlements: ["core.app"],
     features: { ai: false, polls: false },
     pending: null,
@@ -155,6 +156,14 @@ describe("license host", () => {
     expect(screen.getByRole("heading", { name: "Pro is active on STUDIO-PC. Move Pro here?" })).toBeTruthy();
     await fireEvent.click(screen.getByRole("button", { name: "Move Pro here" }));
     expect(api.licenseMoveHere).toHaveBeenCalledWith("a1");
+  });
+
+  it("the move offer names the blocked license's plan", async () => {
+    const activations = [{ id: "a1", machine_name: "STUDIO-PC", slot: "main", created_at: null, last_refreshed_at: null, this_machine: false }];
+    const team = { id: "l-team", plan: "business_monthly", plan_name: "Kinetra Team", kind: "subscription", status: "active", entitlements: [], seats: 5, seats_used: 5, backup_used: false, starts_at: null, ends_at: null, updates_until: null, revoked_at: null, beta_program_id: null, activations };
+    await show(view({ licenses: [team], upgradeBlocked: { license_id: "l-team", plan: "business_monthly", reason: "seats_full", activations } }));
+    expect(screen.getByRole("heading", { name: "Kinetra Team is active on STUDIO-PC. Move Kinetra Team here?" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Move Kinetra Team here" })).toBeTruthy();
   });
 
   it("seats full: deactivate one and use this computer, or use as backup", async () => {

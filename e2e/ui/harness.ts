@@ -1554,7 +1554,8 @@ export function pollsScenario(theme: "dark" | "light", over: Partial<MockScenari
     ],
     pollQuota: {
       plan: "pro",
-      limits: { openPolls: 3, pollsPerMonth: 30, votesPerPoll: 2000, optionsPerPoll: 8, maxDurationSeconds: 86400, lifetimeSeconds: 604800, deleteAfterCloseSeconds: 43200 },
+      planName: "Kinetra Pro",
+      limits: { openPolls: 3, pollsPerMonth: 30, votesPerPoll: 500, optionsPerPoll: 8, maxDurationSeconds: 86400, lifetimeSeconds: 604800, deleteAfterCloseSeconds: 43200 },
       usage: { openPolls: 1, pollsThisMonth: 4, polls: 3 },
       monthResetsAt: "2026-11-01T00:00:00Z",
     },

@@ -78,6 +78,7 @@ const poll = (over: Partial<PollData> = {}): PollData => ({
 
 const quota = (open: number): PollQuota => ({
   plan: "pro",
+  planName: "Kinetra Pro",
   limits: {
     openPolls: 3,
     pollsPerMonth: 30,
@@ -98,6 +99,7 @@ function view(pro: boolean, over: Partial<LicenseView> = {}): LicenseView {
     status: "active",
     access: pro ? "full" : "free",
     plan: pro ? "pro_yearly" : "free",
+    planName: null,
     entitlements: pro ? ["core.app", "pro.polls"] : ["core.app"],
     features: { ai: pro, polls: pro },
     pending: null,

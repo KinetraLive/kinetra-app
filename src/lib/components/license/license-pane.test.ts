@@ -58,6 +58,7 @@ function view(over: Partial<LicenseView> = {}): LicenseView {
     status: "active",
     access: "full",
     plan: "pro_yearly",
+    planName: null,
     entitlements: ["core.app", "pro.ai"],
     features: { ai: true, polls: true },
     pending: null,
@@ -163,7 +164,19 @@ describe("Preferences › License", () => {
     await vi.waitFor(() => expect(api.licenseRedeem).toHaveBeenCalledWith("KNTR-4B7X-9Q2Z-HHHH"));
   });
 
+  it("shows the plan's name from the server, never its code", async () => {
+    const team = lic({ plan: "business_monthly", plan_name: "Kinetra Team" });
+    await mount(view({ plan: "business_monthly", planName: "Kinetra Team", licenses: [team] }));
+    expect(screen.getByText("Kinetra Team")).toBeTruthy();
+    expect(screen.getByText("Kinetra Team · Main")).toBeTruthy();
+    expect(screen.queryByText(/business/i)).toBeNull();
+  });
+
   it("names plans and relative times", () => {
+    expect(planName("business_monthly", "Kinetra Team")).toBe("Kinetra Team");
+    expect(planName("pro_yearly", "Kinetra Pro (yearly)")).toBe("Kinetra Pro (yearly)");
+    expect(planName("pro_yearly", " ")).toBe("Pro (yearly)");
+    expect(planName("business_monthly")).toBe("Kinetra Team");
     expect(planName("pro_perpetual")).toBe("Pro (perpetual)");
     expect(planName(null)).toBe("No license");
     expect(planName("some_new_plan")).toBe("Some new plan");

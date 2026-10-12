@@ -620,6 +620,7 @@ fn pro_creates_and_reads_the_quota() {
     // Unlimited months come as null.
     let v = serde_json::to_value(PollQuota {
         plan: Some("enterprise".into()),
+        plan_name: Some("Kinetra Enterprise".into()),
         limits: Some(crate::core::model::PollLimits {
             polls_per_month: None,
             ..l

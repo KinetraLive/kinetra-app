@@ -180,8 +180,10 @@ pub struct LicenseView {
     pub status: &'static str,
     /// What applies now (effective): full | reduced | free.
     pub access: &'static str,
-    /// For display only.
+    /// A stable code, for display decisions only.
     pub plan: Option<String>,
+    /// The plan's name to show (`plan_name` of this computer's license), when known.
+    pub plan_name: Option<String>,
     /// Effective entitlements (what the core gates on now).
     pub entitlements: Vec<String>,
     /// The app's Pro features, unlocked or not (see [`Features`]).
@@ -716,6 +718,7 @@ impl AppState {
                 status: "none",
                 access: "free",
                 plan: None,
+                plan_name: None,
                 entitlements: kinetra_license::evaluate::no_license(),
                 features: Features::default(),
                 pending: None,
@@ -764,6 +767,13 @@ impl AppState {
             status: status_str(s.eval.status),
             access: access_str(s.effective_access),
             plan: claims.map(|c| c.plan.clone()),
+            plan_name: claims.and_then(|c| {
+                s.file
+                    .licenses
+                    .iter()
+                    .find(|l| l.id == c.lid)
+                    .and_then(|l| l.plan_name.clone())
+            }),
             entitlements: s.effective.clone(),
             features: Features::from(&s.effective),
             pending: pending.then(|| s.eval.entitlements.clone()),

@@ -42,6 +42,8 @@
   });
 
   const blocked = $derived(v?.upgradeBlocked ?? null);
+  /** The blocked license's name ("Kinetra Team"), "Pro" until the server names it. */
+  const blockedName = $derived(v?.licenses.find((l) => l.id === blocked?.license_id)?.plan_name?.trim() || "Pro");
   const blockedKey = $derived(blocked ? blocked.activations.map((a) => a.id).join(",") : "");
   const showMove = $derived(!!blocked && blocked.activations.length > 0 && license.dismissed.movePro !== blockedKey);
 
@@ -90,21 +92,21 @@
   <div class="scrim" role="dialog" aria-modal="true" aria-labelledby="move-title">
     <div class="card">
       {#if blocked.activations.length === 1}
-        <h2 id="move-title">Pro is active on {name(blocked.activations[0].machine_name)}. Move Pro here?</h2>
-        <p class="muted">Pro stops on that computer; it keeps the free license.</p>
+        <h2 id="move-title">{blockedName} is active on {name(blocked.activations[0].machine_name)}. Move {blockedName} here?</h2>
+        <p class="muted">{blockedName} stops on that computer; it keeps the free license.</p>
         <div class="row">
-          <Button variant="primary" disabled={busy} onclick={() => void act("Couldn't move Pro", () => licenseMoveHere(blocked.activations[0].id))}>
-            Move Pro here
+          <Button variant="primary" disabled={busy} onclick={() => void act(`Couldn't move ${blockedName}`, () => licenseMoveHere(blocked.activations[0].id))}>
+            Move {blockedName} here
           </Button>
           <Button variant="ghost" onclick={() => (license.dismissed.movePro = blockedKey)}>Not now</Button>
         </div>
       {:else}
-        <h2 id="move-title">Pro is in use on other computers. Move it here?</h2>
+        <h2 id="move-title">{blockedName} is in use on other computers. Move it here?</h2>
         <ul>
           {#each blocked.activations as a (a.id)}
             <li>
               <span>{name(a.machine_name)}</span>
-              <Button size="sm" disabled={busy} onclick={() => void act("Couldn't move Pro", () => licenseMoveHere(a.id))}>Move Pro here</Button>
+              <Button size="sm" disabled={busy} onclick={() => void act(`Couldn't move ${blockedName}`, () => licenseMoveHere(a.id))}>Move {blockedName} here</Button>
             </li>
           {/each}
         </ul>

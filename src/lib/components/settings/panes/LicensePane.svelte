@@ -71,11 +71,11 @@
   /** This computer's activation and the others, from the account's licenses. */
   const computers = $derived.by(() => {
     const own: CloudActivation[] = [];
-    const others: (CloudActivation & { plan: string })[] = [];
+    const others: (CloudActivation & { plan: string; planName: string | null })[] = [];
     for (const l of v?.licenses ?? []) {
       for (const a of l.activations) {
         if (a.this_machine) own.push(a);
-        else others.push({ ...a, plan: l.plan });
+        else others.push({ ...a, plan: l.plan, planName: l.plan_name ?? null });
       }
     }
     return { own: own[0] ?? null, others };
@@ -105,7 +105,7 @@
     <p class="muted">Loading…</p>
   {:else}
     <SettingsRow label="Plan">
-      <span>{planName(v.plan)}</span>
+      <span>{planName(v.plan, v.planName)}</span>
       {#if !v.features.ai}
         <Button size="sm" onclick={() => open("pricing")}>Upgrade to Pro</Button>
       {/if}
@@ -211,7 +211,7 @@
       <p class="muted note">Pro stops here after the show; you can activate again any time.</p>
     {/if}
     {#each computers.others as a (a.id)}
-      <SettingsRow label={a.machine_name ?? "Another computer"} description="{planName(a.plan)} · {a.slot === 'backup' ? 'Backup' : 'Main'}">
+      <SettingsRow label={a.machine_name ?? "Another computer"} description="{planName(a.plan, a.planName)} · {a.slot === 'backup' ? 'Backup' : 'Main'}">
         <Button size="sm" variant="danger" disabled={busy || !v.signedIn} onclick={() => void run(() => licenseDeactivate(a.id))}>Deactivate</Button>
       </SettingsRow>
     {/each}

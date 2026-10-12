@@ -50,6 +50,7 @@ const poll = (over: Partial<PollData> = {}): PollData => ({
 
 const quota = (open: number, month: number, limitMonth: number | null = 30): PollQuota => ({
   plan: "pro",
+  planName: "Kinetra Pro",
   limits: {
     openPolls: 3,
     pollsPerMonth: limitMonth,
@@ -71,6 +72,7 @@ describe("counts", () => {
   it("a monthly limit of one poll reads in the singular", () => {
     const q = {
       plan: "pro",
+      planName: "Kinetra Pro",
       limits: { openPolls: 1, pollsPerMonth: 1, votesPerPoll: 2000, optionsPerPoll: 8, maxDurationSeconds: 86400, lifetimeSeconds: 604800, deleteAfterCloseSeconds: 43200 },
       usage: { openPolls: 0, pollsThisMonth: 1, polls: 1 },
       monthResetsAt: null,

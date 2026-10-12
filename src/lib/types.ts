@@ -608,7 +608,10 @@ export interface CloudActivation {
 /** A license as `GET /v1/license` reports it (snake_case, as the API sends it). */
 export interface CloudLicense {
   id: string;
+  /** A stable code; show `plan_name`. */
   plan: string;
+  /** What to show, e.g. "Kinetra Team" (absent from licenses cached by older versions). */
+  plan_name?: string | null;
   kind: "free" | "subscription" | "perpetual" | string;
   status: "active" | "expired" | "revoked" | string;
   entitlements: string[];
@@ -675,6 +678,7 @@ export interface AiQuota {
   enabled: boolean;
   disabled_for_account: boolean;
   plan: string;
+  plan_name?: string | null;
   generate_template: AiTaskQuota | null;
   tweak_template: AiTaskQuota | null;
 }
@@ -719,6 +723,8 @@ export interface LicenseView {
   status: LicenseStatus;
   access: "full" | "reduced" | "free";
   plan: string | null;
+  /** The plan's name to show, when the server sent it. */
+  planName: string | null;
   entitlements: string[];
   /** The app's Pro features, unlocked or not (decided in the core). */
   features: { ai: boolean; polls: boolean };
@@ -1470,6 +1476,8 @@ export interface PollLive {
 /** GET /v1/polls/quota. `plan` and `limits` are null without `pro.polls`. */
 export interface PollQuota {
   plan: string | null;
+  /** What to show (`business` is "Kinetra Team"); null without `pro.polls`. */
+  planName: string | null;
   limits: PollLimits | null;
   usage: PollUsage;
   monthResetsAt: string | null;

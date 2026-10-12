@@ -154,7 +154,7 @@ async fn mock_api(
             let token = sign_license(&claims, "test-k1", &key(1));
             let mut v = json!({
                 "token": token, "server_time": claims.iat, "activation_id": aid, "slot": "main",
-                "license": {"id": claims.lid, "plan": claims.plan, "kind": "subscription", "status": "active",
+                "license": {"id": claims.lid, "plan": claims.plan, "plan_name": "Kinetra Pro (yearly)", "kind": "subscription", "status": "active",
                             "entitlements": claims.ent, "seats": 1, "seats_used": 1, "backup_used": false,
                             "activations": []}
             });
@@ -479,6 +479,17 @@ fn clock_skew_keeps_the_license_and_says_by_how_much() {
         e.st.license_view().notice,
         Some(Notice::ClockWrong { minutes: 60 })
     );
+}
+
+#[test]
+fn the_view_names_the_plan_from_the_server() {
+    let e = env();
+    e.signed_in();
+    e.reply("/v1/license/activate", vec![token_reply(pro())]);
+    e.sync();
+    let v = e.st.license_view();
+    assert_eq!(v.plan.as_deref(), Some("pro_yearly"));
+    assert_eq!(v.plan_name.as_deref(), Some("Kinetra Pro (yearly)"));
 }
 
 #[test]
