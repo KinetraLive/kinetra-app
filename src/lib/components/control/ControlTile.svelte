@@ -85,7 +85,7 @@
     {#if pending}<span class="pending"><TallyDot state="preview" size={6} />Preview pending</span>{/if}
     <span class="count">{count} on air</span>
     <span class="clear">
-      <Button size="sm" variant="ghost" disabled={count === 0} onclick={onclear} aria-label="Clear all on {info.name}">
+      <Button size="sm" variant="ghost" disabled={count === 0} onclick={onclear} aria-label="Clear {info.name}">
         Clear
       </Button>
     </span>

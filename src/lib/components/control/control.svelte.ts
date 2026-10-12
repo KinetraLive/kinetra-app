@@ -442,7 +442,7 @@ export class ControlCtl {
     };
   }
 
-  /** Clear all on one screen (animated out). */
+  /** Clears one screen (animated out). */
   clearScreen = async (screenId: string): Promise<void> => {
     const name = live.screens.get(screenId)?.screen.name ?? "the screen";
     const rollback = this.#optimisticOff([screenId]);

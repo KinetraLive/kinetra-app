@@ -540,10 +540,12 @@ describe("Control layers", () => {
     expect(link.getAttribute("href")).toBe("/screens/s1");
   });
 
-  it("Clear all clears the selected screen; Clear every screen clears all", async () => {
+  it("Clear screen clears the selected screen; Clear every screen clears all", async () => {
     await mount([view("s1", [layer("lower", { onAir: true })])]);
     // The toolbar button (the tile has the same action).
-    await fireEvent.click(screen.getAllByRole("button", { name: "Clear all on Screen s1" })[0]);
+    const clear = screen.getAllByRole("button", { name: "Clear Screen s1" })[0];
+    expect(clear.textContent).toContain("Clear screen");
+    await fireEvent.click(clear);
     expect(api.liveClear).toHaveBeenCalledWith("s1");
     live.put(view("s1", [layer("lower", { onAir: true })]));
     await tick();

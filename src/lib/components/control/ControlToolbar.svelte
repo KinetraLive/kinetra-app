@@ -3,7 +3,7 @@
     Grid / Single · Columns (grid only) · Screens menu (show / hide) · Studio mode (a switch; its
     settings button comes with the studio chunk) · Live edit On take / Immediate (in Studio mode: "Edits go to
     Preview")
-    · Clear all (selected screen, animated) + menu "Clear every screen" · Automation off (a switch;
+    · Clear screen (the selected screen, animated) + menu "Clear every screen" · Automation off (a switch;
     while on, an amber pill with the text) · PANIC (instant cut, its key Shift+Esc unless rebound, no confirm).
   Every choice is written to the project's ui-state through the controller.
 
@@ -118,10 +118,10 @@
     <Button
       disabled={!sel || onAirCount(sel) === 0}
       onclick={() => sel && ctl.clearScreen(sel.screen.id)}
-      aria-label={sel ? `Clear all on ${sel.screen.name}` : "Clear all"}
+      aria-label={sel ? `Clear ${sel.screen.name}` : "Clear screen"}
     >
       {#snippet icon()}<Eraser size={14} />{/snippet}
-      Clear all
+      Clear screen
     </Button>
     <Menu label="More clear options" items={clearItems} align="end" />
   </span>
