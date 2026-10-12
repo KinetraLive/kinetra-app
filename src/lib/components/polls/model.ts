@@ -120,7 +120,7 @@ export interface QuotaLine {
   full: boolean;
 }
 
-/** "Open now 1 of 3 · This month 4 of 30 · Up to 2,000 votes per poll". Empty without limits. */
+/** "Open now 1 of 3 · This month 4 of 30 · Up to 500 votes per poll". Empty without limits. */
 export function quotaLines(q: PollQuota | null): QuotaLine[] {
   const l = q?.limits;
   if (!q || !l) return [];
