@@ -1001,8 +1001,19 @@ impl AppState {
                                 acts = activations.clone();
                             }
                         }
+                        // The license these computers use says whether it has a backup slot.
+                        let included = s
+                            .file
+                            .licenses
+                            .iter()
+                            .find(|l| {
+                                l.activations
+                                    .iter()
+                                    .any(|a| acts.iter().any(|b| b.id == a.id))
+                            })
+                            .and_then(|l| l.backup_included);
                         s.notice = Some(Notice::SeatsFull {
-                            backup: code == "seats_full" && !s.no_backup,
+                            backup: code == "seats_full" && !s.no_backup && included != Some(false),
                             code: code.clone(),
                             activations: acts,
                         });

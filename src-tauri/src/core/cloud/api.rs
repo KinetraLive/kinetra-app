@@ -130,6 +130,9 @@ pub struct License {
     pub seats: u32,
     #[serde(default)]
     pub seats_used: u32,
+    /// The plan includes a backup computer (absent from older servers: unknown).
+    #[serde(default)]
+    pub backup_included: Option<bool>,
     #[serde(default)]
     pub backup_used: bool,
     #[serde(default)]

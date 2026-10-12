@@ -493,6 +493,39 @@ fn the_view_names_the_plan_from_the_server() {
 }
 
 #[test]
+fn seats_full_offers_a_backup_only_when_the_license_includes_one() {
+    let e = env();
+    e.signed_in();
+    let license = |included: bool| {
+        json!({"licenses": [{"id": "lic-team", "plan": "business_monthly", "plan_name": "Kinetra Team",
+            "kind": "subscription", "status": "active", "entitlements": [], "seats": 5, "seats_used": 5,
+            "backup_included": included, "backup_used": false,
+            "activations": [{"id": "a9", "machine_name": "STUDIO-PC", "slot": "main"}]}],
+            "server_time": T0})
+    };
+    let full = || {
+        err(
+            409,
+            "seats_full",
+            Some(
+                json!({"activations": [{"id": "a9", "machine_name": "STUDIO-PC", "slot": "main"}]}),
+            ),
+        )
+    };
+    for included in [false, true] {
+        e.reply("/v1/license", vec![Reply::Json(200, license(included))]);
+        e.rt.block_on(e.st.license_list()).unwrap();
+        e.reply("/v1/license/activate", vec![full()]);
+        let _ =
+            e.rt.block_on(e.st.license_activate(api::SlotReq::Main, None));
+        match e.st.license_view().notice {
+            Some(Notice::SeatsFull { backup, .. }) => assert_eq!(backup, included),
+            other => panic!("{other:?}"),
+        }
+    }
+}
+
+#[test]
 fn seats_full_lists_the_computers() {
     let e = env();
     e.signed_in();

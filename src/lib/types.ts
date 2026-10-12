@@ -617,6 +617,8 @@ export interface CloudLicense {
   entitlements: string[];
   seats: number;
   seats_used: number;
+  /** The plan includes a backup computer (absent from older servers). */
+  backup_included?: boolean | null;
   backup_used: boolean;
   starts_at: string | null;
   ends_at: string | null;
