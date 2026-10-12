@@ -1,7 +1,8 @@
 <!--
   Preferences › License: plan and status, valid until / updates until, the account, the last
   successful check and how long it works offline, this computer (name, Main / Backup) and the
-  other computers on the license (Deactivate each). Buttons: Deactivate this computer, Sign out,
+  other computers on the license (Deactivate each). A license key can be added here too (signed
+  out: sign in first, then it is redeemed). Buttons: Deactivate this computer, Sign out,
   Manage account, Upgrade to Pro (Free only); Sign in when signed out. Pro features are listed
   with their lock. Display only: the core decides; errors use the API.md messages. No props.
 -->
@@ -18,10 +19,11 @@
     licenseCheckNow,
     licenseDeactivate,
     licenseList,
+    licenseRedeem,
     signInCancel,
     signOut,
   } from "$lib/api/license";
-  import { cloudMessage } from "$lib/components/license/messages";
+  import { cloudMessage, formatKey, keyComplete } from "$lib/components/license/messages";
   import { openInBrowser } from "$lib/components/license/open";
   import { agoText, dateText, planName, statusIsProblem, statusText } from "$lib/components/license/plans";
   import ProLock from "$lib/components/license/ProLock.svelte";
@@ -34,6 +36,37 @@
   let error = $state<string | null>(null);
   let busy = $state(false);
   let confirmOwn = $state(false);
+  const uid = $props.id();
+  let key = $state("");
+  /** A key typed while signed out: redeemed once sign-in completes. */
+  let waitingKey = $state<string | null>(null);
+  let keyAdded = $state(false);
+
+  async function addKey(k: string) {
+    keyAdded = false;
+    await run(async () => {
+      await licenseRedeem(k);
+      key = "";
+      keyAdded = true;
+    });
+  }
+  function submitKey(e: SubmitEvent) {
+    e.preventDefault();
+    if (!keyComplete(key)) return;
+    if (v?.signedIn) {
+      void addKey(key);
+    } else {
+      waitingKey = key;
+      void license.signIn();
+    }
+  }
+  $effect(() => {
+    if (waitingKey && v?.signedIn) {
+      const k = waitingKey;
+      waitingKey = null;
+      void addKey(k);
+    }
+  });
 
   /** This computer's activation and the others, from the account's licenses. */
   const computers = $derived.by(() => {
@@ -107,6 +140,32 @@
     <SettingsRow label="Pro features">
       <ProLock feature="ai" label="AI templates"><span>AI templates</span></ProLock>
     </SettingsRow>
+    <SettingsRow label="License key" for="{uid}-key">
+      <form class="key" onsubmit={submitKey}>
+        <input
+          id="{uid}-key"
+          class="mono"
+          autocomplete="off"
+          spellcheck="false"
+          placeholder="KNTR-XXXX-XXXX-XXXX"
+          value={key}
+          oninput={(e) => {
+            keyAdded = false;
+            key = e.currentTarget.value = formatKey(e.currentTarget.value);
+          }}
+          onpaste={(e) => {
+            e.preventDefault();
+            keyAdded = false;
+            key = formatKey(e.clipboardData?.getData("text") ?? "");
+          }}
+        />
+        <Button size="sm" type="submit" disabled={busy || !keyComplete(key) || waitingKey !== null}>
+          {v.signedIn ? "Add key" : "Sign in and add key"}
+        </Button>
+      </form>
+      {#if waitingKey}<span class="muted">Sign in to finish adding the key.</span>{/if}
+      {#if keyAdded}<span role="status">License key added.</span>{/if}
+    </SettingsRow>
   {/if}
 </SettingsSection>
 
@@ -171,6 +230,26 @@
   .error {
     margin: 0;
     color: var(--danger);
+  }
+  .key {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s-2);
+  }
+  .key input {
+    width: 22ch;
+    height: var(--row-h);
+    padding: 0 var(--s-2);
+    border: 0;
+    border-radius: var(--r-control);
+    background: var(--surface-2);
+    box-shadow: inset 0 0 0 1px var(--line);
+    color: var(--text);
+    letter-spacing: 0.04em;
+  }
+  .key input:focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 1px;
   }
   .note {
     margin: 0;

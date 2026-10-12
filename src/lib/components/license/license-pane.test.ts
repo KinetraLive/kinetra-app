@@ -8,6 +8,7 @@ const api = vi.hoisted(() => ({
   licenseList: vi.fn(() => Promise.resolve([])),
   licenseCheckNow: vi.fn(() => Promise.resolve()),
   licenseDeactivate: vi.fn(() => Promise.resolve()),
+  licenseRedeem: vi.fn(() => Promise.resolve()),
   signInStart: vi.fn(() => Promise.resolve({ state: "idle" })),
   signInCancel: vi.fn(),
   signOut: vi.fn(() => Promise.resolve()),
@@ -138,6 +139,28 @@ describe("Preferences › License", () => {
     await mount(view());
     await fireEvent.click(screen.getByRole("button", { name: "Deactivate" }));
     await vi.waitFor(() => expect(screen.getByRole("alert").textContent).toBe("Not found. It may have been removed already."));
+  });
+
+  it("adds a license key here too: at once when signed in", async () => {
+    await mount(view());
+    const input = screen.getByLabelText("License key") as HTMLInputElement;
+    await fireEvent.input(input, { target: { value: "kntr4b7x9q2zhhhh" } });
+    expect(input.value).toBe("KNTR-4B7X-9Q2Z-HHHH");
+    await fireEvent.click(screen.getByRole("button", { name: "Add key" }));
+    expect(api.licenseRedeem).toHaveBeenCalledWith("KNTR-4B7X-9Q2Z-HHHH");
+    await vi.waitFor(() => expect(screen.getByRole("status").textContent).toBe("License key added."));
+  });
+
+  it("a license key while signed out signs in first, then redeems", async () => {
+    await mount(view({ signedIn: false, account: null }));
+    const input = screen.getByLabelText("License key") as HTMLInputElement;
+    await fireEvent.input(input, { target: { value: "KNTR-4B7X-9Q2Z-HHHH" } });
+    await fireEvent.click(screen.getByRole("button", { name: "Sign in and add key" }));
+    expect(api.signInStart).toHaveBeenCalled();
+    expect(api.licenseRedeem).not.toHaveBeenCalled();
+    expect(screen.getByText("Sign in to finish adding the key.")).toBeTruthy();
+    license.view = view();
+    await vi.waitFor(() => expect(api.licenseRedeem).toHaveBeenCalledWith("KNTR-4B7X-9Q2Z-HHHH"));
   });
 
   it("names plans and relative times", () => {
