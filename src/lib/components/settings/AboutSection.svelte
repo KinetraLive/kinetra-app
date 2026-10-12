@@ -31,7 +31,7 @@
   import { CHECK_FAILED, UP_TO_DATE, updater } from "./updates.svelte";
 
   const WEBSITE = "https://kinetra.live";
-  const DOCS = "https://kinetra.live/docs";
+  const DOCS = "https://docs.kinetra.live";
   const DISCORD = "https://discord.gg/nK4JaEh3";
   const CHANNELS = { stable: "Stable", canary: "Canary" } as const;
 
@@ -189,7 +189,7 @@
     </SettingsRow>
     <SettingsRow label="Documentation">
       <a class="link mono" href={DOCS} onclick={(e) => openLink(e, DOCS)}>
-        kinetra.live/docs <ExternalLink size={12} aria-hidden="true" />
+        docs.kinetra.live <ExternalLink size={12} aria-hidden="true" />
       </a>
     </SettingsRow>
     <SettingsRow label="Community">
