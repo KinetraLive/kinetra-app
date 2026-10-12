@@ -497,12 +497,68 @@ fn seats_full_lists_the_computers() {
     );
     e.sync();
     match e.st.license_view().notice {
-        Some(Notice::SeatsFull { code, activations }) => {
+        Some(Notice::SeatsFull {
+            code,
+            activations,
+            backup,
+        }) => {
             assert_eq!(code, "seats_full");
+            assert!(backup);
             assert_eq!(activations[0].machine_name.as_deref(), Some("STUDIO-PC"));
         }
         other => panic!("{other:?}"),
     }
+}
+
+#[test]
+fn a_plan_without_a_backup_keeps_the_computers_to_free() {
+    let e = env();
+    e.signed_in();
+    e.reply(
+        "/v1/license/activate",
+        vec![
+            err(
+                409,
+                "seats_full",
+                Some(
+                    json!({"activations": [{"id": "a9", "machine_name": "STUDIO-PC", "slot": "main"}]}),
+                ),
+            ),
+            err(409, "backup_not_included", None),
+        ],
+    );
+    e.sync();
+    assert!(e
+        .rt
+        .block_on(e.st.license_activate(api::SlotReq::Backup, None))
+        .is_err());
+    match e.st.license_view().notice {
+        Some(Notice::SeatsFull {
+            code,
+            activations,
+            backup,
+        }) => {
+            assert_eq!(code, "backup_not_included");
+            assert_eq!(activations[0].id, "a9");
+            assert!(!backup);
+        }
+        other => panic!("{other:?}"),
+    }
+    // A later seats choice no longer offers a backup.
+    e.reply(
+        "/v1/license/activate",
+        vec![err(
+            409,
+            "seats_full",
+            Some(json!({"activations": [{"id": "a9", "slot": "main"}]})),
+        )],
+    );
+    let _ =
+        e.rt.block_on(e.st.license_activate(api::SlotReq::Main, None));
+    assert!(matches!(
+        e.st.license_view().notice,
+        Some(Notice::SeatsFull { backup: false, .. })
+    ));
 }
 
 #[test]

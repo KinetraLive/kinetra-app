@@ -140,10 +140,13 @@ pub struct BetaView {
 pub enum Notice {
     /// The computer's clock is off by `minutes` (`clock_skew`).
     ClockWrong { minutes: i64 },
-    /// The last activation/refresh hit `seats_full` / `backup_in_use`: the computers using it.
+    /// The last activation/refresh hit `seats_full`, `backup_in_use` or `backup_not_included`
+    /// (the plan has no backup computer): the computers using the license, and whether
+    /// "Use as backup" may be offered.
     SeatsFull {
         code: String,
         activations: Vec<api::Activation>,
+        backup: bool,
     },
 }
 
@@ -222,6 +225,9 @@ struct St {
     online: Option<bool>,
     signin: SigninView,
     notice: Option<Notice>,
+    /// The server said this account's plan has no backup computer (`backup_not_included`):
+    /// "Use as backup" isn't offered again this session.
+    no_backup: bool,
 }
 
 /// The licensing service (held by `AppState`; see the module docs).
@@ -525,6 +531,7 @@ impl AppState {
             online: None,
             signin: SigninView::Idle,
             notice: None,
+            no_backup: false,
         });
         self.license_reevaluate(true);
         // Losing access waits for the show to end: apply once nothing is on air.
@@ -967,14 +974,25 @@ impl AppState {
                         }
                     }
                 }
-                "seats_full" | "backup_in_use" => {
-                    let acts: Vec<api::Activation> = details
+                "seats_full" | "backup_in_use" | "backup_not_included" => {
+                    let mut acts: Vec<api::Activation> = details
                         .as_ref()
                         .and_then(|d| d.get("activations"))
                         .and_then(|a| serde_json::from_value(a.clone()).ok())
                         .unwrap_or_default();
                     if let Some(s) = lock(&c.st).as_mut() {
+                        if code == "backup_not_included" {
+                            s.no_backup = true;
+                        }
+                        // `backup_not_included` lists no computers: keep the ones the seats
+                        // choice showed, so the operator can still free a seat.
+                        if acts.is_empty() {
+                            if let Some(Notice::SeatsFull { activations, .. }) = &s.notice {
+                                acts = activations.clone();
+                            }
+                        }
                         s.notice = Some(Notice::SeatsFull {
+                            backup: code == "seats_full" && !s.no_backup,
                             code: code.clone(),
                             activations: acts,
                         });
@@ -1020,6 +1038,12 @@ impl AppState {
         if let Some(s) = lock(&c.st).as_mut() {
             s.file.slot = Some(a.slot.clone());
             s.file.upgrade_blocked = a.upgrade_blocked.clone();
+            if a.upgrade_blocked
+                .as_ref()
+                .is_some_and(|b| b.reason == "backup_not_included")
+            {
+                s.no_backup = true;
+            }
             s.file.welcome_done = true;
             s.notice = None;
             match s.file.licenses.iter_mut().find(|l| l.id == a.license.id) {

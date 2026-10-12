@@ -119,6 +119,9 @@
     <div class="card">
       {#if seats.code === "backup_in_use"}
         <h2 id="seats-title">This license already has a backup computer</h2>
+      {:else if seats.code === "backup_not_included"}
+        <h2 id="seats-title">This plan doesn't include a backup computer</h2>
+        {#if seats.activations.length > 0}<p class="muted">Free a computer to use this one instead.</p>{/if}
       {:else}
         <h2 id="seats-title">All computers on this license are in use</h2>
       {/if}
@@ -142,7 +145,7 @@
         {/each}
       </ul>
       <div class="row">
-        {#if seats.code === "seats_full"}
+        {#if seats.backup}
           <Button disabled={busy} onclick={() => void act("Couldn't use this computer as backup", () => licenseActivate("backup"))}>Use as backup</Button>
         {/if}
         <Button variant="ghost" onclick={() => (license.dismissed.seats = seatsKey)}>Not now</Button>

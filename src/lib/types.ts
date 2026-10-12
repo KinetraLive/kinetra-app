@@ -639,7 +639,7 @@ export type SigninView =
 
 export type LicenseNotice =
   | { kind: "clockWrong"; minutes: number }
-  | { kind: "seatsFull"; code: "seats_full" | "backup_in_use" | string; activations: CloudActivation[] };
+  | { kind: "seatsFull"; code: "seats_full" | "backup_in_use" | "backup_not_included" | string; activations: CloudActivation[]; backup: boolean };
 
 export interface BetaView {
   name: string;

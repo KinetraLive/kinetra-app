@@ -60,6 +60,7 @@ Licensing codes (`/v1/license/*`, `DELETE /v1/me`):
 | 403 | `license_revoked` | License revoked (refund, fraud, account deleted). | Free, after the show; "Contact hello@kinetra.live". |
 | 409 | `seats_full` | All seats in use, on the license you asked for (`license_id`), or on Free when nothing else fits. `details.activations` (id, machine_name, slot, last_refreshed_at). | Offer "Deactivate *name* and use this computer", or "Use as backup". |
 | 409 | `backup_in_use` | The license already has a backup. `details.activations`. | Offer deactivating the existing backup. |
+| 409 | `backup_not_included` | The license's plan has no backup computer (Pro, Team). | "This plan doesn't include a backup computer"; offer using a seat (move the plan here). |
 | 409 | `activation_revoked` | This computer was deactivated (elsewhere) or the activation is unknown. | Activate again (it's free and unlimited); if that fails, follow its error. |
 | 409 | `active_license` | Account deletion needs `confirm_license_revocation`. `details.active_licenses`. | Show the warning, ask again. |
 | 503 | `license_service_unavailable` | No usable signing key on the server. | Treat as offline; keep the current token. |
@@ -203,6 +204,8 @@ better license is full, the response includes:
 "upgrade_blocked": {"license_id": "…", "plan": "pro_yearly", "reason": "seats_full",
                     "activations": [{"id", "machine_name", "slot", "last_refreshed_at", …}]}
 ```
+`reason` is `seats_full`, `backup_in_use`, or `backup_not_included` (a backup was asked
+for and the better license's plan has no backup computer; `activations` is empty).
 
 ### `GET /v1/license/keys` (public)
 
@@ -255,7 +258,7 @@ Same machine again → same `activation_id`, fresh token.
 **Errors:** `400 bad_request` (fingerprint/nonce format), `400 clock_skew`,
 `400 replayed_request`, `403 license_expired` / `403 license_revoked` (only for an
 explicit `license_id`; otherwise it falls back), `404 not_found` (`license_id` not yours),
-`409 seats_full`, `409 backup_in_use`, `401`, `429`, `503 license_service_unavailable`.
+`409 seats_full`, `409 backup_in_use`, `409 backup_not_included`, `401`, `429`, `503 license_service_unavailable`.
 
 ### `POST /v1/license/refresh`
 

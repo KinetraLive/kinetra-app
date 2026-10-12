@@ -33,6 +33,7 @@ export const API_MESSAGES: Readonly<Record<string, string | null>> = {
   license_revoked: "This license was revoked. Contact hello@kinetra.live.",
   seats_full: "All computers on this license are in use.",
   backup_in_use: "This license already has a backup computer.",
+  backup_not_included: "This plan doesn't include a backup computer.",
   activation_revoked: "This computer was deactivated. Activate it again.",
   active_license: null,
   license_service_unavailable: "Licensing is temporarily unavailable. Your license keeps working.",
