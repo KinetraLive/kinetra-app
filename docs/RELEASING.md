@@ -29,8 +29,8 @@ out with Windows alone when the macOS job fails, and the manifest then lists Win
 - `rollback.yml`: manual (channel, version) → points that channel's manifest and `latest.json`
   back to an existing release (its files are checked first). Never deletes anything.
 - `build.yml` (reusable): a test job (Windows) and one build job per platform, in parallel:
-  checkout, Node + pnpm (cached), Rust (cached with `Swatinem/rust-cache`), the license-crate
-  access, `tauri build` with the channel config, updater signing, optional code signing, upload
+  checkout, Node + pnpm (cached), Rust (cached with `Swatinem/rust-cache`),
+  `tauri build` with the channel config, updater signing, optional code signing, upload
   as workflow artifacts. Publishing waits for all of them (macOS may fail without stopping it).
 - `publish.yml` (reusable): downloads the artifacts, writes `SHA256SUMS`, uploads the release
   files (immutable), then `releases/<channel>/latest.json`, then the manifest **last**, then
@@ -112,7 +112,6 @@ After uploading: fetch `updates/latest*.json` and the Windows installer from
 
 | Name | Required | What |
 |---|---|---|
-| `KINETRA_LICENSE_TOKEN` | yes | read access to the private license crate (below) |
 | `TAURI_SIGNING_PRIVATE_KEY` | yes | contents of the updater private key file (`pnpm tauri signer generate`), kept offline and never in the repo |
 | `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | yes | contents of `kinetra-updater.key.password` |
 | `R2_ACCESS_KEY_ID` | yes (publish) | R2 API token, Object Read & Write on `kinetra-downloads` only |
@@ -128,23 +127,6 @@ Without the optional ones the job logs `::warning::` "Windows code signing skipp
 Trusted Signing secrets" (or the macOS equivalent) and builds unsigned installers. Secrets are
 only ever passed as environment variables to the steps that need them, never echoed; scripts
 never print environment variables.
-
-**License crate access.** The dependency uses the HTTPS URL, so a deploy key (SSH only) doesn't
-fit. Create a **fine-grained personal access token**:
-1. github.com › Settings › Developer settings › Personal access tokens › Fine-grained tokens ›
-   Generate new token.
-2. Resource owner: **KinetraLive** (the org may need to approve it: Organization settings ›
-   Personal access tokens).
-3. Repository access: **Only select repositories** › `KinetraLive/kinetra-license`.
-4. Permissions: Repository › **Contents: Read-only** (Metadata read-only is added automatically).
-   Nothing else.
-5. Expiration: 1 year (calendar the rotation).
-6. Save it as the Actions secret `KINETRA_LICENSE_TOKEN` in `KinetraLive/kinetra-app`.
-
-CI then rewrites only that URL: `git config --global
-url."https://x-access-token:${KINETRA_LICENSE_TOKEN}@github.com/KinetraLive/kinetra-license".insteadOf
-"https://github.com/KinetraLive/kinetra-license"` (the token never appears in logs: GitHub masks
-secrets, and git is quiet).
 
 ## How to release
 
@@ -173,8 +155,6 @@ undo a rollback, run it again with the newer version. Nothing is ever deleted.
 
 ## Rotating secrets
 
-- **`KINETRA_LICENSE_TOKEN`:** create a new fine-grained token (same settings), replace the
-  secret, then delete the old token on GitHub.
 - **R2 keys:** Cloudflare › R2 › Manage API tokens › create a new token (Object Read & Write,
   `kinetra-downloads` only), replace `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY`, run a dry run
   and a canary, then delete the old token.
@@ -197,8 +177,7 @@ undo a rollback, run it again with the newer version. Nothing is ever deleted.
   Dependabot (`.github/dependabot.yml`) opens one grouped pull request a week that bumps them;
   review the changelogs it links like any dependency change, and run a dry run before merging a
   major bump.
-- The license crate token can only read `kinetra-license`; R2 keys only reach the publish and
-  rollback jobs; the dry run gets no secrets for assembling.
+- R2 keys only reach the publish and rollback jobs; the dry run gets no secrets for assembling.
 - macOS uses keyring's `apple-native` feature (the Keychain).
 
 ## Icons

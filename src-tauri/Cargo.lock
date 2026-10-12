@@ -2338,7 +2338,7 @@ dependencies = [
 [[package]]
 name = "kinetra-license"
 version = "0.2.0"
-source = "git+https://github.com/KinetraLive/kinetra-license.git?tag=license-v0.2.0#ec7b5903931eded146464ca41c6291da15644c21"
+source = "git+https://github.com/KinetraLive/kinetra-license?tag=license-v0.2.0#ec7b5903931eded146464ca41c6291da15644c21"
 dependencies = [
  "base64 0.23.1",
  "ed25519-dalek",

@@ -1,4 +1,0 @@
-[net]
-# kinetra-license is a private git dependency: fetch it with the git CLI so its credentials
-# (gh auth setup-git) apply.
-git-fetch-with-cli = true
