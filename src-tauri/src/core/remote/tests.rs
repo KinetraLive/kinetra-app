@@ -1582,3 +1582,49 @@ fn media_layers_are_read_only_with_their_on_air_state() {
     }
     assert!(e.on_air("m1"));
 }
+
+#[test]
+fn layer_ids_shared_by_two_screens_get_distinct_keys() {
+    let e = env();
+    // A second screen whose layer reuses the id "l1" (layer ids are unique per screen only).
+    let mut doc =
+        e.st.create_screen(&NewScreen {
+            name: "Second".into(),
+            width: 1920,
+            height: 1080,
+            background: "transparent".into(),
+        })
+        .unwrap()
+        .doc;
+    let template = match &e.st.get_screen(&e.screen).unwrap().doc.meta.layers[0].kind {
+        ScreenLayerKind::Template { template_id, .. } => template_id.clone(),
+        _ => unreachable!(),
+    };
+    doc.meta.layers.push(layer("l1", &template, &[]));
+    let second = e.st.save_screen(doc).unwrap().doc.id;
+    let snap = e.live();
+    state::check_refs(&snap).unwrap();
+    let mut keys: Vec<String> = snap["layers"]
+        .as_object()
+        .unwrap()
+        .keys()
+        .cloned()
+        .collect();
+    keys.sort();
+    let qualified = format!("{second}_l1");
+    assert!(
+        keys.contains(&"l1".to_string()) && keys.contains(&qualified),
+        "{keys:?}"
+    );
+    // Each key reaches its own screen's layer.
+    let r = e.command(
+        "k1",
+        "take",
+        json!({"layer": qualified}),
+        "operator",
+        e.seq(),
+    );
+    assert_eq!(r["ok"], true, "{r}");
+    assert!(e.st.live().layer_view(&second, "l1").unwrap().on_air);
+    assert!(!e.on_air("l1"));
+}

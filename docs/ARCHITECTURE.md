@@ -127,6 +127,34 @@ A project is a plain folder of JSON, HTML and CSS, portable and git-friendly:
 - **MIDI and OSC** go through one entry point, `AppState::run_control`, the same commands the
   command palette uses.
 
+## Remote control
+
+People control a running show from a browser at `control.kinetra.live`. The contract is
+[CONTROL_PROTOCOL.md](CONTROL_PROTOCOL.md) (a copy of kinetra-cloud's; the protocol wins).
+
+- **One outgoing WebSocket** to `api.kinetra.live` while the switch is on for the open project
+  (`core/remote/`); nothing connects in to the show machine. The switch lasts for the app
+  session only: every start begins off. Off costs nothing (no task, no socket).
+- **The app is the authority.** A remote take, clear or GO runs through `run_control`, a field
+  edit through `set_layer_fields`, exactly like the local buttons (Studio mode, On take staging,
+  coalesced saves). Every command is checked again in the protocol's order (role, Lock remote
+  take, target, bound fields, stale against what the sender saw, values). A data editor's edit
+  is refused under the live state's lock if the layer is shown, so a take in between can't slip
+  past the check.
+- **Never interrupts graphics:** the render path only wakes the connection; it builds the
+  remote state (screens, layers, values, cues, read-only Preview and media layers) on the
+  blocking pool and sends JSON Pointer diffs. A stalled or dropped link only delays remote
+  control; it reconnects with backoff and resumes the run, replaying nothing.
+- **Exact on air:** outputs report when a layer's out-animation has finished (`{t:"gone"}`);
+  remote users see a layer on air until then (at most 3.5 s; `core/live_hub/fades.rs`).
+- **The project's ID** (`project.json` `id`, written the first time remote control is turned on)
+  names the show; a copied project shares it ("Move it here?" moves the run), and "Make this a
+  separate show" gives it a new one.
+- **Test connection** uses the protocol's probe mode; diagnostics hold IDs, sizes, timings and
+  codes only, never values, names, tokens or account IDs.
+- Tests: `core/remote/tests.rs` (a mock relay in the test), `e2e/remote-control.spec.ts` (the
+  fixture server's mock relay and the real renderer), `e2e/remote-visibility.spec.ts`.
+
 ## App UI
 
 - Shared state lives in `src/lib/stores/*.svelte.ts`; `SyncedStore` gives optimistic writes with

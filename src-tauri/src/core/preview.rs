@@ -58,7 +58,7 @@ fn pick_field(
 
 /// Debug builds only (the e2e sandbox test): puts raw HTML/CSS into a layer WITHOUT validation
 /// or hardening, so the test can prove the renderer's CSP blocks what the hardening would have
-/// refused. Doesn't exist in release builds.
+/// refused. Doesn't exist in release builds (`scripts/check-release-overrides.mjs` proves it).
 #[cfg(debug_assertions)]
 #[doc(hidden)]
 pub fn load_unchecked_for_tests(layer: &mut LayerLive, html: &str, css: &str) -> Vec<ServerMsg> {

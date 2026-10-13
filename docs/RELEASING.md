@@ -105,6 +105,11 @@ Before uploading:
   command; a wrong key would otherwise only show when a client refuses the update);
 - the version doesn't exist in R2 yet.
 
+After each release build, `scripts/check-release-overrides.mjs` proves the debug-only test
+overrides (the e2e fixture's entitlement override, the template sandbox bypass) aren't in
+release builds: `cargo check --release --example release_guard` must fail with exactly their
+"doesn't exist" errors, or the job fails.
+
 Release builds carry no source maps, and `scripts/release-rustflags.mjs` remaps the Cargo home,
 the Rust sysroot and the checkout in panic locations, so no build machine paths end up in the app.
 

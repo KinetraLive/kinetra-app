@@ -426,8 +426,11 @@ impl Cloud {
         config::prerelease_build()
     }
 
-    /// Tests: these effective entitlements, full access (or Reduced), without a token.
-    #[cfg(test)]
+    /// Tests and the e2e fixture (debug builds only, never in a release build: CI proves it with
+    /// `scripts/check-release-overrides.mjs`): these effective entitlements, full access (or
+    /// Reduced), without a token.
+    #[cfg(any(test, debug_assertions))]
+    #[doc(hidden)]
     pub fn set_test_entitlements(&self, effective: &[&str], full: bool) {
         if let Some(s) = lock(&self.st).as_mut() {
             s.effective = effective.iter().map(|e| (*e).to_string()).collect();

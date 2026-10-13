@@ -146,6 +146,9 @@ jobs:
           # No local build paths in panic locations (scripts/release-rustflags.mjs).
           export CARGO_ENCODED_RUSTFLAGS="$(node scripts/release-rustflags.mjs)"
           pnpm tauri build --ci --bundles nsis --config "$RUNNER_TEMP/ci.conf.json"
+      - name: Release overrides check (no test overrides in release builds)
+        shell: bash
+        run: node scripts/check-release-overrides.mjs
       - name: Channel check (no CANARY badge in stable builds)
         shell: bash
         env:
@@ -216,6 +219,9 @@ jobs:
           # No local build paths in panic locations (scripts/release-rustflags.mjs).
           export CARGO_ENCODED_RUSTFLAGS="$(node scripts/release-rustflags.mjs)"
           pnpm tauri build --ci --target universal-apple-darwin --bundles app,dmg --config "$RUNNER_TEMP/ci.conf.json"
+      - name: Release overrides check (no test overrides in release builds)
+        shell: bash
+        run: node scripts/check-release-overrides.mjs
       - name: Channel check (no CANARY badge in stable builds)
         shell: bash
         env:

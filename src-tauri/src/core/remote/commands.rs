@@ -12,7 +12,7 @@
 use serde_json::{json, Map, Value};
 
 use super::proto::{clip, Command, MESSAGE_MAX, VALUES_MAX};
-use super::state::{Model, RemoteAsset, CUE_LIST_ID};
+use super::state::{local_layer_id, Model, RemoteAsset, CUE_LIST_ID};
 use crate::core::control_actions::ControlInput;
 use crate::core::model::ControlTarget;
 use crate::core::protocol::Fields;
@@ -174,7 +174,10 @@ pub fn run(st: &AppState, ctx: &Ctx<'_>, cmd: &Command) -> Result<Done, Refused>
     let screen = layer_node
         .and_then(|l| l["screen"].as_str())
         .map(str::to_string);
-    let is_shown = |s: &Option<String>, l: &str| s.as_deref().is_some_and(|s| shown(st, s, l));
+    let is_shown = |s: &Option<String>, l: &str| {
+        s.as_deref()
+            .is_some_and(|s| shown(st, s, local_layer_id(l, s)))
+    };
 
     // 4. Role.
     match (&action, role) {
@@ -196,7 +199,7 @@ pub fn run(st: &AppState, ctx: &Ctx<'_>, cmd: &Command) -> Result<Done, Refused>
         Action::Take { .. } | Action::Clear { .. } | Action::RunCue { .. } => true,
         Action::UpdateFields { layer, .. } => screen
             .as_deref()
-            .is_some_and(|s| st.live().visible(s, layer)),
+            .is_some_and(|s| st.live().visible(s, local_layer_id(layer, s))),
     };
     if ctx.take_locked && changes_air {
         return Err(refuse(
@@ -278,9 +281,11 @@ pub fn run(st: &AppState, ctx: &Ctx<'_>, cmd: &Command) -> Result<Done, Refused>
 
     // 8–9. Validation as local, then the same path as local.
     let screen_id = screen.clone().unwrap_or_default();
+    // The screen's own layer id (a tree key may be screen-qualified: state::layer_key).
+    let local = |key: &str| local_layer_id(key, &screen_id).to_string();
     let result = match &action {
-        Action::Take { layer } => press(st, &format!("live.take:{screen_id}/{layer}")),
-        Action::Clear { layer } => press(st, &format!("live.clear:{screen_id}/{layer}")),
+        Action::Take { layer } => press(st, &format!("live.take:{screen_id}/{}", local(layer))),
+        Action::Clear { layer } => press(st, &format!("live.clear:{screen_id}/{}", local(layer))),
         Action::RunCue { list, cue } => {
             if list != CUE_LIST_ID {
                 return Err(refuse("not_found", "That cue list doesn't exist."));
@@ -289,7 +294,7 @@ pub fn run(st: &AppState, ctx: &Ctx<'_>, cmd: &Command) -> Result<Done, Refused>
         }
         Action::UpdateFields { layer, values } => {
             if role == Some(Role::DataEditor) {
-                match st.set_layer_fields_unless_shown(&screen_id, layer, values.clone()) {
+                match st.set_layer_fields_unless_shown(&screen_id, &local(layer), values.clone()) {
                     Ok(Some(_)) => Ok(()),
                     Ok(None) => {
                         return Err(refuse(
@@ -300,7 +305,7 @@ pub fn run(st: &AppState, ctx: &Ctx<'_>, cmd: &Command) -> Result<Done, Refused>
                     Err(e) => Err(e),
                 }
             } else {
-                st.set_layer_fields(&screen_id, layer, values.clone())
+                st.set_layer_fields(&screen_id, &local(layer), values.clone())
                     .map(drop)
             }
         }

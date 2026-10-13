@@ -243,6 +243,15 @@
 //!
 //! A test that opens another project should run on its own fixture server.
 //!
+//! Remote control against a mock of kinetra-cloud's relay (the real `core::remote` connection):
+//! - `remotemock` → `OK <port>`: starts the relay mock (once) and signs in with `pro.control`
+//!   (the debug-only entitlement override); it answers `hello`, `register`, pings and `end`
+//! - `remoteon` / `remoteoff` → `OK <RemoteView json>`; `remotelock on|off`; `remoteview`
+//! - `remotesend <json>`: a server message to the app (e.g. a `command`)
+//! - `remotewait <t> <n> [key=value]` → `OK <the last json>`: waits ≤ 5 s for n messages of
+//!   type t from the app (e.g. `remotewait result 1 corr=c1`)
+//! - `remotestate` → `OK {"seq", "state"}`: the relay's copy (last snapshot + diffs)
+//!
 //! Server:
 //! - `restart`: stop the server and bind the same port again, keeping live state
 //! - `quit`: stop and exit (also on stdin EOF); the temp project is deleted
@@ -393,6 +402,162 @@ struct PollMock {
 }
 
 static POLL_MOCK: std::sync::OnceLock<PollMock> = std::sync::OnceLock::new();
+
+/// A mock of kinetra-cloud's remote control relay (`docs/CONTROL_PROTOCOL.md`): answers
+/// `hello` with `welcome`, `register` with `registered`, pings with pongs and `end` with close
+/// 1000; records every message the app sends; `remotesend` pushes server messages.
+struct RelayMock {
+    port: u16,
+    to_app: Mutex<Option<tokio::sync::mpsc::UnboundedSender<String>>>,
+    received: Mutex<Vec<serde_json::Value>>,
+}
+
+static RELAY_MOCK: std::sync::OnceLock<Arc<RelayMock>> = std::sync::OnceLock::new();
+
+async fn relay_conn(socket: axum::extract::ws::WebSocket, mock: Arc<RelayMock>) {
+    use axum::extract::ws::Message;
+    use futures_util::{SinkExt, StreamExt};
+    let (mut tx, mut rx) = socket.split();
+    let (out, mut out_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+    *mock.to_app.lock().unwrap_or_else(PoisonError::into_inner) = Some(out.clone());
+    let writer = tokio::spawn(async move {
+        while let Some(t) = out_rx.recv().await {
+            let msg = if t == "__close" {
+                Message::Close(Some(axum::extract::ws::CloseFrame {
+                    code: 1000,
+                    reason: "ended".into(),
+                }))
+            } else {
+                Message::Text(t.into())
+            };
+            if tx.send(msg).await.is_err() {
+                break;
+            }
+        }
+    });
+    let now = kinetra_lib::core::fsx::now_epoch_ms;
+    while let Some(Ok(Message::Text(t))) = rx.next().await {
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(t.as_str()) else {
+            continue;
+        };
+        mock.received
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push(v.clone());
+        let reply = match v["t"].as_str().unwrap_or_default() {
+            "hello" => serde_json::json!({"t": "welcome", "protocol": 1, "mode": "run",
+                "server_version": "fixture relay", "server_time_ms": now(), "heartbeat_s": 20,
+                "limits": {}}),
+            "register" => serde_json::json!({"t": "registered", "corr": v["corr"],
+                "show_id": "fixture-show", "run_id": "fixture-run", "resumed": false,
+                "crew_url": "https://control.kinetra.live/s/x/crew",
+                "controller_url": "https://control.kinetra.live/s/x"}),
+            "ping" => serde_json::json!({"t": "pong", "corr": v["corr"],
+                "ping_sent_ms": v["sent_ms"], "received_ms": now(), "sent_ms": now()}),
+            "end" => {
+                let _ = out.send("__close".into());
+                continue;
+            }
+            _ => continue,
+        };
+        let _ = out.send(reply.to_string());
+    }
+    writer.abort();
+}
+
+/// Starts the relay mock (once) and points the cloud service at it, signed in with
+/// `pro.control` (the debug-only entitlement override).
+fn relay_mock_start(rt: &Runtime, state: &AppState) -> Result<u16, String> {
+    let mock = RELAY_MOCK
+        .get_or_init(|| {
+            let listener = rt
+                .block_on(TcpListener::bind(("127.0.0.1", 0)))
+                .expect("relay mock bind");
+            let port = listener.local_addr().expect("relay mock port").port();
+            let mock = Arc::new(RelayMock {
+                port,
+                to_app: Mutex::new(None),
+                received: Mutex::new(Vec::new()),
+            });
+            let m = mock.clone();
+            let app = axum::Router::new().route(
+                "/v1/control/app",
+                axum::routing::get(move |ws: axum::extract::WebSocketUpgrade| {
+                    let m = m.clone();
+                    async move {
+                        ws.protocols(["kinetra-control.v1"])
+                            .on_upgrade(move |s| relay_conn(s, m))
+                    }
+                }),
+            );
+            rt.spawn(async move {
+                let _ = axum::serve(listener, app).await;
+            });
+            mock
+        })
+        .clone();
+    let secrets = Arc::new(MemorySecrets::default());
+    secrets
+        .set("kinetra-session", "kntr_s_fixture")
+        .map_err(text)?;
+    secrets
+        .set("kinetra-license-token", "1:fixture-license-token")
+        .map_err(text)?;
+    state.cloud_service().set_test_env(
+        &format!("http://127.0.0.1:{}", mock.port),
+        secrets,
+        "857a78b7a23b14cd718a9cbf9b90b0577225543ddcce5ed21854a4985f25ee27",
+    );
+    state.cloud_init();
+    state
+        .cloud_service()
+        .set_test_entitlements(&["core.app", "pro.control"], true);
+    Ok(mock.port)
+}
+
+/// The relay mock's copy of the remote state: the last snapshot plus every diff after it.
+fn relay_state() -> Result<serde_json::Value, String> {
+    let mock = RELAY_MOCK.get().ok_or("no relay mock (remotemock first)")?;
+    let msgs = mock
+        .received
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .clone();
+    let mut tree = serde_json::Value::Null;
+    let mut seq = 0u64;
+    for m in msgs {
+        match m["t"].as_str() {
+            Some("snapshot") => {
+                tree = m["state"].clone();
+                seq = m["seq"].as_u64().unwrap_or(0);
+            }
+            Some("diff") => {
+                seq = m["seq"].as_u64().unwrap_or(seq);
+                for op in m["ops"].as_array().into_iter().flatten() {
+                    let path = op["path"].as_str().unwrap_or_default();
+                    let Some((parent, key)) = path.rsplit_once('/') else {
+                        continue;
+                    };
+                    let key = key.replace("~1", "/").replace("~0", "~");
+                    let target = if parent.is_empty() {
+                        Some(&mut tree)
+                    } else {
+                        tree.pointer_mut(parent)
+                    };
+                    if let Some(serde_json::Value::Object(o)) = target {
+                        if op["op"] == "put" {
+                            o.insert(key, op["value"].clone());
+                        } else {
+                            o.remove(&key);
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    Ok(serde_json::json!({"seq": seq, "state": tree}))
+}
 
 async fn poll_mock_conn(
     mut sock: tokio::net::TcpStream,
@@ -888,6 +1053,67 @@ fn run(
                     .to_string(),
             );
         }
+        "remotemock" => value = Some(relay_mock_start(rt, state)?.to_string()),
+        "remoteon" => {
+            let v = state.remote_set(true).map_err(text)?;
+            value = Some(serde_json::to_string(&v).map_err(text)?);
+        }
+        "remoteoff" => {
+            let v = state.remote_set(false).map_err(text)?;
+            value = Some(serde_json::to_string(&v).map_err(text)?);
+        }
+        "remotelock" => {
+            state.remote_lock(arg.trim() == "on").map_err(text)?;
+        }
+        "remoteview" => value = Some(serde_json::to_string(&state.remote_view()).map_err(text)?),
+        "remotesend" => {
+            let mock = RELAY_MOCK.get().ok_or("no relay mock (remotemock first)")?;
+            let tx = mock
+                .to_app
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .clone()
+                .ok_or("the app isn't connected to the relay mock")?;
+            let v: serde_json::Value = json("message", arg)?;
+            tx.send(v.to_string()).map_err(text)?;
+        }
+        "remotewait" => {
+            // `remotewait <t> <n> [key=value]`: waits (≤ 5 s) until the app sent ≥ n messages
+            // of type t (with that top-level string field); answers the last one.
+            let mut it = arg.split_whitespace();
+            let t = it.next().ok_or("remotewait <t> <n>")?.to_string();
+            let n: usize = it.next().unwrap_or("1").parse().map_err(text)?;
+            let filter = it
+                .next()
+                .and_then(|f| f.split_once('='))
+                .map(|(k, v)| (k.to_string(), v.to_string()));
+            let mock = RELAY_MOCK.get().ok_or("no relay mock (remotemock first)")?;
+            let deadline = std::time::Instant::now() + Duration::from_secs(5);
+            loop {
+                let hits: Vec<serde_json::Value> = mock
+                    .received
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .iter()
+                    .filter(|m| m["t"] == t.as_str())
+                    .filter(|m| {
+                        filter
+                            .as_ref()
+                            .is_none_or(|(k, v)| m[k.as_str()].as_str() == Some(v.as_str()))
+                    })
+                    .cloned()
+                    .collect();
+                if hits.len() >= n {
+                    value = Some(hits.last().map(|m| m.to_string()).unwrap_or_default());
+                    break;
+                }
+                if std::time::Instant::now() > deadline {
+                    return Err(format!("only {} {t} message(s) from the app", hits.len()));
+                }
+                std::thread::sleep(Duration::from_millis(10));
+            }
+        }
+        "remotestate" => value = Some(relay_state()?.to_string()),
         "pollconn" => {
             let conn = state.poll_service().conn(arg.trim());
             value = Some(serde_json::to_string(&conn).map_err(text)?);

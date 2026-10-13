@@ -107,6 +107,25 @@ pub(crate) fn media_of(asset: &str) -> Option<(&'static str, String)> {
     Some((kind, name_of(name)))
 }
 
+/// A layer's key in the tree: its own id, unless another screen's layer already has that id
+/// (layer ids are unique per screen only): then `<screen>_<layer>`. Commands map a key back
+/// with [`local_layer_id`].
+fn layer_key(screen: &str, layer: &str, taken: &Map<String, Value>) -> String {
+    if taken.contains_key(layer) {
+        format!("{screen}_{layer}")
+    } else {
+        layer.to_string()
+    }
+}
+
+/// The screen's own layer id for a tree key (see [`layer_key`]).
+pub fn local_layer_id<'a>(key: &'a str, screen: &str) -> &'a str {
+    key.strip_prefix(screen)
+        .and_then(|r| r.strip_prefix('_'))
+        .filter(|r| !r.is_empty())
+        .unwrap_or(key)
+}
+
 /// A name as the protocol takes it: trimmed, 1–100 characters ("Untitled" when empty).
 pub fn name_of(s: &str) -> String {
     let t = s.trim();
@@ -170,11 +189,14 @@ pub fn build(st: &AppState, input: &BuildInput) -> Value {
             None
         };
         let mut ids = Vec::new();
+        // Local layer id → its key in the tree (see `layer_key`), for Preview below.
+        let mut keys: Vec<(String, String)> = Vec::new();
         // Views are bottom first; the protocol lists layers top first.
         for lv in view.layers.iter().rev() {
             if layers.len() >= LAYERS_MAX {
                 break;
             }
+            let key = layer_key(&sid, &lv.id, &layers);
             let Some(dl) = doc
                 .as_ref()
                 .and_then(|d| d.meta.layers.iter().find(|l| l.id == lv.id))
@@ -196,7 +218,7 @@ pub fn build(st: &AppState, input: &BuildInput) -> Value {
                 ScreenLayerKind::Media { media, .. } => {
                     if let Some((kind, name)) = media_of(&media.asset) {
                         layers.insert(
-                            lv.id.clone(),
+                            key.clone(),
                             json!({
                                 "kind": "media",
                                 "screen": sid,
@@ -205,7 +227,8 @@ pub fn build(st: &AppState, input: &BuildInput) -> Value {
                                 "media": {"type": kind, "name": name},
                             }),
                         );
-                        ids.push(lv.id.clone());
+                        ids.push(key.clone());
+                        keys.push((lv.id.clone(), key));
                     }
                     continue;
                 }
@@ -261,7 +284,7 @@ pub fn build(st: &AppState, input: &BuildInput) -> Value {
                 .filter(|k| defs.iter().any(|d| &d.key == *k))
                 .collect();
             layers.insert(
-                lv.id.clone(),
+                key.clone(),
                 json!({
                     "kind": "template",
                     "screen": sid,
@@ -273,15 +296,16 @@ pub fn build(st: &AppState, input: &BuildInput) -> Value {
                     "remote_editable": editable,
                 }),
             );
-            ids.push(lv.id.clone());
+            ids.push(key.clone());
+            keys.push((lv.id.clone(), key));
         }
         if let Some(p) = &pv {
             let cued: Vec<&String> = p
                 .layers
                 .iter()
                 .rev()
-                .filter(|l| l.on_air && ids.contains(&l.id))
-                .map(|l| &l.id)
+                .filter(|l| l.on_air)
+                .filter_map(|l| keys.iter().find(|(id, _)| *id == l.id).map(|(_, k)| k))
                 .collect();
             preview.insert(sid.clone(), json!(cued));
         }
