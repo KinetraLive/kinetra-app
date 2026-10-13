@@ -106,7 +106,9 @@ A project is a plain folder of JSON, HTML and CSS, portable and git-friendly:
   save, and renderer pages are served with a strict Content Security Policy.
 - No timers or `requestAnimationFrame` at rest. Clock and timer fields share one scheduler that
   runs only while such a field is on air.
-- Size budget: 8 KB gzipped for the main bundle; media and output support load as lazy chunks.
+- Size budget: 9 KB gzipped for the main bundle (raised from 8 KB on 2026-10-13 for remote
+  control's `gone` report; browser sources still load instantly); media and output support load
+  as lazy chunks.
 
 ## Sources and automation
 

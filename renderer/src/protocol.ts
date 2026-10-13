@@ -195,6 +195,7 @@ export type ServerMsg =
  * Renderer → server. The only messages a renderer sends; status only, never control. Sent on the
  * same WebSocket. `ready`: a layer's media (a media layer's file, or a template's video/image
  * fields) is loaded and its first frame at the in point decoded (`ok`), or failed (`error`, short
- * text). Sent once per load (again after a new file / reconnect).
+ * text). Sent once per load (again after a new file / reconnect). `gone`: a layer's out-animation
+ * finished and it left the page (Program; a cut or a re-take sends none).
  */
-export type ClientMessage = { t: "ready"; layerId: string; ok: boolean; error?: string };
+export type ClientMessage = { t: "ready"; layerId: string; ok: boolean; error?: string } | { t: "gone"; layerId: string };

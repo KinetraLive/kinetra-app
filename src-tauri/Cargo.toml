@@ -56,6 +56,11 @@ midir = { version = "0.11.0", default-features = false }
 # Manual update checks (Help › Check for updates). Our reqwest 0.13 + native-tls (schannel): no
 # rustls, no system proxy, no zip (Windows updates are the signed installer itself).
 tauri-plugin-updater = { version = "2.13.2", default-features = false, features = ["native-tls"] }
+# Remote control: one outgoing WebSocket to api.kinetra.live (the version axum already compiles;
+# native-tls like reqwest: schannel / Security.framework, no rustls, no permessage-deflate).
+tokio-tungstenite = { version = "0.29", default-features = false, features = ["connect", "native-tls"] }
+# Its Sink / Stream traits (send, next, split); already compiled through axum.
+futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
 
 # MIDI hot-plug (a message-only window receiving device notifications) and display outputs
 # (GDI display enumeration, the monitor EDID in the registry, a hidden window for display

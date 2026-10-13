@@ -242,6 +242,7 @@ impl Default for ProjectFile {
             name: String::new(),
             created_at: fsx::now_rfc3339(),
             settings: Default::default(),
+            id: None,
         }
     }
 }

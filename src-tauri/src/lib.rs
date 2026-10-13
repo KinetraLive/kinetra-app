@@ -64,6 +64,8 @@ fn is_window(target: &EventTarget, label: &str) -> bool {
 pub(crate) fn shutdown_services(handle: &AppHandle) {
     if let Some(state) = handle.try_state::<AppState>() {
         state.flush_all();
+        // Remote control: `end {quit}` so browsers see the show machine ended it (≤ ~1 s).
+        state.remote_quit();
         // LEDs off, MIDI ports closed, the MIDI thread stopped.
         state.midi_close_all();
         // Output windows closed, the displays thread stopped.

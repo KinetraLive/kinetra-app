@@ -411,6 +411,11 @@ pub struct ProjectFile {
     pub created_at: String,
     #[serde(default)]
     pub settings: ProjectSettings,
+    /// The project's stable ID for remote control (a UUID v7; `register`'s `project_id`), written
+    /// the first time remote control is turned on. A copied folder keeps it (a backup computer
+    /// runs the same show); "Make this a separate show" gives the project a new one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
 }
 
 /// An open project as the UI sees it.

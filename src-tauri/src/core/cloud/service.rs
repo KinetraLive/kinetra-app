@@ -232,6 +232,17 @@ struct St {
     no_backup: bool,
 }
 
+/// What remote control's `hello` needs ([`AppState::remote_credentials`]). Holds secrets: no
+/// `Debug`.
+pub(crate) struct RemoteCredentials {
+    pub base: String,
+    pub session: String,
+    pub license_token: String,
+    pub machine: String,
+    /// Unix seconds (the test clock in tests).
+    pub now: i64,
+}
+
 /// The licensing service (held by `AppState`; see the module docs).
 pub struct Cloud {
     st: Mutex<Option<St>>,
@@ -631,6 +642,30 @@ impl AppState {
             .machine()
             .ok_or_else(|| AppError::Internal("This computer has no machine id".into()))?;
         Ok((c.api()?, session, machine))
+    }
+
+    /// Remote control's handshake (`core::remote`): the API base, the session, the current
+    /// license token (empty when there is none: the server answers `entitlement_required`) and
+    /// this machine's fingerprint. Secrets: never logged.
+    pub(crate) fn remote_credentials(&self) -> AppResult<RemoteCredentials> {
+        let c = self.cloud();
+        let session = self.session()?;
+        let machine = c
+            .machine()
+            .ok_or_else(|| AppError::Internal("This computer has no machine id".into()))?;
+        let base = c
+            .base
+            .read()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone();
+        let license_token = c.get_long(S_TOKEN).ok().flatten().unwrap_or_default();
+        Ok(RemoteCredentials {
+            base,
+            session,
+            license_token,
+            machine,
+            now: c.now(),
+        })
     }
 
     /// Whether anything is on air (Program layers or a showing output): losing access waits.

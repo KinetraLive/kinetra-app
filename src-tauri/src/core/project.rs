@@ -153,6 +153,7 @@ pub fn init_in(path: &Path, name: &str) -> Result<ProjectFile, ProjectError> {
         name,
         created_at: fsx::now_rfc3339(),
         settings: ProjectSettings::default(),
+        id: None,
     };
     persist::save(path, &file)?;
     Ok(file)

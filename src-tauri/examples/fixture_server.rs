@@ -19,6 +19,10 @@
 //!   so tests can use short ones); `off` disables it. A change re-sends the layer (same rev) so
 //!   the renderer's `--auto-out-ms` follows
 //! - `clear`: take every layer of the test screen off air
+//! - `fadetracking on|off`: remote control's exact visibility (`LiveHub::set_fade_tracking`)
+//! - `visible <screenId> <layerId>` → `OK true|false`: whether a project screen's layer can be
+//!   seen on an output (on air, or its out-animation not reported finished by every counted
+//!   renderer: `LiveHub::visible`; reserved screens like `test` are never tracked)
 //!
 //! Project screens (the same code paths as the app's commands):
 //! - `addtemplate <presetId>`: creates a project template from a preset → `OK <templateId>`
@@ -704,6 +708,14 @@ fn run(
         "show" => hub.show(s, l).map(drop).map_err(text)?,
         "hide" => hub.hide(s, l).map(drop).map_err(text)?,
         "clear" => hub.clear(s).map(drop).map_err(text)?,
+        "fadetracking" => hub.set_fade_tracking(arg.trim() == "on"),
+        "visible" => {
+            let (screen, layer) = arg
+                .trim()
+                .split_once(' ')
+                .ok_or("visible <screen> <layer>")?;
+            value = Some(hub.visible(screen, layer).to_string());
+        }
         "fields" => {
             let fields: Fields = json("fields", arg)?;
             hub.set_fields(s, l, fields).map(drop).map_err(text)?

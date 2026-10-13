@@ -89,6 +89,9 @@ pub mod names {
     pub const DISPLAYS_CHANGED: &str = "displays-changed";
     /// Payload: `OutputStatus[]` (every configured output) when any output's status changed.
     pub const OUTPUTS_CHANGED: &str = "outputs-changed";
+    /// Payload: `RemoteView` when remote control's state, crew, lock or round trip changed
+    /// (`core::remote`); never while it is off and unchanged.
+    pub const REMOTE_CONTROL: &str = "remote-control";
     /// Payload: `AssetImportProgress` per file of an import job (≤ 10/s per file, plus its
     /// `done` event).
     pub const ASSET_IMPORT: &str = "asset-import";

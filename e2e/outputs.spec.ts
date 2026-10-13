@@ -373,14 +373,14 @@ test("idle page: background, key black, Identify text", async ({ page }) => {
   await expect(page).toHaveScreenshot("output-idle-identify.png");
 });
 
-test("renderer sizes: main bundle ≤ 8 KB gz, pattern page ≤ 4 KB gz", () => {
+test("renderer sizes: main bundle ≤ 9 KB gz, pattern page ≤ 4 KB gz", () => {
   const dist = join(process.cwd(), "renderer/dist");
   const gz = (p: string) => gzipSync(readFileSync(p), { level: 9 }).length;
   const js = readdirSync(join(dist, "assets")).filter((f) => f.endsWith(".js"));
   const sizes = Object.fromEntries(js.map((f) => [f.split("-")[0], gz(join(dist, "assets", f))]));
   const pattern = gz(join(dist, "pattern.html"));
   console.log(`renderer gz: ${JSON.stringify(sizes)}, pattern.html ${pattern}`);
-  expect(sizes.renderer).toBeLessThanOrEqual(8000);
+  expect(sizes.renderer).toBeLessThanOrEqual(9000);
   expect(sizes.output).toBeLessThanOrEqual(1024);
   expect(pattern).toBeLessThanOrEqual(4096);
 });

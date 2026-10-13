@@ -269,6 +269,7 @@ schema below.
   },
   "layers": {
     "<layer id>": {
+      "kind": "template",                      // or "media" (below); absent = "template"
       "screen": "<screen id>",
       "name": "Lower third 2",                 // 1–100, what operators call it
       "template": "<template id>",
@@ -276,6 +277,13 @@ schema below.
       "values": { "name": "Ingrid Vale", "tags": "[{\"tag\":\"Live\"}]" },
       "bound": ["role"],                       // keys fed by a data source: read-only remotely
       "remote_editable": true                  // false: the app doesn't allow remote edits here
+    },
+    "<media layer id>": {
+      "kind": "media",                         // a video or image as a layer, no template
+      "screen": "<screen id>",
+      "name": "Intro video",                   // 1–100
+      "on_air": true,
+      "media": { "type": "video", "name": "intro.mp4" }   // type image | video; name 1–100
     }
   },
   "cue_lists": {
@@ -296,6 +304,14 @@ schema below.
 }
 ```
 
+- **Layer kinds:** `"template"` (the default when `kind` is absent) has `template`,
+  `values`, `bound` and `remote_editable` as above. `"media"` is a video or image placed as a
+  layer without a template: it has `screen`, `name`, `on_air` and `media` (`type` `image` |
+  `video`, and the file's display `name`; never a path) and **no** `template`, `values`,
+  `bound` or `remote_editable` (the server rejects a media layer that has them). Media
+  layers are **read-only** remotely: browsers show them and their on-air state, and every
+  command on one is refused (`read_only`, §8). They appear in `screens.*.layers` and
+  `preview` like any layer.
 - **`on_air`** is `true` from the moment a layer is taken until its out-animation has
   finished: whenever any of it can be seen on the output. Roles and the lock use this value.
 - **`values`**: the **effective** value of every field the template declares (the layer's
@@ -325,6 +341,7 @@ schema below.
 | `timer` | Read-only in v1 (shown, not started/paused remotely); start/pause/reset come in v1.1 |
 | Any key in the layer's `bound` | Read-only |
 | Any field of a layer with `remote_editable: false` | Read-only |
+| Media layers (`kind: "media"`) | Read-only: no command applies (`take`, `clear` and `update_fields` are all refused with `read_only`) |
 
 ## 7. Snapshots and diffs
 
@@ -418,7 +435,8 @@ Clear all is not in v1 (operator only when added). Timer start/pause/reset come 
    that is on air → `on_air`.
 5. **Lock**: `take_locked` and the command changes what's on air (`take`, `clear`, `run_cue`,
    `update_fields` on an on-air layer) → `locked`.
-6. **Target** exists → else `not_found`. `layer.remote_editable` → else `read_only`. Field
+6. **Target** exists → else `not_found`. A media layer (`kind: "media"`) → `read_only`
+   for every action. `layer.remote_editable` → else `read_only`. Field
    keys exist on the template → `invalid` (`details.field`); key in `bound` → `bound`;
    `clock`/`timer` or a key the app doesn't allow remotely → `read_only`.
 7. **Stale** (the target changed after `seen_seq`):
@@ -462,9 +480,10 @@ time in that order.
 
 ### Checked by the server before forwarding (the app never sees these)
 
-Role (with the server's copy of `on_air`), lock, size and rate limits, the app being
-connected. Browsers can get: `forbidden`, `on_air`, `locked`, `show_offline`, `rate_limited`,
-`too_large`, `timeout`, `busy` (the app's queue is full). The server's checks are a filter,
+Role (with the server's copy of `on_air`), lock, media layers (refused with `read_only`
+from the server's copy of the state), size and rate limits, the app being connected.
+Browsers can get: `forbidden`, `on_air`, `locked`, `read_only`, `show_offline`,
+`rate_limited`, `too_large`, `timeout`, `busy` (the app's queue is full). The server's checks are a filter,
 not a replacement for §8's.
 
 ### Audit
@@ -709,3 +728,6 @@ A probe (§4a):
    per-run logs, an admin page per live run, and a Connection details panel (§10.1, §12a).
 7. Probe mode for the app's "Test connection" button: hello, one ping, close, no run;
    counted separately in the logs and rate-limited on its own (§4a).
+8. Media layers (videos and images placed as layers, without a template) are listed in v1
+   as `kind: "media"` with their on-air state, read-only: every command on them is refused
+   with `read_only` (§6.1, §6.2, §8). Requested by the app team, 2026-10-13.

@@ -160,11 +160,13 @@ pub struct RendererReg {
     id: u64,
 }
 
-/// What a [`RendererReg`] needs to unregister.
+/// What a [`RendererReg`] needs to unregister, and the exact-visibility book (`fades`).
 struct HubShared {
     state: Weak<RwLock<LiveState>>,
     book: Arc<Mutex<ReadyBook>>,
     notifier: Weak<Notifier>,
+    fades: Arc<Mutex<fades::FadeBook>>,
+    visible_hook: Arc<HookSlot>,
 }
 
 impl Drop for RendererReg {
@@ -173,7 +175,7 @@ impl Drop for RendererReg {
         let (Some(state), Some(notifier)) = (h.state.upgrade(), h.notifier.upgrade()) else {
             return;
         };
-        {
+        let faded = {
             let mut s = write_lock(&state);
             let screen = lock(&h.book).conns.remove(&self.id).map(|c| c.screen);
             if let Some(screen) = screen {
@@ -181,8 +183,12 @@ impl Drop for RendererReg {
                     notifier.note(&s, &screen);
                 }
             }
-        }
+            fades::forget_renderer(&h.fades, self.id)
+        };
         notifier.flush();
+        if faded {
+            call_hook(&h.visible_hook);
+        }
     }
 }
 
@@ -668,6 +674,8 @@ impl LiveHub {
             state: Arc::downgrade(&state),
             book: Arc::new(Mutex::new(ReadyBook::default())),
             notifier: Arc::downgrade(&notifier),
+            fades: Arc::default(),
+            visible_hook: Arc::new(RwLock::new(None)),
         });
         Self {
             state,
@@ -1419,6 +1427,7 @@ impl LiveHub {
     /// After an operation, with no lock held: emits `live-changed` and, if `hook`, calls the hook.
     fn finish(&self, hook: bool) {
         self.notifier.flush();
+        self.refresh_fades();
         if hook {
             call_hook(&self.hook);
         }
@@ -1491,6 +1500,8 @@ impl LiveHub {
                 self.send(&id, &msgs);
             }
             let ids = state.cut();
+            // Cut, not animated: nothing stays visible.
+            self.scan_fades(&state, true);
             self.cancel_timers(|(screen, _)| ids.contains(screen));
             for id in &ids {
                 self.send(id, &[ServerMsg::Cut {}]);
@@ -1537,6 +1548,8 @@ impl LiveHub {
                     send_to(&self.tx, id, &[ServerMsg::Clear {}], true);
                 }
             }
+            // Another project: nothing of the old one counts as visible.
+            self.scan_fades(&state, true);
             self.notifier.note_all(&state);
         }
         self.finish(true);
@@ -1562,16 +1575,48 @@ impl LiveHub {
         mode: LiveEdit,
         switches: &[VariantSwitch],
     ) -> Result<LiveScreenView, LiveError> {
+        // Without a guard nothing is refused.
+        self.apply_screen_guarded(plan, mode, switches, None)?
+            .ok_or_else(|| LiveError::UnknownScreen(String::new()))
+    }
+
+    /// [`LiveHub::apply_screen_with`], refused (`Ok(None)`, nothing changed, no hook) when
+    /// `hidden_layer` can be seen on the output or is cued in on Preview — checked under the same
+    /// write lock as the change, so a take in between can never be half-overtaken (remote data
+    /// editors only edit layers that aren't on air).
+    pub fn apply_screen_unless_shown(
+        &self,
+        plan: ScreenPlan,
+        mode: LiveEdit,
+        hidden_layer: &str,
+    ) -> Result<Option<LiveScreenView>, LiveError> {
+        self.apply_screen_guarded(plan, mode, &[], Some(hidden_layer))
+    }
+
+    fn apply_screen_guarded(
+        &self,
+        plan: ScreenPlan,
+        mode: LiveEdit,
+        switches: &[VariantSwitch],
+        hidden_layer: Option<&str>,
+    ) -> Result<Option<LiveScreenView>, LiveError> {
         let screen_id = plan.info.id.clone();
         let view = {
             let mut state = self.write();
+            if let Some(layer) = hidden_layer {
+                if self.visible_locked(&state, &screen_id, layer)
+                    || Self::cued_locked(&state, &screen_id, layer)
+                {
+                    return Ok(None);
+                }
+            }
             if state.studio {
                 let action = StudioAction::EditPlan { plan, switches };
                 self.studio_locked(&mut state, &screen_id, action)?;
                 let view = state.screen_view(&screen_id);
                 drop(state);
                 self.finish(true);
-                return view;
+                return view.map(Some);
             }
             let out = state.apply_screen_with(plan, mode, switches);
             self.send(&screen_id, &out.msgs);
@@ -1583,7 +1628,7 @@ impl LiveHub {
             state.screen_view(&screen_id)
         };
         self.finish(true);
-        view
+        view.map(Some)
     }
 
     /// Drops a screen (deleted, or its file removed). Its renderers get `error unknownScreen`;
@@ -2111,6 +2156,9 @@ fn serialize(msg: &ServerMsg) -> Option<String> {
 
 #[cfg(test)]
 mod studio_tests;
+
+mod fades;
+pub use fades::{VisibleMap, FADE_CAP};
 
 #[cfg(test)]
 mod media_tests;
