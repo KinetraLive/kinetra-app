@@ -561,7 +561,7 @@ fn a_build_without_remote_control_refuses_the_switch() {
     assert!(e.connects().is_empty());
     assert!(e.st.project_remote_id().is_none());
     // Debug builds (these tests) have it.
-    assert!(REMOTE_BUILD);
+    const { assert!(REMOTE_BUILD) };
 }
 
 #[test]
