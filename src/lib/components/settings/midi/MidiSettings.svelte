@@ -1,14 +1,20 @@
 <!--
   Preferences > MIDI & OSC, the body (a lazy chunk, loaded by MidiSection when it first scrolls
   near the viewport or the page opens on #midi): Devices (this computer) and Mappings (saved with
-  the project). OSC is under Server. No props.
+  the project). OSC is under Server. On macOS (no MIDI yet) only a notice: no ports, no watching.
+  No props.
 -->
 <script lang="ts">
+  import { isMac } from "$lib/platform";
   import { project } from "$lib/stores/project.svelte";
+  import NotOnMac from "../NotOnMac.svelte";
   import Devices from "./Devices.svelte";
   import Mappings from "./Mappings.svelte";
 </script>
 
+{#if isMac()}
+  <NotOnMac feature="MIDI" />
+{:else}
 <div class="midi">
   <section class="part" aria-labelledby="midi-devices-h">
     <h3 class="section-label" id="midi-devices-h">Devices <span class="note">This computer</span></h3>
@@ -23,6 +29,7 @@
     {/if}
   </section>
 </div>
+{/if}
 
 <style>
   .midi {

@@ -5,7 +5,7 @@
   display in or out updates the map and the Display choices at once. Outputs are saved through
   the prefs store (optimistic; the core clamps and reconciles the windows). Status follows
   `outputs-changed`. Screens come from the open project (none: "Open a project to choose a
-  screen"). No props.
+  screen"). On macOS (no display outputs yet) only a notice, and nothing is watched. No props.
 -->
 <script lang="ts">
   import Plus from "lucide-svelte/icons/plus";
@@ -16,12 +16,16 @@
   import Button from "$lib/components/Button.svelte";
   import SettingsSection from "$lib/components/SettingsSection.svelte";
   import { newOutput } from "$lib/components/outputs/model";
+  import { isMac } from "$lib/platform";
   import { prefs } from "$lib/stores/prefs.svelte";
   import { project } from "$lib/stores/project.svelte";
   import { toasts } from "$lib/stores/toasts.svelte";
   import { OUTPUTS_MAX, type DisplayInfo, type OutputConfig, type OutputStatus, type TestPattern } from "$lib/types";
   import DisplayMap from "../outputs/DisplayMap.svelte";
   import OutputRow from "../outputs/OutputRow.svelte";
+  import NotOnMac from "../NotOnMac.svelte";
+
+  const mac = isMac();
 
   let displays = $state.raw<readonly DisplayInfo[]>([]);
   let loaded = $state(false);
@@ -32,6 +36,7 @@
   const outputs = $derived<readonly OutputConfig[]>(prefs.value?.outputs ?? []);
 
   onMount(() => {
+    if (mac) return;
     const offDisplays = on("displays-changed", (d) => {
       displays = d;
       loaded = true;
@@ -113,6 +118,11 @@
   }
 </script>
 
+{#if mac}
+<SettingsSection title="Outputs">
+  <NotOnMac feature="Display outputs" />
+</SettingsSection>
+{:else}
 <SettingsSection title="Displays">
   {#snippet actions()}
     <Button size="sm" disabled={displays.length === 0} loading={identifying} onclick={() => void identify()}>Identify displays</Button>
@@ -149,6 +159,7 @@
     </ul>
   {/if}
 </SettingsSection>
+{/if}
 
 <style>
   .list {

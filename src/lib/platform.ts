@@ -9,5 +9,8 @@ export const revealLabel = (mac = isMac()): string => (mac ? "Show in Finder" : 
 export const lanAccessNote = (mac = isMac()): string =>
   mac ? "Other devices can view outputs." : "Other devices can view outputs. Windows may ask once.";
 
+/** The docs page listing what works on macOS (and what doesn't yet). */
+export const MAC_DOCS_URL = "https://docs.kinetra.live/macos";
+
 /** Where the OS keeps secret header values (the keyring backend the core uses). */
 export const secretStoreName = (mac = isMac()): string => (mac ? "macOS Keychain" : "Windows Credential Manager");
