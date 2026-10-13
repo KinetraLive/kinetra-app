@@ -97,6 +97,17 @@ export function releaseNotes({ channel, version, changelog, fallback }) {
   return notes;
 }
 
+/**
+ * What's wrong with the next canary's notes, or null: "empty" (no Unreleased text, so the commit
+ * subjects would be used) or "unchanged" (the same notes as the published canary).
+ */
+export function canaryNotesIssue(changelog, previousNotes) {
+  if (!changelogSection(changelog, "Unreleased")) return "empty";
+  const norm = (s) => String(s ?? "").replace(/\s+/g, " ").trim();
+  const next = releaseNotes({ channel: "canary", version: "", changelog, fallback: "" });
+  return norm(next) === norm(previousNotes) ? "unchanged" : null;
+}
+
 /** RFC 7396 JSON merge patch (what `tauri build --config` does with an overlay). */
 export function mergePatch(target, patch) {
   if (patch === null || typeof patch !== "object" || Array.isArray(patch)) return patch;

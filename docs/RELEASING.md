@@ -133,13 +133,18 @@ never print environment variables.
 
 ## How to release
 
+**Update CHANGELOG.md's Unreleased section before releasing.** It is what users read in the
+update panel: what they gain since the last canary, plain text, one paragraph per line.
+
 **Canary:** merge to `main`; the next nightly run (03:00 UTC) publishes it. For one now: Actions ›
 "Canary release" › Run workflow (branch `main`). It builds, tests, uploads and points
-`latest-canary.json` at it (about 15–25 min).
+`latest-canary.json` at it (about 15–25 min). The run compares the Unreleased notes with the
+published canary's: unchanged or empty notes stop a manual run and warn on the nightly one.
 
 **Stable:**
 1. Bump the version in `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` and `package.json`
-   (`pnpm run version:set 0.2.0` does all three) and add a `## 0.2.0` section to `CHANGELOG.md`.
+   (`pnpm run version:set 0.2.0` does all three) and add a `## 0.2.0` section to `CHANGELOG.md`
+   (the Unreleased notes since the last stable release, rewritten for it).
 2. Merge to `main`.
 3. Tag: `git tag -a v0.2.0 -m "Kinetra 0.2.0" && git push origin v0.2.0`.
 4. Watch the "Stable release" workflow; it verifies the download at the end.

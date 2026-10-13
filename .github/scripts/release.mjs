@@ -6,6 +6,7 @@
 //   config   --channel C --version V --updater B --sign-windows B --out F
 //   collect  --platform P --channel C --version V --bundle-dir D --updater B --out D
 //   notes    --channel C --version V [--fallback F] --out F
+//   notes-check --previous F                                 → ok | empty | unchanged (stdout)
 //   assemble --channel C --version V --commit SHA --in D --notes F --out D [--release]
 //   verify   --channel C --version V [--dir D]               → fetches and checks the live files
 //   rollback --channel C --version V --record F --out D
@@ -163,6 +164,23 @@ const commands = {
     });
     writeFileSync(need(a, "out"), notes);
     console.log(`notes: ${notes.length} characters`);
+  },
+
+  // The canary's notes against the published canary's (F: its latest.json; missing = none).
+  "notes-check"(a) {
+    let changelog = "";
+    try {
+      changelog = readFileSync(join(root, "CHANGELOG.md"), "utf8");
+    } catch {
+      // no changelog: "empty"
+    }
+    let previous = "";
+    try {
+      previous = JSON.parse(readFileSync(need(a, "previous"), "utf8")).notes ?? "";
+    } catch {
+      // no published canary yet
+    }
+    console.log(lib.canaryNotesIssue(changelog, previous) ?? "ok");
   },
 
   assemble(a) {

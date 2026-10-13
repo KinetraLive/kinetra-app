@@ -55,6 +55,16 @@ describe("notes", () => {
     expect(() => lib.releaseNotes({ channel: "stable", version: "0.3.0", changelog, fallback: " " })).toThrow(/CHANGELOG/);
   });
 
+  it("flags canary notes that are empty or the same as the published canary's", () => {
+    const log = "# Changelog\n\n## Unreleased\n\nPolls on screen.\n\nClear screen.\n\n## 0.1.0\nFirst\n";
+    expect(lib.canaryNotesIssue(log, "Polls on screen.\n\nClear screen.")).toBe("unchanged");
+    expect(lib.canaryNotesIssue(log.replace(/\n/g, "\r\n"), "Polls on screen.  Clear screen. ")).toBe("unchanged");
+    expect(lib.canaryNotesIssue(log, "A fresh look.")).toBeNull();
+    expect(lib.canaryNotesIssue(log, undefined)).toBeNull();
+    expect(lib.canaryNotesIssue("## Unreleased\n\n## 0.1.0\nFirst\n", "x")).toBe("empty");
+    expect(lib.canaryNotesIssue("", "")).toBe("empty");
+  });
+
   it("canary uses Unreleased, else the commits; long notes are cut", () => {
     expect(lib.releaseNotes({ channel: "canary", version: "x", changelog, fallback: "c1" })).toBe("- canary thing");
     expect(lib.releaseNotes({ channel: "canary", version: "x", changelog: "## Unreleased\n", fallback: "c1\nc2" })).toBe("c1\nc2");

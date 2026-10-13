@@ -43,6 +43,25 @@ jobs:
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
+      - name: Release notes updated?
+        # CHANGELOG.md's Unreleased section must change for each canary (docs/RELEASING.md). A
+        # manual run stops; the nightly one builds with a warning.
+        if: steps.changed.outputs.changed == 'true'
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          curl -fsS https://download.kinetra.live/releases/canary/latest.json -o "$RUNNER_TEMP/prev.json" 2>/dev/null || echo '{}' > "$RUNNER_TEMP/prev.json"
+          issue=$(node .github/scripts/release.mjs notes-check --previous "$RUNNER_TEMP/prev.json")
+          case "$issue" in
+            ok) echo "Release notes: updated" ;;
+            empty) msg="CHANGELOG.md has no Unreleased notes: users would see commit subjects. Write them before releasing." ;;
+            unchanged) msg="CHANGELOG.md's Unreleased notes are the same as the published canary's. Update them before releasing." ;;
+            *) msg="Couldn't check the release notes ($issue)." ;;
+          esac
+          if [ -n "${msg:-}" ]; then
+            if [ "$EVENT" = "workflow_dispatch" ]; then echo "::error::$msg"; exit 1; fi
+            echo "::warning::$msg"
+          fi
       - id: v
         if: steps.changed.outputs.changed == 'true'
         env:
