@@ -11,8 +11,6 @@ update panel: one paragraph per line, no Markdown.
 
 Live polls: run audience polls from the new Polls page and show them on screen. Viewers vote on their phones with a QR code or a short link, and the results update live on air. The Poll graphic comes in all nine styles, with looks for Live, Starting soon, Voting closed and Results, and the winner marked when voting ends.
 
-Rehearse with test polls: try a poll offline with simulated votes. Kinetra asks before test results go on air in a show that also uses a real poll.
-
 Clearer screen tiles: selected, Preview and Program now show as a simple line around each screen (grey, dashed green, solid red), always next to the on-air dot.
 
 Clear screen: the button in Control's toolbar is now called Clear screen, because it clears the selected screen. Show › Clear all still clears every screen.
