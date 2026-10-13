@@ -6,6 +6,7 @@ import type { LicenseView, PollData, PollQuota, SourceSummary } from "$lib/types
 
 const handlers = vi.hoisted(() => new Map<string, (p: unknown) => void>());
 vi.mock("$lib/api", () => ({
+  call: vi.fn(() => Promise.resolve([])),
   on: (name: string, f: (p: unknown) => void) => {
     handlers.set(name, f);
     return () => handlers.delete(name);
@@ -77,6 +78,7 @@ const poll = (over: Partial<PollData> = {}): PollData => ({
 
 const quota = (open: number): PollQuota => ({
   plan: "pro",
+  planName: "Kinetra Pro",
   limits: {
     openPolls: 3,
     pollsPerMonth: 30,
@@ -97,6 +99,7 @@ function view(pro: boolean, over: Partial<LicenseView> = {}): LicenseView {
     status: "active",
     access: pro ? "full" : "free",
     plan: pro ? "pro_yearly" : "free",
+    planName: null,
     entitlements: pro ? ["core.app", "pro.polls"] : ["core.app"],
     features: { ai: pro, polls: pro },
     pending: null,

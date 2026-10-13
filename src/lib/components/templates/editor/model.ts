@@ -16,7 +16,8 @@ import { isColor } from "$lib/components/variables/color";
 
 export const NAME_MAX = 100;
 export const AUTO_OUT_DEFAULT_S = 5;
-export const AUTO_OUT_MAX_S = 999;
+/** The longest auto-out a save accepts (`templates::AUTO_OUT_RANGE`, 600 000 ms). */
+export const AUTO_OUT_MAX_S = 600;
 
 export const FIELD_TYPES: { value: FieldType; label: string }[] = [
   { value: "text", label: "Text" },

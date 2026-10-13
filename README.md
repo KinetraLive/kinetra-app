@@ -5,7 +5,8 @@ scoreboards, media and live data. Design graphics without code (or in HTML and C
 preview them, and take them to air from one window.
 
 Graphics are output as browser sources for OBS, vMix, CasparCG and other tools, or
-fullscreen to any connected screen. Data can come from Google Sheets, JSON and CSV APIs,
+fullscreen to any connected screen. Kinetra runs on Windows 10 or later and macOS 11 or later
+([what works on macOS](docs/MACOS.md)). Data can come from Google Sheets, JSON and CSV APIs,
 or anything that can send an HTTP request.
 
 Projects are plain folders of JSON, HTML and CSS, so they are portable and git-friendly.
@@ -34,6 +35,7 @@ pnpm test
 
 More for contributors:
 
+- [docs/MACOS.md](docs/MACOS.md): what works on macOS, and what doesn't yet
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): how the app, the output server and the renderer fit together
 - [docs/TEMPLATE_FORMAT.md](docs/TEMPLATE_FORMAT.md): the template file format
 - [docs/API.md](docs/API.md): the Kinetra cloud API the app talks to

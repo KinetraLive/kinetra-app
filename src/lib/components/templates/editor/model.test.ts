@@ -1,9 +1,10 @@
+import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CompletionContext, type CompletionResult, type CompletionSource } from "@codemirror/autocomplete";
 import { ensureSyntaxTree } from "@codemirror/language";
 import { EditorView } from "@codemirror/view";
 import type { VariableDef } from "$lib/types";
-import { nextKey, validate, valueIssue, withKind } from "./model";
+import { AUTO_OUT_MAX_S, nextKey, validate, valueIssue, withKind } from "./model";
 import { Autosave, DraftSender } from "./sync";
 
 afterEach(() => {
@@ -169,5 +170,13 @@ describe("codemirror module (real CodeMirror in jsdom)", () => {
     h.destroy();
     expect(parent.querySelector(".cm-editor")).toBeNull();
     parent.remove();
+  });
+});
+
+describe("auto-out", () => {
+  it("the input's maximum is what saving accepts", () => {
+    const rs = readFileSync("src-tauri/src/core/templates.rs", "utf8");
+    const max = /AUTO_OUT_RANGE[^=]*= *[\d_]+\.\.=([\d_]+);/.exec(rs)?.[1];
+    expect(Number(max?.replaceAll("_", ""))).toBe(AUTO_OUT_MAX_S * 1000);
   });
 });

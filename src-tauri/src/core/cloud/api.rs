@@ -117,7 +117,11 @@ pub struct Activation {
 #[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize, Serialize)]
 pub struct License {
     pub id: String,
+    /// A stable code; never shown (`plan_name` is).
     pub plan: String,
+    /// What to show, e.g. "Kinetra Team" for `business_monthly`.
+    #[serde(default)]
+    pub plan_name: Option<String>,
     pub kind: String,
     pub status: String,
     #[serde(default)]
@@ -126,6 +130,9 @@ pub struct License {
     pub seats: u32,
     #[serde(default)]
     pub seats_used: u32,
+    /// The plan includes a backup computer (absent from older servers: unknown).
+    #[serde(default)]
+    pub backup_included: Option<bool>,
     #[serde(default)]
     pub backup_used: bool,
     #[serde(default)]
@@ -201,6 +208,8 @@ pub struct AiQuota {
     pub disabled_for_account: bool,
     #[serde(default)]
     pub plan: String,
+    #[serde(default)]
+    pub plan_name: Option<String>,
     #[serde(default)]
     pub generate_template: Option<AiTaskQuota>,
     #[serde(default)]

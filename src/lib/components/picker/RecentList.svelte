@@ -1,6 +1,6 @@
 <!--
   Recent projects list for the picker. Reads `project.recents`; rows open on click/Enter.
-  Row actions (Show in Explorer, Remove from list) appear on hover and on keyboard focus.
+  Row actions (Show in Explorer / Finder, Remove from list) appear on hover and on keyboard focus.
   Missing folders show a warning tally dot + "Missing", are dimmed, not openable, and offer Remove.
   Keyboard focus on a row (and the row being opened) draws the viewfinder brackets around it.
 
@@ -15,6 +15,7 @@
   import TallyDot from "$lib/components/TallyDot.svelte";
   import IconButton from "$lib/components/IconButton.svelte";
   import { revealInExplorer } from "$lib/projectFlow";
+  import { revealLabel } from "$lib/platform";
   import { project } from "$lib/stores/project.svelte";
   import { toasts } from "$lib/stores/toasts.svelte";
   import { describeError, relativeTime, splitPath } from "./format";
@@ -111,7 +112,7 @@
               <span class="when">{opening === r.path ? "Opening…" : r.when}</span>
             </button>
             <div class="actions">
-              <IconButton size="sm" tooltip="top" label="Show in Explorer" onclick={() => reveal(r.path)}>
+              <IconButton size="sm" tooltip="top" label={revealLabel()} onclick={() => reveal(r.path)}>
                 <FolderSearch size={14} />
               </IconButton>
               <IconButton variant="danger"

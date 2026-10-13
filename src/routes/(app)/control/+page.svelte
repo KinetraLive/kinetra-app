@@ -1,6 +1,6 @@
 <!--
   Control: the operator view. Full width, pro-tool density.
-    toolbar   view, columns, screens shown, live edit, Clear all, Automation off, PANIC (ControlToolbar)
+    toolbar   view, columns, screens shown, live edit, Clear screen, Automation off, PANIC (ControlToolbar)
     outputs   display outputs showing and their warnings (a lazy chunk, only while outputs exist)
     main      grid view: live tiles of the visible screens (≤ 6 iframes, the selected one first);
               single view: a screen list and ONE large LivePreview of the selected screen

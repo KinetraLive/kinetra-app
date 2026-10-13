@@ -2,7 +2,7 @@
   RequestSection: the API editor's Request: URL, method (GET / POST), headers and, for POST, the
   body (`linkOnly`: the URL alone, titled "Link", for a CSV link in Simple mode). A header holds a plain value, or with Secret on, a value kept in the OS keychain: typed into
   a write-only password box and stored with Store (setSourceSecret, after the pending edits are
-  saved so the header exists). A stored secret reads "Stored in Windows Credential Manager" with
+  saved so the header exists). A stored secret reads "Stored in <the OS secret store>" with
   Replace / Remove; a secret id without a value on this machine (`stored: false`) asks for it again.
   Secret values never enter the document.
 
@@ -23,6 +23,7 @@
   import Button from "$lib/components/Button.svelte";
   import IconButton from "$lib/components/IconButton.svelte";
   import Select from "$lib/components/Select.svelte";
+  import { secretStoreName } from "$lib/platform";
   import type { ApiHeader, ApiMethod, SourceDoc } from "$lib/types";
   import { secretState, type ApiDoc, type ApiIssues } from "./model";
 
@@ -264,7 +265,7 @@
             <div class="secret-entry">
               <span class="stored grow small">
                 <KeyRound size={12} aria-hidden="true" />
-                Stored in Windows Credential Manager
+                Stored in {secretStoreName()}
               </span>
               <Button size="sm" variant="ghost" onclick={() => (entering = { ...entering, [i]: "" })}>Replace</Button>
               <Button size="sm" variant="danger" loading={busy === i} onclick={() => void clear(i)}>Remove</Button>

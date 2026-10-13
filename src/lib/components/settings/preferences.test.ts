@@ -29,6 +29,9 @@ const api = vi.hoisted(() => ({
   listScreens: vi.fn(async () => []),
   listFlows: vi.fn(async () => []),
   listSources: vi.fn(async () => []),
+  listStyles: vi.fn(async () => []),
+  listPresets: vi.fn(async () => []),
+  saveBrandKit: vi.fn(async () => {}),
   oscStatus: vi.fn(async () => ({ state: "off" })),
   onOscStatus: vi.fn(() => () => {}),
   listMidiDevices: vi.fn(async () => []),
@@ -413,8 +416,8 @@ describe("About: updates", () => {
     await screen.findByText("0.3.0");
     expect(screen.getByText("Stable")).toBeTruthy();
     expect(screen.getByText("fa23a08").classList.contains("mono")).toBe(true);
-    await fireEvent.click(screen.getByRole("link", { name: /kinetra\.live\/docs/ }));
-    await waitFor(() => expect(opener.openUrl).toHaveBeenCalledWith("https://kinetra.live/docs"));
+    await fireEvent.click(screen.getByRole("link", { name: /docs\.kinetra\.live/ }));
+    await waitFor(() => expect(opener.openUrl).toHaveBeenCalledWith("https://docs.kinetra.live"));
     await fireEvent.click(screen.getByRole("link", { name: /^kinetra\.live$/ }));
     await waitFor(() => expect(opener.openUrl).toHaveBeenCalledWith("https://kinetra.live"));
     await fireEvent.click(screen.getByRole("button", { name: "Join our Discord" }));

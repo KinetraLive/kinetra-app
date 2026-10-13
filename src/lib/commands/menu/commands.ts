@@ -22,7 +22,7 @@
 //   output.displays     Displays            hidden (the palette has "Preferences: Outputs"); Output › Displays…
 //   output.toggle:<id>  Turn {output} on / off   provider "app.outputs" (Output menu, checkable)
 //   output.allOff       All outputs off      every output off (Output menu)
-//   help.docs           Documentation          https://kinetra.live/docs
+//   help.docs           Documentation          https://docs.kinetra.live
 //   help.shortcuts      Keyboard shortcuts     hidden (Preferences: Keyboard shortcuts is listed)
 //   help.updates        Check for updates      Preferences › About, starting a check
 //   help.about          About Kinetra          Preferences › About
@@ -44,7 +44,7 @@ import { ZOOM_MAX, ZOOM_MIN, ZOOM_STEP } from "$lib/types";
 import { keysFor } from "../bindings.svelte";
 import { registry, type Command, type CommandContext, type CommandProvider } from "../registry.svelte";
 
-export const DOCS_URL = "https://kinetra.live/docs";
+export const DOCS_URL = "https://docs.kinetra.live";
 /** Window event the top-bar project switcher answers with its "Open…" flow. */
 export const OPEN_PROJECT_EVENT = "kinetra:open-project";
 export const RECENT_PREFIX = "app.openRecent:";

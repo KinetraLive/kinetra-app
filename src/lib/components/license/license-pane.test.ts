@@ -8,6 +8,7 @@ const api = vi.hoisted(() => ({
   licenseList: vi.fn(() => Promise.resolve([])),
   licenseCheckNow: vi.fn(() => Promise.resolve()),
   licenseDeactivate: vi.fn(() => Promise.resolve()),
+  licenseRedeem: vi.fn(() => Promise.resolve()),
   signInStart: vi.fn(() => Promise.resolve({ state: "idle" })),
   signInCancel: vi.fn(),
   signOut: vi.fn(() => Promise.resolve()),
@@ -57,6 +58,7 @@ function view(over: Partial<LicenseView> = {}): LicenseView {
     status: "active",
     access: "full",
     plan: "pro_yearly",
+    planName: null,
     entitlements: ["core.app", "pro.ai"],
     features: { ai: true, polls: true },
     pending: null,
@@ -140,7 +142,41 @@ describe("Preferences › License", () => {
     await vi.waitFor(() => expect(screen.getByRole("alert").textContent).toBe("Not found. It may have been removed already."));
   });
 
+  it("adds a license key here too: at once when signed in", async () => {
+    await mount(view());
+    const input = screen.getByLabelText("License key") as HTMLInputElement;
+    await fireEvent.input(input, { target: { value: "kntr4b7x9q2zhhhh" } });
+    expect(input.value).toBe("KNTR-4B7X-9Q2Z-HHHH");
+    await fireEvent.click(screen.getByRole("button", { name: "Add key" }));
+    expect(api.licenseRedeem).toHaveBeenCalledWith("KNTR-4B7X-9Q2Z-HHHH");
+    await vi.waitFor(() => expect(screen.getByRole("status").textContent).toBe("License key added."));
+  });
+
+  it("a license key while signed out signs in first, then redeems", async () => {
+    await mount(view({ signedIn: false, account: null }));
+    const input = screen.getByLabelText("License key") as HTMLInputElement;
+    await fireEvent.input(input, { target: { value: "KNTR-4B7X-9Q2Z-HHHH" } });
+    await fireEvent.click(screen.getByRole("button", { name: "Sign in and add key" }));
+    expect(api.signInStart).toHaveBeenCalled();
+    expect(api.licenseRedeem).not.toHaveBeenCalled();
+    expect(screen.getByText("Sign in to finish adding the key.")).toBeTruthy();
+    license.view = view();
+    await vi.waitFor(() => expect(api.licenseRedeem).toHaveBeenCalledWith("KNTR-4B7X-9Q2Z-HHHH"));
+  });
+
+  it("shows the plan's name from the server, never its code", async () => {
+    const team = lic({ plan: "business_monthly", plan_name: "Kinetra Team" });
+    await mount(view({ plan: "business_monthly", planName: "Kinetra Team", licenses: [team] }));
+    expect(screen.getByText("Kinetra Team")).toBeTruthy();
+    expect(screen.getByText("Kinetra Team · Main")).toBeTruthy();
+    expect(screen.queryByText(/business/i)).toBeNull();
+  });
+
   it("names plans and relative times", () => {
+    expect(planName("business_monthly", "Kinetra Team")).toBe("Kinetra Team");
+    expect(planName("pro_yearly", "Kinetra Pro (yearly)")).toBe("Kinetra Pro (yearly)");
+    expect(planName("pro_yearly", " ")).toBe("Pro (yearly)");
+    expect(planName("business_monthly")).toBe("Kinetra Team");
     expect(planName("pro_perpetual")).toBe("Pro (perpetual)");
     expect(planName(null)).toBe("No license");
     expect(planName("some_new_plan")).toBe("Some new plan");

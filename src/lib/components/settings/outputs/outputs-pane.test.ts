@@ -76,6 +76,21 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe("Preferences › Outputs", () => {
+  it("on macOS: not available yet, with the docs link; no display watching", async () => {
+    const ua = vi.spyOn(navigator, "userAgent", "get").mockReturnValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 14_6) AppleWebKit/605.1.15 (KHTML, like Gecko)");
+    try {
+      render(OutputsPane);
+      await flush();
+      expect(screen.getByText(/not available on macOS yet/)).toBeTruthy();
+      expect(screen.getByRole("link", { name: /What works on macOS/ }).getAttribute("href")).toBe("https://docs.kinetra.live/macos");
+      expect(screen.queryByText("No displays found.")).toBeNull();
+      expect(screen.queryByRole("button", { name: "Add output" })).toBeNull();
+      expect(out.watchDisplays).not.toHaveBeenCalled();
+    } finally {
+      ua.mockRestore();
+    }
+  });
+
   it("watches displays while shown and draws the map", async () => {
     const { unmount } = render(OutputsPane);
     await flush();

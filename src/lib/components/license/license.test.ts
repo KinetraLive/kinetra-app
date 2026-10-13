@@ -40,6 +40,7 @@ function view(over: Partial<LicenseView> = {}): LicenseView {
     status: "none",
     access: "free",
     plan: null,
+    planName: null,
     entitlements: ["core.app"],
     features: { ai: false, polls: false },
     pending: null,
@@ -157,10 +158,18 @@ describe("license host", () => {
     expect(api.licenseMoveHere).toHaveBeenCalledWith("a1");
   });
 
+  it("the move offer names the blocked license's plan", async () => {
+    const activations = [{ id: "a1", machine_name: "STUDIO-PC", slot: "main", created_at: null, last_refreshed_at: null, this_machine: false }];
+    const team = { id: "l-team", plan: "business_monthly", plan_name: "Kinetra Team", kind: "subscription", status: "active", entitlements: [], seats: 5, seats_used: 5, backup_used: false, starts_at: null, ends_at: null, updates_until: null, revoked_at: null, beta_program_id: null, activations };
+    await show(view({ licenses: [team], upgradeBlocked: { license_id: "l-team", plan: "business_monthly", reason: "seats_full", activations } }));
+    expect(screen.getByRole("heading", { name: "Kinetra Team is active on STUDIO-PC. Move Kinetra Team here?" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Move Kinetra Team here" })).toBeTruthy();
+  });
+
   it("seats full: deactivate one and use this computer, or use as backup", async () => {
     await show(
       view({
-        notice: { kind: "seatsFull", code: "seats_full", activations: [{ id: "a2", machine_name: "TRUCK", slot: "main", created_at: null, last_refreshed_at: null, this_machine: false }] },
+        notice: { kind: "seatsFull", code: "seats_full", backup: true, activations: [{ id: "a2", machine_name: "TRUCK", slot: "main", created_at: null, last_refreshed_at: null, this_machine: false }] },
       }),
     );
     await fireEvent.click(screen.getByRole("button", { name: "Deactivate and use this computer" }));
@@ -168,6 +177,17 @@ describe("license host", () => {
     expect(api.licenseDeactivate).toHaveBeenCalledWith("a2");
     await fireEvent.click(screen.getByRole("button", { name: "Use as backup" }));
     expect(api.licenseActivate).toHaveBeenCalledWith("backup");
+  });
+
+  it("a plan without a backup computer offers no backup, only freeing a seat", async () => {
+    const activations = [{ id: "a2", machine_name: "TRUCK", slot: "main", created_at: null, last_refreshed_at: null, this_machine: false }];
+    await show(view({ notice: { kind: "seatsFull", code: "seats_full", backup: false, activations } }));
+    expect(screen.queryByRole("button", { name: "Use as backup" })).toBeNull();
+    await show(view({ notice: { kind: "seatsFull", code: "backup_not_included", backup: false, activations } }));
+    expect(screen.getByRole("heading", { name: "This plan doesn't include a backup computer" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Use as backup" })).toBeNull();
+    await fireEvent.click(screen.getByRole("button", { name: "Deactivate and use this computer" }));
+    await vi.waitFor(() => expect(api.licenseActivate).toHaveBeenCalledWith("main"));
   });
 
   it("Beta Ended waits for the show to end and shows the signed lines", async () => {

@@ -154,7 +154,7 @@ async fn mock_api(
             let token = sign_license(&claims, "test-k1", &key(1));
             let mut v = json!({
                 "token": token, "server_time": claims.iat, "activation_id": aid, "slot": "main",
-                "license": {"id": claims.lid, "plan": claims.plan, "kind": "subscription", "status": "active",
+                "license": {"id": claims.lid, "plan": claims.plan, "plan_name": "Kinetra Pro (yearly)", "kind": "subscription", "status": "active",
                             "entitlements": claims.ent, "seats": 1, "seats_used": 1, "backup_used": false,
                             "activations": []}
             });
@@ -482,6 +482,50 @@ fn clock_skew_keeps_the_license_and_says_by_how_much() {
 }
 
 #[test]
+fn the_view_names_the_plan_from_the_server() {
+    let e = env();
+    e.signed_in();
+    e.reply("/v1/license/activate", vec![token_reply(pro())]);
+    e.sync();
+    let v = e.st.license_view();
+    assert_eq!(v.plan.as_deref(), Some("pro_yearly"));
+    assert_eq!(v.plan_name.as_deref(), Some("Kinetra Pro (yearly)"));
+}
+
+#[test]
+fn seats_full_offers_a_backup_only_when_the_license_includes_one() {
+    let e = env();
+    e.signed_in();
+    let license = |included: bool| {
+        json!({"licenses": [{"id": "lic-team", "plan": "business_monthly", "plan_name": "Kinetra Team",
+            "kind": "subscription", "status": "active", "entitlements": [], "seats": 5, "seats_used": 5,
+            "backup_included": included, "backup_used": false,
+            "activations": [{"id": "a9", "machine_name": "STUDIO-PC", "slot": "main"}]}],
+            "server_time": T0})
+    };
+    let full = || {
+        err(
+            409,
+            "seats_full",
+            Some(
+                json!({"activations": [{"id": "a9", "machine_name": "STUDIO-PC", "slot": "main"}]}),
+            ),
+        )
+    };
+    for included in [false, true] {
+        e.reply("/v1/license", vec![Reply::Json(200, license(included))]);
+        e.rt.block_on(e.st.license_list()).unwrap();
+        e.reply("/v1/license/activate", vec![full()]);
+        let _ =
+            e.rt.block_on(e.st.license_activate(api::SlotReq::Main, None));
+        match e.st.license_view().notice {
+            Some(Notice::SeatsFull { backup, .. }) => assert_eq!(backup, included),
+            other => panic!("{other:?}"),
+        }
+    }
+}
+
+#[test]
 fn seats_full_lists_the_computers() {
     let e = env();
     e.signed_in();
@@ -497,12 +541,68 @@ fn seats_full_lists_the_computers() {
     );
     e.sync();
     match e.st.license_view().notice {
-        Some(Notice::SeatsFull { code, activations }) => {
+        Some(Notice::SeatsFull {
+            code,
+            activations,
+            backup,
+        }) => {
             assert_eq!(code, "seats_full");
+            assert!(backup);
             assert_eq!(activations[0].machine_name.as_deref(), Some("STUDIO-PC"));
         }
         other => panic!("{other:?}"),
     }
+}
+
+#[test]
+fn a_plan_without_a_backup_keeps_the_computers_to_free() {
+    let e = env();
+    e.signed_in();
+    e.reply(
+        "/v1/license/activate",
+        vec![
+            err(
+                409,
+                "seats_full",
+                Some(
+                    json!({"activations": [{"id": "a9", "machine_name": "STUDIO-PC", "slot": "main"}]}),
+                ),
+            ),
+            err(409, "backup_not_included", None),
+        ],
+    );
+    e.sync();
+    assert!(e
+        .rt
+        .block_on(e.st.license_activate(api::SlotReq::Backup, None))
+        .is_err());
+    match e.st.license_view().notice {
+        Some(Notice::SeatsFull {
+            code,
+            activations,
+            backup,
+        }) => {
+            assert_eq!(code, "backup_not_included");
+            assert_eq!(activations[0].id, "a9");
+            assert!(!backup);
+        }
+        other => panic!("{other:?}"),
+    }
+    // A later seats choice no longer offers a backup.
+    e.reply(
+        "/v1/license/activate",
+        vec![err(
+            409,
+            "seats_full",
+            Some(json!({"activations": [{"id": "a9", "slot": "main"}]})),
+        )],
+    );
+    let _ =
+        e.rt.block_on(e.st.license_activate(api::SlotReq::Main, None));
+    assert!(matches!(
+        e.st.license_view().notice,
+        Some(Notice::SeatsFull { backup: false, .. })
+    ));
 }
 
 #[test]

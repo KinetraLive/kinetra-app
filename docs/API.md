@@ -60,6 +60,7 @@ Licensing codes (`/v1/license/*`, `DELETE /v1/me`):
 | 403 | `license_revoked` | License revoked (refund, fraud, account deleted). | Free, after the show; "Contact hello@kinetra.live". |
 | 409 | `seats_full` | All seats in use, on the license you asked for (`license_id`), or on Free when nothing else fits. `details.activations` (id, machine_name, slot, last_refreshed_at). | Offer "Deactivate *name* and use this computer", or "Use as backup". |
 | 409 | `backup_in_use` | The license already has a backup. `details.activations`. | Offer deactivating the existing backup. |
+| 409 | `backup_not_included` | The license's plan has no backup computer (Pro, Team). | "This plan doesn't include a backup computer"; offer using a seat (move the plan here). |
 | 409 | `activation_revoked` | This computer was deactivated (elsewhere) or the activation is unknown. | Activate again (it's free and unlimited); if that fails, follow its error. |
 | 409 | `active_license` | Account deletion needs `confirm_license_revocation`. `details.active_licenses`. | Show the warning, ask again. |
 | 503 | `license_service_unavailable` | No usable signing key on the server. | Treat as offline; keep the current token. |
@@ -187,11 +188,14 @@ changes and resets always email a notice.
 
 ## Licensing
 
-Format, keys and offline policy: `LICENSING.md`. All `/v1/license/*` calls except `keys`
+All `/v1/license/*` calls except `keys`
 and `revocations` need the app session. Activate and refresh need a fresh `nonce` (16–128
 URL-safe chars) and `timestamp` (unix seconds, within 5 min of the server).
 Rate limits: 120/h per account (anti-hammering, not a transfer cap); redeem 5/h per
 account and 10/h per IP.
+
+**Plan names.** `plan` is a stable code the app may branch on; `plan_name` is the name to
+show (e.g. `business_monthly` → "Kinetra Team"). Show `plan_name`, never the code.
 
 ### Free and the best license
 
@@ -203,6 +207,8 @@ better license is full, the response includes:
 "upgrade_blocked": {"license_id": "…", "plan": "pro_yearly", "reason": "seats_full",
                     "activations": [{"id", "machine_name", "slot", "last_refreshed_at", …}]}
 ```
+`reason` is `seats_full`, `backup_in_use`, or `backup_not_included` (a backup was asked
+for and the better license's plan has no backup computer; `activations` is empty).
 
 ### `GET /v1/license/keys` (public)
 
@@ -223,13 +229,21 @@ Verify with `revocation::verify_revocations`.
 **200** `{"licenses": [License], "server_time": 1791590400}`; activations on the given
 machine have `this_machine: true`. `License`:
 ```json
-{"id", "plan": "pro_yearly", "kind": "subscription", "status": "active",
- "entitlements": ["core.app", "pro.ai", "pro.cloud_sync", "pro.polls", "pro.team"], "seats": 1, "seats_used": 1, "backup_used": false,
+{"id", "plan": "pro_yearly", "plan_name": "Kinetra Pro (yearly)", "kind": "subscription", "status": "active",
+ "entitlements": ["core.app", "pro.ai", "pro.cloud_sync", "pro.polls", "pro.team"], "seats": 1, "seats_used": 1,
+ "backup_included": false, "backup_used": false,
  "starts_at", "ends_at": "2027-10-10T…Z", "updates_until": null, "revoked_at": null,
  "activations": [{"id", "machine_name", "slot": "main", "created_at",
                   "last_refreshed_at", "this_machine": true}]}
 ```
 `kind` is `free` (no dates), `subscription` (`ends_at`) or `perpetual` (`updates_until`).
+`backup_included` is `true` only when the plan includes a backup computer (one activation
+with `slot: "backup"` that doesn't use a seat): by default Free, Beta, Day Pass, Enterprise,
+NFR and Nonprofit, not Pro or Team. Show
+"Use as backup" only then; otherwise a backup activation fails with
+`409 backup_not_included`. `backup_used` is `true` while a backup is active; it can be
+`true` with `backup_included: false` for a backup made before the plan lost it (it keeps
+working until deactivated).
 Beta licenses (`plan: "beta"`) carry `beta_program_id`. Licenses redeemed from a key carry
 `key_hint`: the key masked to its first group, `"KNTR-4B7Q-••••-••••"` (`"KNTR-••••-••••-••••"`
 for keys redeemed before 2026-10-10). Only that prefix is stored; the full key is never
@@ -255,7 +269,7 @@ Same machine again → same `activation_id`, fresh token.
 **Errors:** `400 bad_request` (fingerprint/nonce format), `400 clock_skew`,
 `400 replayed_request`, `403 license_expired` / `403 license_revoked` (only for an
 explicit `license_id`; otherwise it falls back), `404 not_found` (`license_id` not yours),
-`409 seats_full`, `409 backup_in_use`, `401`, `429`, `503 license_service_unavailable`.
+`409 seats_full`, `409 backup_in_use`, `409 backup_not_included`, `401`, `429`, `503 license_service_unavailable`.
 
 ### `POST /v1/license/refresh`
 
@@ -288,19 +302,20 @@ used), `401`, `429` (hard limits).
 
 ## AI
 
-Template generation through the server (details: `AI.md`). All calls need the app
+Template generation through the server. All calls need the app
 session and the machine fingerprint (Free quotas are counted per machine too).
 
 ### `GET /v1/ai/quota?machine=<fingerprint>`
 
 **200**
 ```json
-{"enabled": true, "disabled_for_account": false, "plan": "pro",
+{"enabled": true, "disabled_for_account": false, "plan": "pro", "plan_name": "Kinetra Pro",
  "generate_template": {"used": 3, "limit": 50, "period": "month", "resets_at": 1793491200,
                        "day_used": 1, "day_limit": 10, "day_resets_at": 1791676800},
  "tweak_template": {"used": 12, "limit": 300, "period": "month", "resets_at": 1793491200}}
 ```
-`plan` is `pro`, `beta` or `free`; Free has `"period": "total"` and no reset. `enabled` is
+`plan` is `pro`, `business`, `enterprise`, `beta` or `free` (a stable code); `plan_name` is what to show (`business` is shown as "Kinetra Team").
+Enterprise quotas are never below Team's. Free has `"period": "total"` and no reset. `enabled` is
 false when AI is switched off globally or for this account (`disabled_for_account: true`).
 
 ### Jobs
@@ -340,7 +355,7 @@ characters; up to 4 hex colors
 scoreboard, countdown, schedule, list, other. Unknown fields are rejected. **202** job.
 
 The result's `template` is a package per `docs/TEMPLATE_FORMAT.md`:
-`{"manifest": <template.json>, "files": {"<variantId>": {"html", "css"}}}` (see `AI.md`).
+`{"manifest": <template.json>, "files": {"<variantId>": {"html", "css"}}}`.
 
 ### `POST /v1/ai/templates/tweak`
 
@@ -370,21 +385,21 @@ generate this template, try rephrasing"), `ai_output_invalid`, `ai_incomplete`,
 Live polls: the owner creates and runs polls in the app; the audience votes on
 `https://poll.kinetra.live/<code>` (see **Voting site** below). All `/v1/polls` calls need
 the app session. **Creating, editing and opening need a license with `pro.polls`**
-(Pro, Business, Enterprise, betas that include it); listing, results, the stream, close, reset and
+(Pro, Team, Enterprise, betas that include it); listing, results, the stream, close, reset and
 delete work without it, so a poll is never stranded when a plan ends. A poll that isn't
 the caller's answers **404**, exactly like one that doesn't exist. Owner requests are also
 limited per account (120 per minute).
 
-**Limits per plan** (config, `docs/SERVER.md`):
+**Limits per plan**:
 
 | Plan | Open at once | Created per calendar month (UTC) | Votes per poll | Options |
 |---|---|---|---|---|
-| Pro (`pro_*`, `nfr`, `nonprofit`, `day_pass`: any non-beta license with `pro.polls`) | 3 | 30 | 2,000 | 2–8 |
-| Business (`business_monthly`) | 15 | 50 | 20,000 | 2–8 |
-| Enterprise | 10 | unlimited | 20,000 | 2–8 |
+| Pro (`pro_*`, `nfr`, `nonprofit`, `day_pass`: any non-beta license with `pro.polls`) | 3 | 30 | 500 | 2–8 |
+| Team (`business_monthly`) | 15 | 50 | 2,000 | 2–8 |
+| Enterprise | 25 | unlimited | 20,000 | 2–8 |
 | Beta | the program's own limits; each unset one is Pro's | | | |
 
-The best plan of the account wins: Enterprise, Business, Pro, then beta. For everyone: question 1–200 characters, options
+The best plan of the account wins: Enterprise, Team, Pro, then beta. For everyone: question 1–200 characters, options
 1–80 characters each (trimmed, no line breaks or control characters, no duplicates
 ignoring case), optional duration 30 s – 24 h, lifetime
 7 days from creation, then deleted even if open, deletion
@@ -399,7 +414,7 @@ the owner sees `vote_limit_reached: true`.
  "options": [{"position": 0, "label": "Home", "votes": 12},
              {"position": 1, "label": "Away", "votes": 7}],
  "status": "open", "show_results": true, "duration_seconds": 120,
- "total_votes": 19, "max_votes": 2000, "vote_limit_reached": false, "round": 1,
+ "total_votes": 19, "max_votes": 500, "vote_limit_reached": false, "round": 1,
  "created_at": "…", "updated_at": "…", "opened_at": "…", "closes_at": "…",
  "closed_at": null, "delete_after": "…", "expires_at": "…"}
 ```
@@ -417,15 +432,15 @@ the owner sees `vote_limit_reached: true`.
 
 **200**
 ```json
-{"plan": "pro",
- "limits": {"open_polls": 3, "polls_per_month": 30, "votes_per_poll": 2000,
+{"plan": "pro", "plan_name": "Kinetra Pro",
+ "limits": {"open_polls": 3, "polls_per_month": 30, "votes_per_poll": 500,
             "options_per_poll": 8, "max_duration_seconds": 86400,
             "lifetime_seconds": 604800, "delete_after_close_seconds": 43200},
  "usage": {"open_polls": 1, "polls_this_month": 4, "polls": 6},
  "month_resets_at": "2026-11-01T00:00:00Z"}
 ```
-`plan` is `pro`, `business`, `enterprise`, `beta`, or `null` without `pro.polls` (then `limits` is
-`null`; show "Polls are part of Pro"). `polls_per_month: null` = unlimited. `usage.polls`
+`plan` is `pro`, `business`, `enterprise`, `beta`, or `null` without `pro.polls` (then `limits` and
+`plan_name` are `null`; `plan_name` is what to show, `business` → "Kinetra Team"; show "Polls are part of Pro"). `polls_per_month: null` = unlimited. `usage.polls`
 counts polls that exist now (drafts, open, closed awaiting deletion).
 
 ### `GET /v1/polls`

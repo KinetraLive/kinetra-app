@@ -24,12 +24,11 @@ import { uiMode } from "$lib/stores/mode.svelte";
 import { prefs } from "$lib/stores/prefs.svelte";
 import { project, uiState } from "$lib/stores/project.svelte";
 import { toasts } from "$lib/stores/toasts.svelte";
+import { isMac } from "$lib/platform";
 import { keysFor } from "../bindings.svelte";
 import { commands, currentContext, getCommand, isAllowed, registerCommands, registerProvider, type Command } from "../registry.svelte";
 import { appCommands, OUTPUT_PREFIX, outputsProvider, recentsProvider } from "./commands";
 import { buildMenuSpec, type MenuInput } from "./spec";
-
-const isMac = (): boolean => typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.userAgent);
 
 /** What `buildMenuSpec` reads, from the live registry and stores (reactive in an effect). */
 export function menuInput(mac = isMac()): MenuInput {

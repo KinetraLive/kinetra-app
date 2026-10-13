@@ -1,5 +1,5 @@
 <!--
-  ControlLayers: the right panel for the selected screen. Header (screen name, Clear all for this
+  ControlLayers: the right panel for the selected screen. Header (screen name, Clear screen for this
   screen), one LayerRow per layer front first (the reverse of the doc order), then the sources
   strip (Prev / Next, auto-advance; a lazy chunk, loaded the first time a selected screen has bound
   sources) when the screen's layers are bound to sources. Without layers: "Open layout editor".

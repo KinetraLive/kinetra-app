@@ -2266,6 +2266,9 @@ pub struct PollLive {
 pub struct PollQuota {
     /// `pro | business | enterprise | beta`, or null without `pro.polls`.
     pub plan: Option<String>,
+    /// What to show (`business` is "Kinetra Team"); null without `pro.polls`.
+    #[serde(default)]
+    pub plan_name: Option<String>,
     pub limits: Option<PollLimits>,
     pub usage: PollUsage,
     pub month_resets_at: Option<String>,
