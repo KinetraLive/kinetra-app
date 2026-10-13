@@ -75,11 +75,15 @@ impl ProjectWatcher {
         })?;
         os.watch(dir, RecursiveMode::Recursive)?;
         let root = dir.to_path_buf();
+        // macOS reports resolved paths (`/private/var/…` for a project under `/var/…`).
+        let real = std::fs::canonicalize(dir)
+            .ok()
+            .filter(|r| r.as_path() != dir);
         let batches = Arc::new(AtomicU64::new(0));
         let counter = batches.clone();
         let thread = std::thread::Builder::new()
             .name("project-watcher".into())
-            .spawn(move || run(root, rx, handler, debounce, &counter))
+            .spawn(move || run(root, real, rx, handler, debounce, &counter))
             .map_err(|e| notify::Error::generic(&e.to_string()))?;
         Ok(Self {
             os: Some(os),
@@ -182,7 +186,25 @@ fn kind_order(k: FileKind) -> u8 {
 
 type Pending = BTreeMap<(u8, String), (FileKind, Vec<PathBuf>)>;
 
-fn collect(root: &Path, pending: &mut Pending, ev: notify::Result<notify::Event>) {
+/// An event path under the project root as the app knows it. The OS may report the resolved
+/// path instead (FSEvents does: `/private/var/…` for `/var/…`, or through any symlinked
+/// folder); those are mapped back under `root`. Others are returned as they are.
+fn rebase(path: PathBuf, root: &Path, real: Option<&Path>) -> PathBuf {
+    match real {
+        Some(real) if !path.starts_with(root) => match path.strip_prefix(real) {
+            Ok(rel) => root.join(rel),
+            Err(_) => path,
+        },
+        _ => path,
+    }
+}
+
+fn collect(
+    root: &Path,
+    real: Option<&Path>,
+    pending: &mut Pending,
+    ev: notify::Result<notify::Event>,
+) {
     let ev = match ev {
         Ok(ev) => ev,
         Err(e) => {
@@ -200,6 +222,7 @@ fn collect(root: &Path, pending: &mut Pending, ev: notify::Result<notify::Event>
         EventKind::Create(_) | EventKind::Remove(_) | EventKind::Modify(ModifyKind::Name(_))
     );
     for path in ev.paths {
+        let path = rebase(path, root, real);
         // `templates/<id>` or `templates/<id>/variants/<variantId>`.
         let is_folder = path
             .strip_prefix(root)
@@ -221,6 +244,7 @@ fn collect(root: &Path, pending: &mut Pending, ev: notify::Result<notify::Event>
 
 fn run(
     root: PathBuf,
+    real: Option<PathBuf>,
     rx: Receiver<Msg>,
     handler: Handler,
     debounce: Duration,
@@ -230,7 +254,7 @@ fn run(
         let mut pending = Pending::new();
         // Blocks with no timeout at rest.
         match rx.recv() {
-            Ok(Msg::Event(ev)) => collect(&root, &mut pending, ev),
+            Ok(Msg::Event(ev)) => collect(&root, real.as_deref(), &mut pending, ev),
             Ok(Msg::Stop) | Err(_) => return,
         }
         if pending.is_empty() {
@@ -243,7 +267,7 @@ fn run(
                 break;
             }
             match rx.recv_timeout(debounce.min(left)) {
-                Ok(Msg::Event(ev)) => collect(&root, &mut pending, ev),
+                Ok(Msg::Event(ev)) => collect(&root, real.as_deref(), &mut pending, ev),
                 Ok(Msg::Stop) | Err(RecvTimeoutError::Disconnected) => return,
                 Err(RecvTimeoutError::Timeout) => break,
             }
@@ -266,6 +290,41 @@ fn run(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn resolved_event_paths_map_back_under_the_root() {
+        let root = Path::new("/var/folders/x/project");
+        let real = Some(Path::new("/private/var/folders/x/project"));
+        let p = |s: &str| PathBuf::from(s);
+        assert_eq!(
+            rebase(
+                p("/private/var/folders/x/project/screens/a.json"),
+                root,
+                real
+            ),
+            p("/var/folders/x/project/screens/a.json")
+        );
+        // Already under the root, outside both, or no resolved form: unchanged.
+        assert_eq!(
+            rebase(p("/var/folders/x/project/screens/a.json"), root, real),
+            p("/var/folders/x/project/screens/a.json")
+        );
+        assert_eq!(
+            rebase(p("/private/tmp/other.json"), root, real),
+            p("/private/tmp/other.json")
+        );
+        assert_eq!(
+            rebase(p("/private/var/folders/x/project/a.json"), root, None),
+            p("/private/var/folders/x/project/a.json")
+        );
+        // Mapped back, it classifies like any project file.
+        let back = rebase(
+            p("/private/var/folders/x/project/screens/a.json"),
+            root,
+            real,
+        );
+        assert!(classify(root, &back).is_some());
+    }
     use std::sync::{Arc, Mutex};
 
     #[test]
