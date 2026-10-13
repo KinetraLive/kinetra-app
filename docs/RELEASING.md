@@ -182,6 +182,16 @@ undo a rollback, run it again with the newer version. Nothing is ever deleted.
   major bump.
 - R2 keys only reach the publish and rollback jobs; the dry run gets no secrets for assembling.
 - macOS uses keyring's `apple-native` feature (the Keychain).
+- Dismissed security alerts:
+  - **glib** (GHSA-wrw7-89jp-8q8g, `VariantStrIter` unsoundness, fixed in glib 0.20), dismissed
+    as "not used" (2026-10-13). glib 0.18 comes only from Tauri's Linux dependencies (gtk 0.18,
+    webkit2gtk); `cargo tree -i glib --target x86_64-pc-windows-msvc` (and the two macOS
+    targets) prints nothing, so no Windows or macOS build contains it. It can't be updated while
+    Tauri uses the gtk3 bindings, which stopped at 0.18. **Before any Linux build** (for example
+    Kinetra Node), check whether Tauri has moved to newer GTK bindings and whether the alert
+    still applies; reopen it if it does.
+- `pnpm-workspace.yaml` overrides `cookie` to 0.7 (GHSA-pxg6-pf52-xh8x) because SvelteKit 2
+  still asks for ^0.6.0; drop the override once SvelteKit's own range allows 0.7.
 
 ## Icons
 
