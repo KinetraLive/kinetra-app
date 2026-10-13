@@ -1,5 +1,5 @@
 // WebSocket with reconnect backoff. Timers exist only while disconnected.
-import type { ServerMsg } from "./protocol";
+import type { ClientMessage, ServerMsg } from "./protocol";
 
 export type Status = "connecting" | "connected" | "reconnecting";
 
@@ -14,6 +14,15 @@ export interface SocketLike {
 
 /** The open socket (the last one opened), for the media chunk's `ready` reports. */
 export let live: SocketLike | undefined;
+
+/** Sends a status message on the open socket; dropped while disconnected, never throws. */
+export function tell(m: ClientMessage) {
+  try {
+    live?.send?.(JSON.stringify(m));
+  } catch {
+    // The socket closed meanwhile: the server ends the fade by itself.
+  }
+}
 
 export interface ConnectOpts {
   onStatus?: (s: Status) => void;

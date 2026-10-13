@@ -329,6 +329,8 @@ impl Inner {
                     send(sock, *to, format!("/kinetra/flow/{id}/running"), running);
                 }
             }
+            // Feedback follows on air in Program, not the out-animation.
+            StateChange::Visible => {}
         }
     }
 }

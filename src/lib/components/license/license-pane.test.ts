@@ -60,7 +60,7 @@ function view(over: Partial<LicenseView> = {}): LicenseView {
     plan: "pro_yearly",
     planName: null,
     entitlements: ["core.app", "pro.ai"],
-    features: { ai: true, polls: true },
+    features: { ai: true, polls: true, control: true },
     pending: null,
     endsAt: NOW + 200 * 86400,
     updatesUntil: null,
@@ -119,7 +119,7 @@ describe("Preferences › License", () => {
   });
 
   it("Free: Upgrade to Pro, and AI shown locked with what Pro unlocks", async () => {
-    await mount(view({ plan: "free", features: { ai: false, polls: false }, entitlements: ["core.app"], endsAt: null, licenses: [lic({ plan: "free", activations: [] })] }));
+    await mount(view({ plan: "free", features: { ai: false, polls: false, control: false }, entitlements: ["core.app"], endsAt: null, licenses: [lic({ plan: "free", activations: [] })] }));
     await fireEvent.click(screen.getAllByRole("button", { name: "Upgrade to Pro" })[0]);
     await vi.waitFor(() => expect(opener.openUrl).toHaveBeenCalledWith("https://kinetra.live/pricing"));
     const lock = screen.getByRole("button", { name: "AI templates: needs Kinetra Pro" });

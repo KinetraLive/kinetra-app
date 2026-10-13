@@ -105,6 +105,19 @@ Before uploading:
   command; a wrong key would otherwise only show when a client refuses the update);
 - the version doesn't exist in R2 yet.
 
+**Remote control** ships only in builds with `KINETRA_REMOTE=1` (the core: `src-tauri/build.rs`
+`kinetra_remote` cfg; the UI: svelte.config.js's `$remote` alias). Release builds take it from the
+repository variable `KINETRA_REMOTE` (unset = 0) until kinetra-cloud's relay (M6a) is live; set the
+variable to 1 then (and add remote control to CHANGELOG's Unreleased notes in the same change).
+After each release build `scripts/check-remote-build.mjs` checks the frontend build: no remote
+control text without the flag, all of it with it. Local dev (`pnpm tauri dev`, debug builds) and
+the e2e suites have it on.
+
+After each release build, `scripts/check-release-overrides.mjs` proves the debug-only test
+overrides (the e2e fixture's entitlement override, the template sandbox bypass) aren't in
+release builds: `cargo check --release --example release_guard` must fail with exactly their
+"doesn't exist" errors, or the job fails.
+
 Release builds carry no source maps, and `scripts/release-rustflags.mjs` remaps the Cargo home,
 the Rust sysroot and the checkout in panic locations, so no build machine paths end up in the app.
 

@@ -40,7 +40,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use serde::Serialize;
 use serde_json::Value;
@@ -118,6 +118,8 @@ pub struct FlowStore {
     inner: Mutex<Inner>,
     /// Serializes every flow file write (held across the write; never the data lock).
     write: Mutex<()>,
+    /// Told (no lock held) after the list of flows or a flow changed: remote control's cue list.
+    changed: std::sync::RwLock<Option<Arc<dyn Fn() + Send + Sync>>>,
 }
 
 /// One flow as loaded from disk.
@@ -129,6 +131,22 @@ pub struct LoadedFlow {
 }
 
 impl FlowStore {
+    /// Installs the callback run after every change of the stored flows (see `changed`).
+    pub(crate) fn set_changed_hook(&self, hook: Arc<dyn Fn() + Send + Sync>) {
+        *self.changed.write().unwrap_or_else(PoisonError::into_inner) = Some(hook);
+    }
+
+    fn told(&self) {
+        let h = self
+            .changed
+            .read()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone();
+        if let Some(h) = h {
+            h();
+        }
+    }
+
     fn install(&self, project: &Path, list: Vec<LoadedFlow>) {
         *lock(&self.inner) = Inner {
             project: Some(project.to_path_buf()),
@@ -142,11 +160,13 @@ impl FlowStore {
                 })
                 .collect(),
         };
+        self.told();
     }
 
     /// Forgets the project (closed). Flush first.
     pub(crate) fn forget(&self) {
         *lock(&self.inner) = Inner::default();
+        self.told();
     }
 
     /// The project folder moved.
@@ -214,7 +234,13 @@ impl FlowStore {
 
     /// Replaces (or appends) a flow just written. Keeps the in-memory `lastFiredAt` when it moved
     /// on meanwhile (the engine stamps it without the write lock); the flow stays dirty then.
-    fn commit(&self, mut flow: Flow, read_only: bool, invalid: Option<String>) -> Flow {
+    fn commit(&self, flow: Flow, read_only: bool, invalid: Option<String>) -> Flow {
+        let flow = self.commit_locked(flow, read_only, invalid);
+        self.told();
+        flow
+    }
+
+    fn commit_locked(&self, mut flow: Flow, read_only: bool, invalid: Option<String>) -> Flow {
         let mut g = lock(&self.inner);
         match g.find_mut(&flow.id) {
             Some(e) => {
@@ -238,9 +264,13 @@ impl FlowStore {
     }
 
     fn remove(&self, id: &str) -> Option<Flow> {
-        let mut g = lock(&self.inner);
-        let pos = g.flows.iter().position(|e| e.flow.id == id)?;
-        Some(g.flows.remove(pos).flow)
+        let removed = {
+            let mut g = lock(&self.inner);
+            let pos = g.flows.iter().position(|e| e.flow.id == id)?;
+            g.flows.remove(pos).flow
+        };
+        self.told();
+        Some(removed)
     }
 
     /// Takes the dirty flows to write, with the project folder.

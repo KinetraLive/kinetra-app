@@ -728,7 +728,7 @@ export interface LicenseView {
   planName: string | null;
   entitlements: string[];
   /** The app's Pro features, unlocked or not (decided in the core). */
-  features: { ai: boolean; polls: boolean };
+  features: { ai: boolean; polls: boolean; control: boolean };
   pending: string[] | null;
   endsAt: number | null;
   updatesUntil: number | null;
@@ -2152,4 +2152,101 @@ export interface AddFlowTemplate {
 export interface FlowCheck {
   errors: FlowIssue[];
   warnings: FlowIssue[];
+}
+
+// ---- Remote control (src-tauri/src/core/remote; not in model.rs, mirrored here) ---------------
+
+/** Where remote control is (`RemoteView.state`). */
+export type RemotePhase =
+  | { state: "off" }
+  | { state: "connecting" }
+  | { state: "live"; runId: string; resumed: boolean }
+  | { state: "reconnecting"; attempt: number; nextMs: number }
+  /** The show runs on another machine: Move it here / Make this a separate show / Cancel. */
+  | { state: "showInUse"; machine: string }
+  /** The run ended; the switch stays on: Start again. */
+  | { state: "ended" }
+  /** Stopped for something the user handles (sign in, plan, update, clock, moved, limits). */
+  | { state: "stopped"; code: string; message: string };
+
+/** Someone connected through the control site (names are shown to the owner only). */
+export interface CrewMember {
+  id: string | null;
+  name: string;
+  /** viewer | data_editor | operator */
+  role: string;
+  anonymous: boolean;
+  sinceMs: number;
+}
+
+/** `remote_view` and the `remote-control` event. */
+export type RemoteView = RemotePhase & {
+  /** The switch for the open project (this session). */
+  on: boolean;
+  takeLocked: boolean;
+  crew: CrewMember[];
+  showId: string | null;
+  crewUrl: string | null;
+  controllerUrl: string | null;
+  serverVersion: string | null;
+  rttMs: number | null;
+  licenseWarning: { endsMs: number; message: string } | null;
+  lastError: string | null;
+  /** The project has a remote control ID ("Make this a separate show" is offered). */
+  hasShowId: boolean;
+  /** This build offers remote control (KINETRA_REMOTE at build time). */
+  available: boolean;
+  /** Screens beyond what remote users see (the protocol shows the first 32); 0 when all show. */
+  screensHidden: number;
+};
+
+/** An accepted remote command (`remote-activity`; this run only). */
+export interface RemoteActivity {
+  at: number;
+  name: string;
+  role: string;
+  /** "Kari N. updated Name on Lower third 2". */
+  text: string;
+}
+
+/** The cue list's position (`cue_position`, `cue-position`): Control marks `next`. */
+export interface CuePosition {
+  current: string | null;
+  next: string | null;
+}
+
+/** Test connection. */
+export interface RemoteTestResult {
+  ok: boolean;
+  /** ok, signed_out, offline, timeout, unauthorized, rate_limited, server_busy, … */
+  code: string;
+  message: string;
+  detail: string | null;
+  serverVersion: string | null;
+  connectMs: number | null;
+  welcomeMs: number | null;
+  rttMs: number | null;
+  retryAfterS: number | null;
+  /** Measured on the live connection (remote control on). */
+  live: boolean;
+}
+
+/** Connection details (`remote_diag_watch`, `remote-diag`): the diagnostics export's shape. */
+export interface RemoteDiag {
+  serverVersion: string | null;
+  state: string;
+  runId: string | null;
+  showId: string | null;
+  protocol: number;
+  rtt: { last: number | null; median: number | null; max: number | null };
+  clockOffsetMs: number | null;
+  connects: number;
+  commands: { received: number; accepted: number; resultMsMedian: number | null; resultMsMax: number | null };
+  counters: Record<string, { in: number; inBytes: number; out: number; outBytes: number }>;
+  snapshot: { seq: number | null; bytes: number | null; sent: number; resyncs: number; lastResync: { reason: string; corr: string } | null };
+  lastClose: { code: number; reason: string } | null;
+  reconnects: { at: number; closeCode?: number; reason: string; backoffMs: number }[];
+  refused: { at: number; corr: string; action: string; role: string; code: string; layer?: string; cueList?: string; cue?: string }[];
+  errors: { at: number; code: string; fatal: boolean; corr?: string }[];
+  probe: { at: number; outcome: string; connectMs?: number; welcomeMs?: number; rttMs?: number } | null;
 }

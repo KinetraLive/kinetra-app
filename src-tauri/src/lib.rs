@@ -64,6 +64,8 @@ fn is_window(target: &EventTarget, label: &str) -> bool {
 pub(crate) fn shutdown_services(handle: &AppHandle) {
     if let Some(state) = handle.try_state::<AppState>() {
         state.flush_all();
+        // Remote control: `end {quit}` so browsers see the show machine ended it (≤ ~1 s).
+        state.remote_quit();
         // LEDs off, MIDI ports closed, the MIDI thread stopped.
         state.midi_close_all();
         // Output windows closed, the displays thread stopped.
@@ -355,6 +357,18 @@ pub fn run() {
             commands::outputs::output_test_pattern,
             commands::outputs::identify_displays,
             commands::outputs::all_outputs_off,
+            commands::remote::remote_view,
+            commands::remote::remote_set,
+            commands::remote::remote_start_again,
+            commands::remote::remote_end,
+            commands::remote::remote_lock,
+            commands::remote::remote_takeover,
+            commands::remote::remote_new_show,
+            commands::remote::remote_activity,
+            commands::remote::cue_position,
+            commands::remote::remote_test,
+            commands::remote::remote_diag_watch,
+            commands::remote::remote_export_diagnostics,
             commands::templates::list_templates,
             commands::templates::get_template,
             commands::templates::create_template,

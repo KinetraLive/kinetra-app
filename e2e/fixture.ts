@@ -89,6 +89,22 @@ export const test = base.extend<{ live: Fixture }, { server: Fixture }>({
 });
 
 /**
+ * A fixture server of the test's own (a fresh project): for tests whose assertions depend on
+ * the whole project, e.g. remote control's state (capped at 32 screens by the protocol), which
+ * the shared server outgrows over a full run. Starts in ~2 s once the example is compiled.
+ */
+export const ownTest = base.extend<{ own: Fixture }>({
+  own: [
+    async ({}, use) => {
+      const { fixture, stop } = await startFixture();
+      await use(fixture);
+      await stop();
+    },
+    { timeout: 300_000 },
+  ],
+});
+
+/**
  * For tests that load built-in presets (`template <id>`): their own fixture server, so the shared
  * `server`'s test lower third (which `template` would replace for good) stays untouched.
  * `presetLive` starts every test off air with auto-out off.

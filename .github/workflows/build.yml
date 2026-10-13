@@ -130,6 +130,10 @@ jobs:
         shell: bash
         env:
           KINETRA_CHANNEL: ${{ inputs.channel }}
+          # Remote control ships only once kinetra-cloud's relay is live: set the repository
+          # variable KINETRA_REMOTE to 1 then (Settings › Secrets and variables › Actions ›
+          # Variables). Unset = 0 = no remote control in the app or its UI.
+          KINETRA_REMOTE: ${{ vars.KINETRA_REMOTE || '0' }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
@@ -146,6 +150,14 @@ jobs:
           # No local build paths in panic locations (scripts/release-rustflags.mjs).
           export CARGO_ENCODED_RUSTFLAGS="$(node scripts/release-rustflags.mjs)"
           pnpm tauri build --ci --bundles nsis --config "$RUNNER_TEMP/ci.conf.json"
+      - name: Remote control check (the switch only in builds with KINETRA_REMOTE=1)
+        shell: bash
+        env:
+          KINETRA_REMOTE: ${{ vars.KINETRA_REMOTE || '0' }}
+        run: node scripts/check-remote-build.mjs build --remote "$KINETRA_REMOTE"
+      - name: Release overrides check (no test overrides in release builds)
+        shell: bash
+        run: node scripts/check-release-overrides.mjs
       - name: Channel check (no CANARY badge in stable builds)
         shell: bash
         env:
@@ -199,6 +211,10 @@ jobs:
       - name: tauri build
         env:
           KINETRA_CHANNEL: ${{ inputs.channel }}
+          # Remote control ships only once kinetra-cloud's relay is live: set the repository
+          # variable KINETRA_REMOTE to 1 then (Settings › Secrets and variables › Actions ›
+          # Variables). Unset = 0 = no remote control in the app or its UI.
+          KINETRA_REMOTE: ${{ vars.KINETRA_REMOTE || '0' }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
@@ -216,6 +232,14 @@ jobs:
           # No local build paths in panic locations (scripts/release-rustflags.mjs).
           export CARGO_ENCODED_RUSTFLAGS="$(node scripts/release-rustflags.mjs)"
           pnpm tauri build --ci --target universal-apple-darwin --bundles app,dmg --config "$RUNNER_TEMP/ci.conf.json"
+      - name: Remote control check (the switch only in builds with KINETRA_REMOTE=1)
+        shell: bash
+        env:
+          KINETRA_REMOTE: ${{ vars.KINETRA_REMOTE || '0' }}
+        run: node scripts/check-remote-build.mjs build --remote "$KINETRA_REMOTE"
+      - name: Release overrides check (no test overrides in release builds)
+        shell: bash
+        run: node scripts/check-release-overrides.mjs
       - name: Channel check (no CANARY badge in stable builds)
         shell: bash
         env:

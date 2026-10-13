@@ -137,6 +137,15 @@ export interface EventPayloads {
   // Media (wrappers: $lib/api/media).
   /** Import progress per file (≤ 10/s). */
   "asset-import": import("../types").AssetImportProgress;
+  // Remote control (wrappers: $lib/api/remote).
+  /** Remote control's state, crew, lock or round trip changed. */
+  "remote-control": import("../types").RemoteView;
+  /** A remote command was accepted (this run only). */
+  "remote-activity": import("../types").RemoteActivity;
+  /** Connection details, ≤ 2/s and only while a watch is open. */
+  "remote-diag": import("../types").RemoteDiag;
+  /** The cue list's current / next cue changed (Control marks Next). */
+  "cue-position": import("../types").CuePosition;
 }
 
 /**

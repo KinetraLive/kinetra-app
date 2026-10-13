@@ -21,6 +21,7 @@ import type { Page } from "@playwright/test";
 import { expect, test } from "../fixture";
 import {
   EMPTY_DOC,
+  FLOWS,
   EVENT_SCREEN,
   SCREEN1,
   SCREEN1_DOC,
@@ -1758,7 +1759,7 @@ for (const theme of ["dark", "light"] as const) {
           polls: [],
           pollQuota: null,
           pollSources: [],
-          license: { plan: "free", access: "free", entitlements: ["core.app"], features: { ai: false, polls: false } },
+          license: { plan: "free", access: "free", entitlements: ["core.app"], features: { ai: false, polls: false, control: false } },
         }),
       );
       await page.getByRole("button", { name: "New poll: needs Kinetra Pro" }).first().click();
@@ -1771,6 +1772,81 @@ for (const theme of ["dark", "light"] as const) {
       await page.getByRole("option", { name: /Halftime poll/ }).click();
       await expect(page.getByRole("region", { name: "Results" })).toBeVisible();
       await shot(page, `${theme}-115-sources-poll`);
+    });
+  });
+}
+
+// Remote control (step 2): Control's chip with its panel open (people, lock, recent actions) and
+// the cue strip's Next; Preferences › Network & API › Remote control with Connection details and
+// a Test connection result.
+for (const theme of ["dark", "light"] as const) {
+  test.describe(`${theme}, remote control`, () => {
+    const now = Date.UTC(2026, 9, 13, 18, 0);
+    const scenario = (): MockScenario => ({
+      ...screensScenario(theme),
+      flows: FLOWS,
+      cueNext: "mac3break0",
+      control: { selectedScreenId: "s1main01ab", liveEdit: "onTake" },
+      remote: {
+        on: true,
+        state: "live",
+        runId: "0193b2c4-5d6e-7f80-9a1b-2c3d4e5f6a7b",
+        resumed: false,
+        hasShowId: true,
+        rttMs: 38,
+        serverVersion: "kinetra-cloud 0.9.2",
+        crewUrl: "https://control.kinetra.live/s/0193/crew",
+        controllerUrl: "https://control.kinetra.live/s/0193",
+        crew: [
+          { id: "u1", name: "Kari Nordmann", role: "operator", anonymous: false, sinceMs: now - 3_600_000 },
+          { id: "u2", name: "Jonas Berg", role: "data_editor", anonymous: false, sinceMs: now - 1_800_000 },
+          { id: null, name: "Guest 3", role: "viewer", anonymous: true, sinceMs: now - 600_000 },
+        ],
+      },
+      remoteActivity: [
+        { at: now - 60_000, name: "Kari Nordmann", role: "operator", text: "Kari Nordmann took Guest lower third" },
+        { at: now - 240_000, name: "Jonas Berg", role: "data_editor", text: "Jonas Berg updated Name, Title on Guest lower third" },
+      ],
+    });
+
+    test.beforeEach(async ({ page, context, server }) => {
+      await mirrorScreens(page, context, server);
+    });
+
+    test("control: the chip, its panel and Next in the cue strip", async ({ page }) => {
+      await open(page, "/control", scenario());
+      const chip = page.getByRole("button", { name: "Remote control: 3 connected" });
+      await expect(chip).toBeVisible();
+      await page.getByRole("button", { name: "Show all cues" }).click();
+      await expect(page.getByText("Next", { exact: true })).toBeVisible();
+      await shot(page, `${theme}-90-remote-chip`);
+      await chip.click();
+      await expect(page.getByText("3 remote users connected")).toBeVisible();
+      await expect(page.getByText("Kari Nordmann took Guest lower third")).toBeVisible();
+      await shot(page, `${theme}-91-remote-panel`);
+    });
+
+    test("control at 1024 px: the collapsed toolbar and its More menu", async ({ page }) => {
+      await page.setViewportSize({ width: 1024, height: 768 });
+      await open(page, "/control", scenario());
+      const more = page.getByRole("button", { name: "More Control options" });
+      await expect(more).toBeVisible();
+      await page.waitForTimeout(300);
+      await shot(page, `${theme}-94-control-1024`);
+      await more.click();
+      await expect(page.getByRole("menuitemcheckbox", { name: "Grid view" })).toBeVisible();
+      await shot(page, `${theme}-95-control-1024-more`);
+    });
+
+    test("preferences: remote control and connection details", async ({ page }) => {
+      await open(page, "/preferences?section=remote", scenario());
+      await expect(page.getByRole("heading", { name: "Connection details" })).toBeVisible();
+      await page.getByRole("button", { name: "Test connection" }).click();
+      await expect(page.getByText("Connected", { exact: true })).toBeVisible();
+      await page.locator("#remote").scrollIntoViewIfNeeded();
+      await shot(page, `${theme}-92-preferences-remote`);
+      await page.getByRole("heading", { name: "Connection details" }).scrollIntoViewIfNeeded();
+      await shot(page, `${theme}-93-preferences-remote-details`);
     });
   });
 }

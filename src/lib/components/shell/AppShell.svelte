@@ -44,6 +44,8 @@
   import Sidebar from "./Sidebar.svelte";
   import SimpleGate from "./SimpleGate.svelte";
   import TopBar from "./TopBar.svelte";
+  import { remote } from "$lib/components/remote/state.svelte";
+  import { setRemote } from "$remote";
 
   let { children }: { children?: Snippet } = $props();
 
@@ -55,6 +57,16 @@
   async function toggleAutomation() {
     const v = uiState.value;
     if (v) await uiState.update({ ...v, control: { ...v.control, automationOff: !v.control.automationOff } });
+  }
+
+  /** Remote control on / off (the palette); refusals (Pro, sign-in) are a toast. */
+  async function toggleRemote() {
+    if (!setRemote) return;
+    try {
+      await setRemote(!(remote.view?.on ?? false));
+    } catch (e) {
+      toasts.push({ kind: "error", message: toAppError(e).message });
+    }
   }
 
   type PaletteT = typeof import("$lib/commands/palette/Palette.svelte").default;
@@ -125,6 +137,8 @@
         go: (href) => void goto(href),
         toggleAutomation: () => void toggleAutomation(),
         automationOff: () => automationOff,
+        toggleRemote: setRemote ? () => void toggleRemote() : undefined,
+        remoteOn: () => remote.view?.on ?? false,
       }),
     ),
   );

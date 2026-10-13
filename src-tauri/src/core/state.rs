@@ -165,6 +165,8 @@ struct Inner {
     outputs: crate::core::outputs::Outputs,
     /// Sign-in and licensing (see `core::cloud::service`).
     cloud: crate::core::cloud::service::Cloud,
+    /// Remote control through kinetra-cloud (see `core::remote`).
+    remote: crate::core::remote::Remote,
 }
 
 /// A change feedback senders follow without polling ([`AppState::add_change_listener`]).
@@ -174,6 +176,10 @@ pub enum StateChange<'a> {
     Live,
     /// A flow instance started (`running`) or ended (finished, stopped or failed).
     FlowRun { id: &'a str, running: bool },
+    /// A layer that went off air finished its out-animation on every output (or the fallback
+    /// time passed) without any other live operation: only exact visibility changed (remote
+    /// control, `LiveHub::visible`).
+    Visible,
 }
 
 /// Called on the thread that made the change. For `Live` no state lock is held; `FlowRun` comes
@@ -562,6 +568,7 @@ impl AppState {
             displays: Default::default(),
             outputs: Default::default(),
             cloud: Default::default(),
+            remote: Default::default(),
         });
         // Auto-advance and the `layer` / `timerZero` flow triggers follow what is on air, whichever
         // path changed it.
@@ -573,6 +580,13 @@ impl AppState {
                 st.rules_live_changed();
                 st.api_reconcile();
                 st.notify_change(StateChange::Live);
+            }
+        }));
+        // A fade ending (exact visibility for remote control) is a change of its own.
+        let weak = Arc::downgrade(&inner);
+        inner.live.set_visible_hook(Arc::new(move || {
+            if let Some(inner) = weak.upgrade() {
+                AppState { inner }.notify_change(StateChange::Visible);
             }
         }));
         // A media layer reaching its out point fires `trigger.mediaEnded` flows.
@@ -602,6 +616,7 @@ impl AppState {
         let st = Self { inner };
         st.midi_init();
         st.outputs_init();
+        st.remote_init();
         Ok(st)
     }
 
@@ -638,6 +653,31 @@ impl AppState {
     /// Live polls: result streams and test simulations (see `core::polls`).
     pub fn poll_service(&self) -> &crate::core::polls::PollService {
         &self.inner.polls
+    }
+
+    /// Remote control (see `core::remote`).
+    pub(crate) fn remote(&self) -> &crate::core::remote::Remote {
+        &self.inner.remote
+    }
+
+    /// The open project's remote control ID (`project.json` `id`), if it has one.
+    pub fn project_remote_id(&self) -> Option<String> {
+        read(&self.inner.project)
+            .as_ref()
+            .and_then(|p| p.file.value.id.clone())
+    }
+
+    /// Sets the open project's remote control ID and writes `project.json` (coalesced, like
+    /// every store write). `NoProject` without one.
+    pub(crate) fn set_project_remote_id(&self, id: String) -> AppResult<()> {
+        {
+            let mut g = write(&self.inner.project);
+            let op = g.as_mut().ok_or(AppError::NoProject)?;
+            op.file.value.id = Some(id);
+            op.file.dirty = true;
+        }
+        self.inner.schedule();
+        Ok(())
     }
 
     /// A handle that does not keep the state alive (for background tasks).

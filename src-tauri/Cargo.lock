@@ -2306,6 +2306,7 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "ed25519-dalek",
+ "futures-util",
  "getrandom 0.3.4",
  "http-body",
  "keyring",
@@ -2328,6 +2329,7 @@ dependencies = [
  "thiserror 2.0.21",
  "time",
  "tokio",
+ "tokio-tungstenite",
  "tracing",
  "tracing-subscriber",
  "walkdir",
@@ -2337,8 +2339,8 @@ dependencies = [
 
 [[package]]
 name = "kinetra-license"
-version = "0.2.0"
-source = "git+https://github.com/KinetraLive/kinetra-license?tag=license-v0.2.0#ec7b5903931eded146464ca41c6291da15644c21"
+version = "0.3.0"
+source = "git+https://github.com/KinetraLive/kinetra-license?tag=license-v0.3.0#5ef91e1ab07651417de77b28d1c4be5725c7e5ad"
 dependencies = [
  "base64 0.23.1",
  "ed25519-dalek",
@@ -4770,7 +4772,9 @@ checksum = "8f72a05e828585856dacd553fba484c242c46e391fb0e58917c942ee9202915c"
 dependencies = [
  "futures-util",
  "log",
+ "native-tls",
  "tokio",
+ "tokio-native-tls",
  "tungstenite",
 ]
 
@@ -5014,6 +5018,7 @@ dependencies = [
  "http",
  "httparse",
  "log",
+ "native-tls",
  "rand",
  "sha1",
  "thiserror 2.0.21",

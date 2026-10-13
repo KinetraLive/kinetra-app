@@ -269,9 +269,11 @@ pub struct WireMedia {
     pub playback: MediaPlayback,
 }
 
-/// Renderer → server: the only message a renderer sends (status only, never control).
+/// Renderer → server: status only, never control.
 /// `ready`: a layer's media is loaded and its first frame at the in point decoded (`ok`), or
 /// it failed (`error`, short text). Sent once per load (again after a new file / reconnect).
+/// `gone`: a layer's out-animation finished and it left the page (Program only; a cut or a
+/// re-take sends none). Remote control's exact `on_air` waits for it (`LiveHub::renderer_gone`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "t", rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum ClientMsg {
@@ -280,6 +282,9 @@ pub enum ClientMsg {
         ok: bool,
         #[serde(default)]
         error: Option<String>,
+    },
+    Gone {
+        layer_id: String,
     },
 }
 

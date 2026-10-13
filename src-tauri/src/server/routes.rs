@@ -361,13 +361,17 @@ async fn session(mut socket: WebSocket, screen: String, preview: bool, counted: 
             }
             incoming = socket.recv() => match incoming {
                 Some(Ok(Message::Close(_))) | Some(Err(_)) | None => break,
-                // Status only (`ready`); ignored from uncounted connections. Anything else
-                // (pongs, unknown or oversized text) is ignored.
+                // Status only (`ready`, `gone`); ignored from uncounted connections. Anything
+                // else (pongs, unknown or oversized text) is ignored.
                 Some(Ok(Message::Text(t))) if t.len() <= CLIENT_MSG_MAX => {
-                    if let (Some(reg), Ok(ClientMsg::Ready { layer_id, ok, error })) =
-                        (&reg, serde_json::from_str::<ClientMsg>(t.as_str()))
-                    {
-                        hub.renderer_ready(reg, &layer_id, ok, error);
+                    match (&reg, serde_json::from_str::<ClientMsg>(t.as_str())) {
+                        (Some(reg), Ok(ClientMsg::Ready { layer_id, ok, error })) => {
+                            hub.renderer_ready(reg, &layer_id, ok, error);
+                        }
+                        (Some(reg), Ok(ClientMsg::Gone { layer_id })) => {
+                            hub.renderer_gone(reg, &layer_id);
+                        }
+                        _ => {}
                     }
                 }
                 Some(Ok(_)) => {}

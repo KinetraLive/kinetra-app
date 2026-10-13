@@ -104,6 +104,47 @@ pub(crate) fn apply_doc_with(
     Ok((view, warnings))
 }
 
+/// [`apply_doc`], refused (`false`, the store keeps the previous document) when `layer_id` can be
+/// seen on the output or is cued in on Preview (`LiveHub::apply_screen_unless_shown`). Caller
+/// holds the screen write lock.
+pub(crate) fn apply_doc_unless_shown(
+    store: &ScreenStore,
+    sources: &SourceStore,
+    hub: &LiveHub,
+    dir: &Path,
+    doc: &ScreenDoc,
+    mode: LiveEdit,
+    layer_id: &str,
+) -> Result<bool, LiveError> {
+    let templates = store.templates_for(dir, doc);
+    let current = sources.current(screens::source_ids(doc));
+    let media = screens::media_for(dir, doc);
+    let (plan, _) = screens::plan_with(doc, &templates, &current, &store.brand(), &media);
+    let prev = store.doc(&doc.id);
+    store.set_doc(doc.clone());
+    if hub
+        .apply_screen_unless_shown(plan, mode, layer_id)?
+        .is_some()
+    {
+        return Ok(true);
+    }
+    if let Some(p) = prev {
+        store.set_doc(p);
+    }
+    Ok(false)
+}
+
+/// Who sets layer fields (see `AppState::fields_edit`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FieldsBy {
+    /// Control, the Inspector: the live rules.
+    Operator,
+    /// Flows: in Studio mode straight to Program.
+    Automation,
+    /// A remote data editor: only while the layer isn't shown.
+    UnlessShown,
+}
+
 fn source_map(docs: &[SourceDoc], now: &Now) -> SourceMap {
     docs.iter()
         .map(|d| (d.id.clone(), Current::of(d, now)))
@@ -533,6 +574,19 @@ impl AppState {
         self.set_layer_fields_by(screen_id, layer_id, fields, true)
     }
 
+    /// Remote data editors (`core::remote`): like [`AppState::set_layer_fields`], but refused
+    /// (`Ok(None)`, nothing changed or saved) when the layer can be seen on the output (on air
+    /// or still animating out) or is cued in on Preview — checked under the hub's write lock
+    /// together with the change, so a take in between can't slip past the check.
+    pub(crate) fn set_layer_fields_unless_shown(
+        &self,
+        screen_id: &str,
+        layer_id: &str,
+        fields: Fields,
+    ) -> AppResult<Option<LiveLayerView>> {
+        self.fields_edit(screen_id, layer_id, fields, FieldsBy::UnlessShown)
+    }
+
     fn set_layer_fields_by(
         &self,
         screen_id: &str,
@@ -540,6 +594,22 @@ impl AppState {
         fields: Fields,
         automation: bool,
     ) -> AppResult<LiveLayerView> {
+        let by = if automation {
+            FieldsBy::Automation
+        } else {
+            FieldsBy::Operator
+        };
+        self.fields_edit(screen_id, layer_id, fields, by)?
+            .ok_or_else(|| AppError::Internal("The edit was refused".into()))
+    }
+
+    fn fields_edit(
+        &self,
+        screen_id: &str,
+        layer_id: &str,
+        fields: Fields,
+        by: FieldsBy,
+    ) -> AppResult<Option<LiveLayerView>> {
         let (dir, _w) = self.screen_guard()?;
         let not_found = || AppError::NotFound(format!("Screen not found: {screen_id}"));
         if is_reserved_screen(screen_id) {
@@ -590,17 +660,34 @@ impl AppState {
         let changed = fields.iter().any(|(k, v)| values.get(k) != Some(v));
         let keys: Vec<String> = fields.keys().cloned().collect();
         values.extend(fields);
-        if automation && self.live().is_studio() {
-            let force = [(layer_id.to_string(), keys)];
-            self.apply_screen_doc_forcing(&dir, &doc, &force)?;
-        } else {
-            self.apply_screen_doc(&dir, &doc)?;
+        match by {
+            FieldsBy::Automation if self.live().is_studio() => {
+                let force = [(layer_id.to_string(), keys)];
+                self.apply_screen_doc_forcing(&dir, &doc, &force)?;
+            }
+            FieldsBy::UnlessShown => {
+                let applied = apply_doc_unless_shown(
+                    self.screens(),
+                    self.sources(),
+                    self.live(),
+                    &dir,
+                    &doc,
+                    self.live_edit(),
+                    layer_id,
+                )?;
+                if !applied {
+                    return Ok(None);
+                }
+            }
+            _ => {
+                self.apply_screen_doc(&dir, &doc)?;
+            }
         }
         if changed {
             self.screens().mark_dirty(screen_id);
             self.schedule_content_flush();
         }
-        Ok(self.live().layer_view(screen_id, layer_id)?)
+        Ok(Some(self.live().layer_view(screen_id, layer_id)?))
     }
 
     /// Shows another variant of a layer's template (`variant` must be one of the template's

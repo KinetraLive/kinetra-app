@@ -23,6 +23,8 @@ export default defineConfig({
   },
   webServer: {
     command: `pnpm build && pnpm exec vite preview --host 127.0.0.1 --port ${UI_PORT} --strictPort`,
+    // The harness shows remote control's UI (a build with it; see svelte.config.js `$remote`).
+    env: { KINETRA_REMOTE: "1" },
     url: `http://127.0.0.1:${UI_PORT}`,
     reuseExistingServer: false,
     timeout: 180_000,

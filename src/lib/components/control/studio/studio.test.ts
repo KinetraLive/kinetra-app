@@ -19,6 +19,10 @@ import type {
 type Handler = (payload: unknown) => void;
 const events = vi.hoisted(() => ({ handlers: new Map<string, Handler>() }));
 const api = vi.hoisted(() => ({
+  remoteView: vi.fn(async () => ({ state: "off", on: false, takeLocked: false, crew: [], showId: null, crewUrl: null, controllerUrl: null, serverVersion: null, rttMs: null, licenseWarning: null, lastError: null, hasShowId: false, available: true, screensHidden: 0 })),
+  cuePosition: vi.fn(async () => ({ current: null, next: null })),
+  remoteDiagWatch: vi.fn(async () => null),
+  licenseView: vi.fn(async () => null),
   serverStatus: vi.fn(),
   listScreens: vi.fn(),
   liveShow: vi.fn(),
@@ -48,6 +52,8 @@ const api = vi.hoisted(() => ({
   setFlowArmed: vi.fn(),
   listRecipeInstances: vi.fn(),
 }));
+vi.mock("$lib/api/remote", () => api);
+vi.mock("$lib/api/license", () => api);
 vi.mock("$lib/api", () => ({
   ...api,
   toAppError: (e: unknown) =>

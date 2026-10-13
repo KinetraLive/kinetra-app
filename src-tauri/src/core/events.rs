@@ -89,6 +89,17 @@ pub mod names {
     pub const DISPLAYS_CHANGED: &str = "displays-changed";
     /// Payload: `OutputStatus[]` (every configured output) when any output's status changed.
     pub const OUTPUTS_CHANGED: &str = "outputs-changed";
+    /// Payload: `RemoteView` when remote control's state, crew, lock or round trip changed
+    /// (`core::remote`); never while it is off and unchanged.
+    pub const REMOTE_CONTROL: &str = "remote-control";
+    /// Payload: `Activity`: an accepted remote command ("Kari N. took Lower third 2").
+    pub const REMOTE_ACTIVITY: &str = "remote-activity";
+    /// Payload: the Connection details view (diagnostics without values), ≤ 2 per second and
+    /// only while a watch is open (`remote_diag_watch`).
+    pub const REMOTE_DIAG: &str = "remote-diag";
+    /// Payload: `CuePosition` `{current, next}` when the cue list's position changed (a cue ran,
+    /// the cues changed, a project opened). Control's cue strip marks `next`.
+    pub const CUE_POSITION: &str = "cue-position";
     /// Payload: `AssetImportProgress` per file of an import job (≤ 10/s per file, plus its
     /// `done` event).
     pub const ASSET_IMPORT: &str = "asset-import";

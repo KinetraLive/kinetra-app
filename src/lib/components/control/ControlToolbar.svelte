@@ -3,9 +3,15 @@
     Grid / Single · Columns (grid only) · Screens menu (show / hide) · Studio mode (a switch; its
     settings button comes with the studio chunk) · Live edit On take / Immediate (in Studio mode: "Edits go to
     Preview")
-    · Clear screen (the selected screen, animated) + menu "Clear every screen" · Automation off (a switch;
-    while on, an amber pill with the text) · PANIC (instant cut, its key Shift+Esc unless rebound, no confirm).
+    · Clear screen (the selected screen, animated) + menu "Clear every screen" · Automation off (a switch; while on, an amber pill with the
+    text) · PANIC (instant cut, its key Shift+Esc unless rebound, no confirm).
   Every choice is written to the project's ui-state through the controller.
+
+  One line, always: PANIC never wraps. When the bar is too narrow it collapses step by step, the
+  least important first: (1) the hint texts, (2) Columns, (3) View and Live edit, (4) the Screens
+  menu's text (its icon stays). What collapsed (Columns, View, Live edit) moves into a "More"
+  menu. The fit is measured only when the bar's width or what it holds changes (one
+  ResizeObserver; layout reads then, never at rest).
 
   Props:
     ctl: ControlCtl
@@ -22,8 +28,83 @@
   import { ariaKeys, shortKeys } from "$lib/commands/keys";
   import Menu, { type MenuItem } from "./Menu.svelte";
   import Segmented from "./Segmented.svelte";
+  import Ellipsis from "lucide-svelte/icons/ellipsis";
+  import { tick } from "svelte";
 
   let { ctl }: { ctl: ControlCtl } = $props();
+
+  /** How far the bar has collapsed (see the header): 0 = everything shows. */
+  let level = $state(0);
+  const MAX_LEVEL = 4;
+  let bar: HTMLDivElement | undefined = $state();
+  let fitting = false;
+  /** A fit was asked for while one ran: run again when it ends. */
+  let again = false;
+  /** Finds the smallest collapse level at which the bar fits on one line. */
+  async function fit() {
+    if (!bar) return;
+    if (fitting) {
+      again = true;
+      return;
+    }
+    fitting = true;
+    try {
+      do {
+        again = false;
+        for (let l = 0; l <= MAX_LEVEL; l++) {
+          level = l;
+          await tick();
+          if (!bar || bar.scrollWidth <= bar.clientWidth) break;
+        }
+      } while (again);
+      fittedWidth = bar?.clientWidth ?? 0;
+      observe();
+    } finally {
+      fitting = false;
+    }
+  }
+  /** The bar's width at the last fit: wider again lets collapsed controls come back. */
+  let fittedWidth = 0;
+  let ro: ResizeObserver | undefined;
+  $effect(() => {
+    if (!bar) return;
+    let frame = 0;
+    // The bar and its controls: a control growing (a key label, the studio menu, fonts) re-fits
+    // when the bar then overflows; the bar growing re-fits so collapsed controls can come back.
+    // Collapsing only shrinks the controls, so a fit never triggers another.
+    ro = new ResizeObserver(() => {
+      if (!bar) return;
+      if (bar.scrollWidth <= bar.clientWidth && bar.clientWidth <= fittedWidth + 1) return;
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => void fit());
+    });
+    observe();
+    return () => {
+      ro?.disconnect();
+      ro = undefined;
+      cancelAnimationFrame(frame);
+    };
+  });
+  function observe() {
+    if (!bar || !ro) return;
+    ro.observe(bar);
+    for (const c of bar.children) ro.observe(c);
+  }
+  // What the bar holds changes its width too (and so do the web fonts, once they are in).
+  $effect(() => {
+    void [ctl.ui.view, ctl.studio.on, ctl.studio.ui, hiddenCount, ctl.ui.liveEdit, ctl.ui.automationOff, ctl.screens.length];
+    void fit();
+  });
+  $effect(() => {
+    let alive = true;
+    void document.fonts?.ready.then(() => {
+      if (alive) void fit();
+    });
+    return () => {
+      alive = false;
+    };
+  });
+
 
   const uid = $props.id();
   /** PANIC's key (Shift+Escape unless rebound in Keyboard shortcuts). */
@@ -56,12 +137,42 @@
   ]);
   const sel = $derived(ctl.selected);
   const studio = $derived(ctl.studio);
+
+  /** The collapsed controls, in the More menu. */
+  const moreItems = $derived<MenuItem[]>([
+    ...(level >= 3
+      ? VIEWS.map((v) => ({
+          id: `view-${v.value}`,
+          label: `${v.label} view`,
+          checked: ctl.ui.view === v.value,
+          onselect: () => ctl.setView(v.value),
+        }))
+      : []),
+    ...(level >= 2 && ctl.ui.view === "grid"
+      ? Array.from({ length: GRID_COLUMNS.max - GRID_COLUMNS.min + 1 }, (_, i) => GRID_COLUMNS.min + i).map((n) => ({
+          id: `cols-${n}`,
+          label: `${n} ${n === 1 ? "column" : "columns"}`,
+          checked: ctl.ui.gridColumns === n,
+          onselect: () => ctl.setColumns(n),
+        }))
+      : []),
+    ...(level >= 3 && !studio.on
+      ? EDITS.map((e) => ({
+          id: `edit-${e.value}`,
+          label: `Live edit: ${e.label}`,
+          checked: ctl.ui.liveEdit === e.value,
+          onselect: () => ctl.setLiveEdit(e.value),
+        }))
+      : []),
+  ]);
 </script>
 
-<div class="bar">
-  <Segmented label="View" options={VIEWS} value={ctl.ui.view} onchange={ctl.setView} />
+<div class="bar" bind:this={bar} data-collapse={level}>
+  {#if level < 3}
+    <Segmented label="View" options={VIEWS} value={ctl.ui.view} onchange={ctl.setView} />
+  {/if}
 
-  {#if ctl.ui.view === "grid"}
+  {#if ctl.ui.view === "grid" && level < 2}
     <span class="group">
       <label class="lbl" for="{uid}-cols">Columns</label>
       <NumberInput
@@ -75,10 +186,16 @@
     </span>
   {/if}
 
-  <Menu label="Show or hide screens" text="Screens" heading="Shown in Control" items={screenItems} disabled={ctl.screens.length === 0}>
+  <Menu
+    label="Show or hide screens"
+    text={level < 4 ? "Screens" : undefined}
+    heading="Shown in Control"
+    items={screenItems}
+    disabled={ctl.screens.length === 0}
+  >
     {#snippet icon()}<EyeOff size={14} />{/snippet}
   </Menu>
-  {#if hiddenCount > 0}<span class="hint">{hiddenCount} hidden</span>{/if}
+  {#if hiddenCount > 0 && level < 1}<span class="hint">{hiddenCount} hidden</span>{/if}
 
   <span class="sep" aria-hidden="true"></span>
 
@@ -102,15 +219,23 @@
 
   <span class="group">
     {#if studio.on}
-      <span class="hint">Edits go to Preview; TAKE puts them on air</span>
-    {:else}
+      {#if level < 1}<span class="hint">Edits go to Preview; TAKE puts them on air</span>{/if}
+    {:else if level < 3}
       <span class="lbl" aria-hidden="true">Live edit</span>
       <Segmented label="Live edit" options={EDITS} value={ctl.ui.liveEdit} onchange={ctl.setLiveEdit} />
-      <span class="hint">
-        {ctl.ui.liveEdit === "onTake" ? "Edits to on-air layers wait for Take" : "Edits go to air at once"}
-      </span>
+      {#if level < 1}
+        <span class="hint">
+          {ctl.ui.liveEdit === "onTake" ? "Edits to on-air layers wait for Take" : "Edits go to air at once"}
+        </span>
+      {/if}
     {/if}
   </span>
+
+  {#if moreItems.length > 0}
+    <Menu label="More Control options" items={moreItems}>
+      {#snippet icon()}<Ellipsis size={14} />{/snippet}
+    </Menu>
+  {/if}
 
   <span class="spacer"></span>
 
@@ -157,7 +282,8 @@
 <style>
   .bar {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    min-width: 0;
     align-items: center;
     gap: var(--s-2) var(--s-3);
     min-height: calc(var(--row-h) + var(--s-4));
@@ -180,6 +306,13 @@
   .hint {
     color: var(--text-muted);
     font-size: var(--fs-xs);
+    white-space: nowrap;
+  }
+  .bar > :global(*) {
+    flex-shrink: 0;
+  }
+  .bar > .spacer {
+    flex-shrink: 1;
   }
   .sep {
     width: 1px;

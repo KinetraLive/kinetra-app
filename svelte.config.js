@@ -5,6 +5,15 @@
 import adapter from "@sveltejs/adapter-static";
 import { vitePreprocess } from "@sveltejs/vite-plugin-svelte";
 
+/** KINETRA_REMOTE: "1" | "0"; unset = on for `pnpm dev`, off for builds. */
+function remoteBuild() {
+  const v = (process.env.KINETRA_REMOTE ?? "").trim();
+  if (v === "1") return true;
+  if (v === "0") return false;
+  if (v) throw new Error(`KINETRA_REMOTE must be "1" or "0", not ${JSON.stringify(v)}`);
+  return process.env.npm_lifecycle_event === "dev";
+}
+
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
   preprocess: vitePreprocess(),
@@ -23,6 +32,13 @@ const config = {
         process.env.KINETRA_CHANNEL === "canary"
           ? "src/lib/components/brand/CanaryBadge.svelte"
           : "src/lib/components/brand/NoBadge.svelte",
+      // Remote control is in builds with KINETRA_REMOTE=1 (CI release builds leave it off until
+      // kinetra-cloud's relay is live) and in `pnpm dev`; other builds get the empty module, so
+      // the switch and its UI aren't in them (scripts/check-remote-build.mjs checks the output).
+      // The core decides the same way at its build (src-tauri/build.rs).
+      $remote: remoteBuild()
+        ? "src/lib/components/remote/build-on.ts"
+        : "src/lib/components/remote/build-off.ts",
     },
   },
 };

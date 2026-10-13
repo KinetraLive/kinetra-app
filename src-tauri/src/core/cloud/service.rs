@@ -159,6 +159,8 @@ pub struct Features {
     pub ai: bool,
     /// Live polls (`pro.polls`).
     pub polls: bool,
+    /// Remote control (`pro.control`).
+    pub control: bool,
 }
 
 impl Features {
@@ -167,6 +169,7 @@ impl Features {
         Self {
             ai: has(kinetra_license::entitlements::PRO_AI),
             polls: has(kinetra_license::entitlements::PRO_POLLS),
+            control: has(kinetra_license::entitlements::PRO_CONTROL),
         }
     }
 }
@@ -230,6 +233,17 @@ struct St {
     /// The server said this account's plan has no backup computer (`backup_not_included`):
     /// "Use as backup" isn't offered again this session.
     no_backup: bool,
+}
+
+/// What remote control's `hello` needs ([`AppState::remote_credentials`]). Holds secrets: no
+/// `Debug`.
+pub(crate) struct RemoteCredentials {
+    pub base: String,
+    pub session: String,
+    pub license_token: String,
+    pub machine: String,
+    /// Unix seconds (the test clock in tests).
+    pub now: i64,
 }
 
 /// The licensing service (held by `AppState`; see the module docs).
@@ -412,8 +426,11 @@ impl Cloud {
         config::prerelease_build()
     }
 
-    /// Tests: these effective entitlements, full access (or Reduced), without a token.
-    #[cfg(test)]
+    /// Tests and the e2e fixture (debug builds only, never in a release build: CI proves it with
+    /// `scripts/check-release-overrides.mjs`): these effective entitlements, full access (or
+    /// Reduced), without a token.
+    #[cfg(any(test, debug_assertions))]
+    #[doc(hidden)]
     pub fn set_test_entitlements(&self, effective: &[&str], full: bool) {
         if let Some(s) = lock(&self.st).as_mut() {
             s.effective = effective.iter().map(|e| (*e).to_string()).collect();
@@ -631,6 +648,30 @@ impl AppState {
             .machine()
             .ok_or_else(|| AppError::Internal("This computer has no machine id".into()))?;
         Ok((c.api()?, session, machine))
+    }
+
+    /// Remote control's handshake (`core::remote`): the API base, the session, the current
+    /// license token (empty when there is none: the server answers `entitlement_required`) and
+    /// this machine's fingerprint. Secrets: never logged.
+    pub(crate) fn remote_credentials(&self) -> AppResult<RemoteCredentials> {
+        let c = self.cloud();
+        let session = self.session()?;
+        let machine = c
+            .machine()
+            .ok_or_else(|| AppError::Internal("This computer has no machine id".into()))?;
+        let base = c
+            .base
+            .read()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone();
+        let license_token = c.get_long(S_TOKEN).ok().flatten().unwrap_or_default();
+        Ok(RemoteCredentials {
+            base,
+            session,
+            license_token,
+            machine,
+            now: c.now(),
+        })
     }
 
     /// Whether anything is on air (Program layers or a showing output): losing access waits.

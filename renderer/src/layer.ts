@@ -1,5 +1,6 @@
 // Template compile/bind, field patching and the in/out animation contract for one layer.
 import { now, show, sync, timerRuns, watch, type Ticker } from "./clock";
+import { tell } from "./connection";
 import { FONT_CAP_MS, faces, familiesIn, familiesInCss, fontsReady, loadFonts, useFonts } from "./fonts";
 import type { FieldType, Fields, LayerState, Rect, WireLayer } from "./protocol";
 
@@ -810,7 +811,8 @@ export class Layer implements Ticker {
       const r = this.root;
       if (!r) return this.detach();
       r.setAttribute("data-state", "out");
-      this.stop = afterAnim(r, () => this.detach());
+      // Remote control's on_air ends when every output reports its out-animation finished.
+      this.stop = afterAnim(r, () => (this.detach(), tell({ t: "gone", layerId: this.def.id })));
     }
     sync();
   }

@@ -38,6 +38,7 @@ pub mod protocol;
 pub mod qr;
 pub mod recents;
 pub mod recipes;
+pub mod remote;
 pub mod reset;
 pub mod rules;
 pub mod schedule;

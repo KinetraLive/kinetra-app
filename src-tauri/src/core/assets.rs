@@ -631,6 +631,8 @@ impl AppState {
     /// A media library file appeared, changed or went away: the screens whose media layers use
     /// it are applied again (probe, duration, `assetMissing`).
     pub fn media_file_changed(&self, dir: &Path, name: &str) {
+        // Remote control offers the media library for image / video fields.
+        self.remote_assets_changed();
         let Ok((cur, _w)) = self.screen_guard() else {
             return;
         };

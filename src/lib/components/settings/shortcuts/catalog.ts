@@ -13,6 +13,7 @@ import { flowEditorCommands } from "$lib/components/flows/graph/commands";
 import { editorCommands } from "$lib/components/screens/editor/commands";
 import { DEFAULT_SCREEN_EDITOR } from "$lib/components/screens/editor/limits";
 import { shellCommands } from "$lib/components/shell/commands";
+import { REMOTE_BUILD } from "$remote";
 
 const noop = () => {};
 const never = () => false;
@@ -20,7 +21,7 @@ const never = () => false;
 /** The pages' commands, with actions that do nothing. */
 export function pageCommands(): Command[] {
   return [
-    ...shellCommands({ openPalette: noop, go: noop, toggleAutomation: noop, automationOff: never }),
+    ...shellCommands({ openPalette: noop, go: noop, toggleAutomation: noop, automationOff: never, toggleRemote: REMOTE_BUILD ? noop : undefined, remoteOn: never }),
     // The native menu's app commands (registered by the main window's menu sync).
     ...appCommands(),
     ...controlCommands({ capturing: null } as unknown as ControlCtl, [], []),
