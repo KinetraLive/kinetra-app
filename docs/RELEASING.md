@@ -32,6 +32,9 @@ out with Windows alone when the macOS job fails, and the manifest then lists Win
   checkout, Node + pnpm (cached), Rust (cached with `Swatinem/rust-cache`),
   `tauri build` with the channel config, updater signing, optional code signing, upload
   as workflow artifacts. Publishing waits for all of them (macOS may fail without stopping it).
+  A macOS test job (`cargo test` + `pnpm test` on a macOS runner, for the macOS-only code such
+  as the time zone) runs when the repository variable `MACOS_TESTS` is `true` (Settings ›
+  Secrets and variables › Actions › Variables); like the macOS build, it doesn't stop a release.
 - `publish.yml` (reusable): downloads the artifacts, writes `SHA256SUMS`, uploads the release
   files (immutable), then `releases/<channel>/latest.json`, then the manifest **last**, then
   verifies from `https://download.kinetra.live`.
