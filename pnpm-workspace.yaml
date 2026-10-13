@@ -1,2 +1,7 @@
 packages:
   - renderer
+
+# SvelteKit 2 still asks for cookie ^0.6.0; 0.7 has the same API and fixes GHSA-pxg6-pf52-xh8x.
+# Drop this when SvelteKit's own range allows 0.7.
+overrides:
+  cookie@<0.7.0: ^0.7.2
