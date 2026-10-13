@@ -23,6 +23,6 @@ Help › Documentation now opens docs.kinetra.live.
 
 Auto-out can be set up to 600 seconds.
 
-Better on Mac: schedules and time-of-day automation follow your Mac's time zone, Pro can be activated on a Mac, Kinetra shows your Mac's name in your account, and secret API keys say they're kept in the macOS Keychain. Display outputs and MIDI aren't available on macOS yet; their settings say so and link to what works on Mac.
+Better on Mac: schedules and time-of-day automation follow your Mac's time zone, Pro can be activated on a Mac, Kinetra shows your Mac's name in your account, and secret API keys say they're kept in the macOS Keychain. Templates, screens and sources you edit in another program now update in Kinetra on a Mac too. Display outputs and MIDI aren't available on macOS yet; their settings say so and link to what works on Mac.
 
 Kinetra now needs Windows 10 or later, or macOS 11 or later.
