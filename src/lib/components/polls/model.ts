@@ -4,7 +4,7 @@
 
 import { toAppError } from "$lib/api";
 import { cloudMessage } from "$lib/components/license/messages";
-import type { PollConn, PollData, PollInput, PollQuota, TestPoll } from "$lib/types";
+import type { PollConn, PollData, PollInput, PollQuota } from "$lib/types";
 import {
   POLL_DURATION_MAX_S,
   POLL_DURATION_MIN_S,
@@ -58,30 +58,6 @@ export function leader(votes: readonly number[]): number | null {
   return at.length === 1 ? at[0] : null;
 }
 
-/** A test poll as poll data (what the page and the results show). */
-export function testData(t: TestPoll): PollData {
-  return {
-    id: "test",
-    code: "TEST00",
-    url: "https://poll.kinetra.live/TEST00",
-    question: t.question,
-    options: t.options.map((label, position) => ({ position, label, votes: t.votes[position] ?? 0 })),
-    status: t.status,
-    showResults: true,
-    durationSeconds: null,
-    totalVotes: t.votes.reduce((a, b) => a + b, 0),
-    maxVotes: null,
-    voteLimitReached: false,
-    round: 1,
-    createdAt: null,
-    openedAt: null,
-    closesAt: null,
-    closedAt: null,
-    deleteAfter: null,
-    expiresAt: null,
-  };
-}
-
 /** `https://poll.kinetra.live/K7P2QX` → `poll.kinetra.live/K7P2QX`. */
 export const shortUrl = (url: string) => url.replace(/^https?:\/\//, "").replace(/\/$/, "");
 
@@ -104,8 +80,6 @@ export function connLabel(conn: PollConn): { text: string; tone: ConnTone } | nu
       return { text: "Sign in for live results", tone: "warning" };
     case "gone":
       return { text: "Deleted on the server", tone: "idle" };
-    case "test":
-      return { text: "Test data", tone: "warning" };
     case "idle":
       return null;
   }

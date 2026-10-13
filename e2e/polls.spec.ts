@@ -1,7 +1,7 @@
 // Live polls against the real server and renderer, with the Poll
 // preset's Frame look added through "Add to screen" (every field bound to the poll source):
-// - a test poll: the open state (question, QR, short link), bars that follow the votes, then the
-//   results (the total in the tile, the winner bracketed);
+// - a poll's open state (question, QR, short link), bars that follow the votes, then the results
+//   (the total in the tile, the winner bracketed), with results fed through the live path;
 // - a live poll from the fixture's poll API mock: the stream's data on air, the last results kept
 //   when the stream drops (the layer stays on air), and new data after it reconnects.
 
@@ -65,36 +65,34 @@ function wire(votes: number[], status = "open") {
   });
 }
 
-test("a test poll on air: the voting tile, bars that follow the votes, then the results", async ({ page, own }) => {
-  const source = await own.cmd(
-    `testpoll ${JSON.stringify({ question: "Best snack?", options: ["Popcorn", "Nachos", "Candy"], votes: [1, 1, 0], status: "open" })}`,
-  );
+test("a poll on air: the voting tile, bars that follow the votes, then the results", async ({ page, own }) => {
+  const source = await own.cmd(`pollsource ${wire([1, 1, 0])}`);
   await onAir(page, own, source);
   // Open: the state, the question, the QR and the short link.
   await expect(page.locator(".pl")).toHaveAttribute("data-poll", "open");
   expect(await stateLabel(page)).toBe("Live poll");
-  await expect(page.locator(".pl__q")).toHaveText("Best snack?");
-  await expect(page.locator(".pl__url")).toHaveText("poll.kinetra.live/TEST00");
+  await expect(page.locator(".pl__q")).toHaveText("Who wins tonight?");
+  await expect(page.locator(".pl__url")).toHaveText("poll.kinetra.live/K7P2QX");
   await expect(page.locator(".pl__qr")).toHaveAttribute("src", /^data:image\/svg\+xml,/);
   await expect(page.locator(".pl__qr")).toBeVisible();
   await expect(shares(page)).toHaveText(["50", "50", "0"]);
   await expect.poll(() => scaleX(page, 0)).toBeCloseTo(0.5, 2);
 
   // One vote reads "1 vote"; more read "votes".
-  await own.cmd(`testpollvotes ${source} [1,0,0]`);
+  await own.cmd(`polldata ${wire([1, 0, 0])}`);
   await expect(shares(page)).toHaveText(["100", "0", "0"]);
   await expect.poll(() => unit(page, ".pl__total")).toBe("vote");
   expect(await unit(page, ".pl__suml")).toBe("vote");
 
   // Votes arrive: shares and bars follow (no replayed animation: still "in").
-  await own.cmd(`testpollvotes ${source} [1,6,1]`);
+  await own.cmd(`polldata ${wire([1, 6, 1])}`);
   await expect(shares(page)).toHaveText(["13", "75", "12"]);
   await expect.poll(() => scaleX(page, 1)).toBeCloseTo(0.75, 2);
   await expect(page.locator(".pl")).toHaveAttribute("data-state", "in");
   await expect(page.locator(".pl__opt").nth(1)).toHaveAttribute("data-leader", "true");
 
   // Closed: the results; the QR tile leaves, the total takes its place, the winner is marked.
-  await own.cmd(`testpollstatus ${source} closed`);
+  await own.cmd(`polldata ${wire([1, 6, 1], "closed")}`);
   await expect(page.locator(".pl")).toHaveAttribute("data-poll", "closed");
   expect(await stateLabel(page)).toBe("Results");
   await expect(page.locator(".pl__opt").nth(1)).toHaveAttribute("data-winner", "true");

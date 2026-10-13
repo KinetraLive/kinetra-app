@@ -1,8 +1,7 @@
 <!--
-  Polls (Ctrl+6): the account's live polls and this project's test polls. Left: the list; right:
-  the selected poll (results, voting link, editor, actions), a new poll, or a test poll with
-  simulated votes. The quota sits in the header. Free users see the lock (no poll request is made);
-  test polls work for everyone.
+  Polls (Ctrl+6): the account's live polls. Left: the list; right: the selected poll (results,
+  voting link, editor, actions) or a new poll. The quota sits in the header. Free users see the lock
+  (no poll request is made).
 -->
 <script lang="ts">
   import { onMount } from "svelte";
@@ -17,7 +16,6 @@
   import PollEditor from "$lib/components/polls/PollEditor.svelte";
   import PollList from "$lib/components/polls/PollList.svelte";
   import { PollsState } from "$lib/components/polls/polls.svelte";
-  import TestPollDetail from "$lib/components/polls/TestPollDetail.svelte";
 
   const polls = new PollsState();
   license.start();
@@ -38,11 +36,6 @@
     lastAccess = key;
     if (!first) void polls.loadPolls();
   });
-
-  function newTest() {
-    const n = polls.tests.length + 1;
-    void polls.createTest(n === 1 ? "Test poll" : `Test poll ${n}`, { question: "", options: ["", ""], votes: [], status: "draft" });
-  }
 </script>
 
 <svelte:head><title>Polls · Kinetra</title></svelte:head>
@@ -60,7 +53,6 @@
       {/if}
     </span>
     <span class="actions">
-      <Button onclick={newTest}>New test poll</Button>
       <ProLock feature="polls" label="New poll">
         <Button
           variant="primary"
@@ -77,7 +69,7 @@
 
   {#if !polls.loaded}
     <!-- Loads in a moment; nothing in between. -->
-  {:else if polls.polls.length === 0 && polls.tests.length === 0 && polls.selection?.kind !== "new"}
+  {:else if polls.polls.length === 0 && polls.selection?.kind !== "new"}
     <div class="empty">
       <EmptyState
         title="Run a live poll"
@@ -88,7 +80,6 @@
           <ProLock feature="polls" label="New poll">
             <Button variant="primary" disabled={blockedNew !== null} onclick={() => polls.select({ kind: "new" })}>New poll</Button>
           </ProLock>
-          <Button onclick={newTest}>New test poll</Button>
           {#if signedIn && !pro && !polls.askedExisting}
             <Button variant="ghost" onclick={() => void polls.loadPolls(true)}>Show my existing polls</Button>
           {/if}
@@ -99,7 +90,7 @@
   {:else}
     <div class="split">
       <aside class="left" aria-label="Poll list">
-        <PollList polls={polls.polls} tests={polls.tests} selection={polls.selection} onselect={(s) => polls.select(s)}>
+        <PollList polls={polls.polls} selection={polls.selection} onselect={(s) => polls.select(s)}>
           {#snippet locked()}
             {#if !pro && polls.polls.length === 0}
               <div class="locked">
@@ -129,10 +120,6 @@
         {:else if polls.selectedPoll}
           {#key polls.selectedPoll.id}
             <PollDetail {polls} poll={polls.selectedPoll} {pro} />
-          {/key}
-        {:else if polls.selectedTest}
-          {#key polls.selectedTest.id}
-            <TestPollDetail {polls} source={polls.selectedTest} />
           {/key}
         {/if}
       </section>

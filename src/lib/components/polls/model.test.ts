@@ -17,7 +17,6 @@ import {
   quotaLines,
   shares,
   stateOf,
-  testData,
   votesText,
   textLocked,
   updateInput,
@@ -132,13 +131,6 @@ describe("polls", () => {
     expect(leader([5, 5, 1])).toBeNull();
     expect(leader([0, 0])).toBeNull();
     expect(leader([1, 4])).toBe(1);
-  });
-
-  it("a test poll reads as poll data with the harmless test link", () => {
-    const d = testData({ question: "Snack?", options: ["Popcorn", "Nachos"], votes: [3, 4], status: "open" });
-    expect(d.totalVotes).toBe(7);
-    expect(d.options[1]).toEqual({ position: 1, label: "Nachos", votes: 4 });
-    expect(d.url).toBe("https://poll.kinetra.live/TEST00");
   });
 
   it("connection labels stay calm", () => {

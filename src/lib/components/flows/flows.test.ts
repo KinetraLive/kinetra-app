@@ -41,8 +41,6 @@ const api = vi.hoisted(() => ({
   deleteFlow: vi.fn(),
   listFlowTemplates: vi.fn(),
   addFlowTemplate: vi.fn(),
-  testDataAllowed: vi.fn(() => Promise.resolve(false)),
-  allowTestDataOnAir: vi.fn(() => Promise.resolve()),
 }));
 vi.mock("$lib/api", () => ({
   ...api,

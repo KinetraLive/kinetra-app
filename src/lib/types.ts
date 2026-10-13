@@ -580,7 +580,6 @@ export type AppErrorCode =
   | "onAir"
   | "proRequired"
   | "proLimited"
-  | "testData"
   | "offline"
   | "cloud"
   | "internal";
@@ -1383,14 +1382,13 @@ export type SourceKind = {
 /**
  * `sources/<id>.json` of kind `poll` (SourceKind::Poll in model.rs; like schedules, not a
  * table): one row per answer, the poll's own values on every row. Linked to a server poll
- * (`link`) or a local test poll (`test`), never both.
+ * (`link`).
  */
 export interface PollSourceDoc {
   id: string;
   name: string;
   kind: "poll";
   link: PollLink | null;
-  test: TestPoll | null;
   /** The last known server poll (outputs keep it after a restart and offline). */
   cache: PollData | null;
   /** The server poll was deleted; `cache` stays on screen. Omitted when false. */
@@ -1414,7 +1412,7 @@ export interface PollOption {
   votes: number;
 }
 
-/** A poll as the app knows it: the server's poll object, or a test poll's state. */
+/** A poll as the app knows it: the server's poll object. */
 export interface PollData {
   id: string;
   /** The 6-character voting code ("K7P2QX"). */
@@ -1443,29 +1441,17 @@ export interface PollLink {
   code: string;
 }
 
-/** A local test poll (no account, no network): simulated votes. */
-export interface TestPoll {
-  question: string;
-  options: string[];
-  /** Per answer, same order. */
-  votes: number[];
-  status: PollStatus;
-}
-
 /** How a poll source's data arrives. */
-export type PollConn = "idle" | "connecting" | "live" | "reconnecting" | "polling" | "signedOut" | "gone" | "test";
+export type PollConn = "idle" | "connecting" | "live" | "reconnecting" | "polling" | "signedOut" | "gone";
 
 /** Per poll source, in `SourceSummary.poll`. */
 export interface PollSourceView {
-  test: boolean;
   pollId: string | null;
   code: string | null;
   conn: PollConn;
   /** "draft" | "open" | "closed" | "full", or null without data. */
   state: string | null;
   totalVotes: number;
-  /** Test polls: votes are being simulated. */
-  simulating: boolean;
 }
 
 /** `poll-live`: a poll's latest data (`poll`) or a change of how it arrives (`poll` null). */
@@ -1510,28 +1496,6 @@ export interface PollInput {
   /** updatePoll only: remove the time limit. */
   clearDuration?: boolean;
   showResults?: boolean;
-}
-
-/** Where a take came from (the test-data safeguard names it). */
-export type TakeVia = "app" | "midi" | "osc" | "api" | "flow";
-
-/** `test-data-blocked`: a take that would have put test poll data on Program was refused. */
-export interface TestDataBlocked {
-  screenId: string;
-  /** The refused layers' names. */
-  layers: string[];
-  via: TakeVia;
-  /** Server epoch ms. */
-  at: number;
-}
-
-/** simulateTestPoll. */
-export interface PollSimulation {
-  run: boolean;
-  /** Votes per second, 1..=50. */
-  rate: number;
-  /** The answer (position) that should lead, or null for an even race. */
-  lead: number | null;
 }
 
 // ---- API sources ----

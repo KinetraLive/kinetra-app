@@ -133,7 +133,7 @@ fn main() {
         .doc
         .id;
     let source = st
-        .create_poll_source("Live test poll", Some(poll.clone()), None)
+        .create_poll_source("Live test poll", poll.clone())
         .expect("source")
         .id;
     let state = st

@@ -1,38 +1,34 @@
 <!--
-  PollList: the Polls page's left column. Two groups in one listbox: "Your polls" (the account's,
-  from the server) and "Test polls" (this project's, simulated votes). Each option shows the
-  question (or the test poll's name), its status and votes; server polls also their code.
+  PollList: the Polls page's left column: "Your polls" (the account's, from the server) in one
+  listbox. Each option shows the question, its status, votes and code.
 
-  Keyboard: one tab stop (the selected option); ArrowUp/ArrowDown/Home/End move across both groups.
+  Keyboard: one tab stop (the selected option); ArrowUp/ArrowDown/Home/End move.
 
   Props:
     polls: PollData[]           newest first
-    tests: SourceSummary[]      poll sources with test data
     selection: Selection
     onselect: (s: Selection) => void
     locked?: Snippet            shown in "Your polls" when the account can't use polls (the lock)
 -->
 <script lang="ts">
   import { tick, type Snippet } from "svelte";
-  import type { PollData, SourceSummary } from "$lib/types";
+  import type { PollData } from "$lib/types";
   import { STATE_LABEL, stateOf, votesText, type PollState } from "./model";
   import type { Selection } from "./polls.svelte";
 
   let {
     polls,
-    tests,
     selection,
     onselect,
     locked,
   }: {
     polls: readonly PollData[];
-    tests: readonly SourceSummary[];
     selection: Selection;
     onselect: (s: Selection) => void;
     locked?: Snippet;
   } = $props();
 
-  type Entry = { sel: { kind: "poll" | "test"; id: string }; title: string; state: PollState; votes: number; code: string };
+  type Entry = { sel: { kind: "poll"; id: string }; title: string; state: PollState; votes: number; code: string };
 
   const pollEntries = $derived<Entry[]>(
     polls.map((p) => ({
@@ -43,16 +39,7 @@
       code: p.code,
     })),
   );
-  const testEntries = $derived<Entry[]>(
-    tests.map((t) => ({
-      sel: { kind: "test", id: t.id },
-      title: t.name,
-      state: (t.poll?.state as PollState | null) ?? "draft",
-      votes: t.poll?.totalVotes ?? 0,
-      code: "",
-    })),
-  );
-  const all = $derived([...pollEntries, ...testEntries]);
+  const all = $derived(pollEntries);
   const isSel = (e: Entry) => selection !== null && selection.kind === e.sel.kind && "id" in selection && selection.id === e.sel.id;
 
   let root: HTMLDivElement | undefined = $state();
@@ -108,14 +95,6 @@
     {/each}
     {@render locked?.()}
   </div>
-  {#if testEntries.length}
-    <div class="group" role="presentation">
-      <span class="section-label" role="presentation">Test polls</span>
-      {#each testEntries as e (e.sel.id)}
-        {@render item(e)}
-      {/each}
-    </div>
-  {/if}
 </div>
 
 <style>

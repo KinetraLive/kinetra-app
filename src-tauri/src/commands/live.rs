@@ -4,7 +4,7 @@
 use tauri::State;
 
 use crate::core::live::{LiveLayerView, LiveScreenView, PreviewView};
-use crate::core::model::{OscStatus, ServerStatus, StudioExit, StudioOp, StudioSettings, TakeVia};
+use crate::core::model::{OscStatus, ServerStatus, StudioExit, StudioOp, StudioSettings};
 use crate::core::protocol::Fields;
 use crate::core::state::AppState;
 use crate::error::AppResult;
@@ -53,7 +53,7 @@ pub fn live_show(
     layer_id: String,
 ) -> AppResult<LiveLayerView> {
     ensure_project(&state)?;
-    state.live_take(&screen_id, &layer_id, TakeVia::App)
+    Ok(state.live().show(&screen_id, &layer_id)?)
 }
 
 #[tauri::command]

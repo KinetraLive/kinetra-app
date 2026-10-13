@@ -107,9 +107,9 @@ use crate::core::localtime::Now;
 use crate::core::model::{
     CompareOp, Constant, Flow, FlowDebug, FlowDebugNode, FlowIssue, FlowLog, FlowRun, FlowState,
     ItemPick, ItemStatus, MathOp, NodeKind, NowNext, PauseMode, Retrigger, RowPick, ScheduleAction,
-    ScheduleOp, SourceKind, SourceStep, StudioOp, TakeTransition, TakeVia, TimerAction,
-    VariantTransition, WireKind, FLOW_DELAY_MAX_MS, FLOW_FIRINGS_PER_SEC, FLOW_INSTANCES_MAX,
-    FLOW_REPEAT_PACE_MS, FLOW_RUN_DEPTH_MAX, FLOW_STEPS_MAX,
+    ScheduleOp, SourceKind, SourceStep, StudioOp, TakeTransition, TimerAction, VariantTransition,
+    WireKind, FLOW_DELAY_MAX_MS, FLOW_FIRINGS_PER_SEC, FLOW_INSTANCES_MAX, FLOW_REPEAT_PACE_MS,
+    FLOW_RUN_DEPTH_MAX, FLOW_STEPS_MAX,
 };
 use crate::core::protocol::Fields;
 use crate::core::schedule;
@@ -3035,7 +3035,7 @@ impl AppState {
             } => {
                 let (s, l) = (c.s(screen), c.s(layer));
                 user_screen(s)?;
-                self.live_take(s, l, TakeVia::Flow)?;
+                self.live().show(s, l)?;
                 if let Some(ms) = for_ms {
                     self.clear_later(s, l, ms);
                 }
@@ -3193,7 +3193,7 @@ impl AppState {
                 let s = c.s(screen);
                 user_screen(s)?;
                 // The studio entry point, like Control's TAKE (fails when Studio mode is off).
-                self.apply_studio_op_via(s, StudioOp::Take { transition }, TakeVia::Flow)
+                self.apply_studio_op(s, StudioOp::Take { transition })
                     .map(drop)
             }
             Op::Log { message, toast } => {

@@ -1951,12 +1951,10 @@ pub enum SourceKind {
         fetched_at: Option<String>,
     },
     /// A live poll (`core::polls`): one row per answer, the poll's own values on every row.
-    /// Linked to a server poll (`link`), or a local test poll (`test`); never both.
+    /// Linked to a server poll (`link`).
     Poll {
         #[serde(default)]
         link: Option<PollLink>,
-        #[serde(default)]
-        test: Option<TestPoll>,
         /// The last known server poll (so outputs have data after a restart and offline).
         #[serde(default)]
         cache: Option<PollData>,
@@ -2165,7 +2163,7 @@ pub struct PollOption {
     pub votes: u64,
 }
 
-/// A poll as the app knows it: the server's poll object (docs/API.md), or a test poll's state.
+/// A poll as the app knows it: the server's poll object (docs/API.md).
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct PollData {
@@ -2199,17 +2197,6 @@ pub struct PollLink {
     pub code: String,
 }
 
-/// A local test poll (no account, no network): typed question and answers, simulated votes.
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
-pub struct TestPoll {
-    pub question: String,
-    pub options: Vec<String>,
-    /// Per option (same order); fixed up to `options.len()` on validation.
-    pub votes: Vec<u64>,
-    pub status: PollStatus,
-}
-
 /// How a poll source's data is arriving.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -2228,25 +2215,19 @@ pub enum PollConn {
     SignedOut,
     /// The poll was deleted on the server; the last results stay.
     Gone,
-    /// A test poll (local data).
-    Test,
 }
 
 /// Per poll source; in `SourceSummary.poll` and `source-changed`.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PollSourceView {
-    /// A local test poll.
-    pub test: bool,
-    /// The linked server poll's id (null for test polls and unlinked sources).
+    /// The linked server poll's id (null for unlinked sources).
     pub poll_id: Option<String>,
     pub code: Option<String>,
     pub conn: PollConn,
     /// `draft | open | closed | full` (null without data).
     pub state: Option<String>,
     pub total_votes: u64,
-    /// Test polls: votes are being simulated.
-    pub simulating: bool,
 }
 
 /// `poll-live` event: a poll's latest data and how it arrives (every poll with a stream or a
@@ -2309,43 +2290,6 @@ pub struct PollInput {
     /// `update_poll` only: remove the duration.
     pub clear_duration: bool,
     pub show_results: Option<bool>,
-}
-
-/// Where a take came from (the test-data safeguard names it in its log entry and notice).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum TakeVia {
-    /// Control, hotkeys, the palette (the app asks first).
-    App,
-    Midi,
-    Osc,
-    /// The REST API and Companion (through `run_control`).
-    Api,
-    /// A flow's action.
-    Flow,
-}
-
-/// `test-data-blocked`: a take that would have put test poll data on Program was refused.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TestDataBlocked {
-    pub screen_id: String,
-    /// The refused layers' names.
-    pub layers: Vec<String>,
-    pub via: TakeVia,
-    /// Server epoch ms.
-    pub at: u64,
-}
-
-/// `simulate_test_poll`: start / stop simulated votes on a test poll.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PollSimulation {
-    pub run: bool,
-    /// Votes per second, 1..=50.
-    pub rate: u32,
-    /// The option (position) that should lead, or null for an even race.
-    pub lead: Option<u32>,
 }
 
 /// Result of `test_api_source`: one fetch with the draft, nothing saved.

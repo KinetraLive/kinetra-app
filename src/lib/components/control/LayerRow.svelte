@@ -70,7 +70,6 @@
       <span class="name">{layer.name}</span>
       {#if template}<span class="tpl">{template.name}</span>{:else if layer.media && lazy.body}<lazy.body.MediaTransport {ctl} {screenId} {layer} part="file" />{/if}
     </span>
-    {#if ctl.testData(layer.id)}<span class="test" title="Shows a test poll with simulated votes">Test data</span>{/if}
     {#if hotkey}<span class="badge mono" title="Hotkey">{hotkey}</span>{/if}
     {#if lazy.body}<lazy.body.MidiChip k={key} />{/if}
     {#if lazy.body}<lazy.body.MediaTransport {ctl} {screenId} {layer} part="transport" />{/if}
@@ -97,16 +96,6 @@
 </li>
 
 <style>
-  .test {
-    flex: none;
-    padding: 0 var(--s-1);
-    border-radius: var(--r-control);
-    box-shadow: inset 0 0 0 1px var(--warning);
-    color: var(--warning);
-    font-size: var(--fs-xs);
-    font-weight: 600;
-    line-height: 18px;
-  }
   .row {
     display: flex;
     flex-direction: column;

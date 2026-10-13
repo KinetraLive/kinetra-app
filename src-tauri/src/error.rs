@@ -52,10 +52,6 @@ pub enum AppError {
         message: String,
         details: Option<serde_json::Value>,
     },
-    /// Test poll data would go to Program while the project also shows a real poll, and test data
-    /// isn't allowed on air this session (`core::polls`). The message names the layers.
-    #[error("{0} shows test poll data. Allow test data on air in Control first.")]
-    TestData(String),
     #[error("{0}")]
     Internal(String),
 }
@@ -78,7 +74,6 @@ impl AppError {
             AppError::ProLimited => "proLimited",
             AppError::Offline => "offline",
             AppError::Cloud { .. } => "cloud",
-            AppError::TestData(_) => "testData",
             AppError::Internal(_) => "internal",
         }
     }

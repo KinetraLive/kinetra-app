@@ -33,13 +33,8 @@ pub mod names {
     /// fetch status `api`, never at rest).
     pub const SOURCE_CHANGED: &str = "source-changed";
     /// Payload: `PollLive`: a poll's latest data (at most 4 per second, the server's pace) or
-    /// a change of how it arrives. Only for polls with a stream, a watcher or a test simulation.
+    /// a change of how it arrives. Only for polls with a stream or a watcher.
     pub const POLL_LIVE: &str = "poll-live";
-    /// Payload: `TestDataBlocked`: a take of test poll data to Program was refused (a project that
-    /// also shows a real poll, test data not allowed on air this session).
-    pub const TEST_DATA_BLOCKED: &str = "test-data-blocked";
-    /// Payload: `bool`: whether test data is allowed on air this session (changed in the app).
-    pub const TEST_DATA_ALLOWED: &str = "test-data-allowed";
     /// Payload: `ScheduleView` whenever a schedule's statuses change (a boundary passed, an
     /// operator action, an edit or a watcher reload).
     pub const SCHEDULE_CHANGED: &str = "schedule-changed";

@@ -1525,7 +1525,7 @@ function pollOf(over: Partial<import("../../src/lib/types").PollData>): import("
   };
 }
 
-/** The Polls page: an open poll with votes, a draft, a closed one; a test poll in the project. */
+/** The Polls page: an open poll with votes, a draft, a closed one; the open one in a poll source. */
 export function pollsScenario(theme: "dark" | "light", over: Partial<MockScenario> = {}): MockScenario {
   const now = Date.now();
   return {
@@ -1561,12 +1561,11 @@ export function pollsScenario(theme: "dark" | "light", over: Partial<MockScenari
     },
     pollSources: [
       {
-        id: "testpoll01",
-        name: "Rehearsal poll",
+        id: "pollsrc01",
+        name: "Halftime poll",
         kind: "poll",
-        link: null,
-        cache: null,
-        test: { question: "Best snack at halftime?", options: ["Popcorn", "Nachos", "Candy"], votes: [41, 87, 23], status: "open" },
+        link: { id: pollOf({}).id, code: pollOf({}).code },
+        cache: pollOf({}),
         updatedAt: new Date(now).toISOString(),
       },
     ],

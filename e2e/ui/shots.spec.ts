@@ -1750,14 +1750,7 @@ for (const theme of ["dark", "light"] as const) {
       await shot(page, `${theme}-112-polls-new`);
     });
 
-    test("polls: a test poll with simulated votes", async ({ page }) => {
-      await open(page, "/polls", pollsScenario(theme));
-      await page.getByRole("option", { name: /Rehearsal poll/ }).click();
-      await expect(page.getByText("Test link: it doesn't take votes.")).toBeVisible();
-      await shot(page, `${theme}-113-polls-test`);
-    });
-
-    test("polls: Free, the lock and test polls", async ({ page }) => {
+    test("polls: Free, the lock", async ({ page }) => {
       await open(
         page,
         "/polls",
@@ -1775,7 +1768,7 @@ for (const theme of ["dark", "light"] as const) {
 
     test("sources: a poll source", async ({ page }) => {
       await open(page, "/sources", pollsScenario(theme));
-      await page.getByRole("option", { name: /Rehearsal poll/ }).click();
+      await page.getByRole("option", { name: /Halftime poll/ }).click();
       await expect(page.getByRole("region", { name: "Results" })).toBeVisible();
       await shot(page, `${theme}-115-sources-poll`);
     });

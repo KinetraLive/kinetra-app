@@ -29,9 +29,6 @@ const polls = vi.hoisted(() => ({
   getPollSource: vi.fn(),
   savePollSource: vi.fn(),
   pollSourceFor: vi.fn(() => Promise.resolve(null)),
-  simulateTestPoll: vi.fn(() => Promise.resolve()),
-  resetTestPoll: vi.fn(() => Promise.resolve()),
-  setTestPollStatus: vi.fn(() => Promise.resolve()),
 }));
 vi.mock("$lib/api/polls", () => polls);
 const sources = vi.hoisted(() => ({
@@ -123,23 +120,6 @@ function view(pro: boolean, over: Partial<LicenseView> = {}): LicenseView {
   } as LicenseView;
 }
 
-const testSource: SourceSummary = {
-  id: "t1",
-  name: "Test poll",
-  kind: "poll",
-  rowCount: 2,
-  index: 0,
-  current: {},
-  columns: [],
-  usedBy: [],
-  updatedAt: "",
-  auto: null,
-  nextAt: null,
-  nowId: null,
-  nextId: null,
-  poll: { test: true, pollId: null, code: "TEST00", conn: "test", state: "draft", totalVotes: 0, simulating: false },
-};
-
 async function mount(pro: boolean, list: PollData[], q: PollQuota | null, srcs: SourceSummary[] = []) {
   license.view = view(pro);
   polls.listPolls.mockResolvedValue(list);
@@ -159,18 +139,14 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("Polls page", () => {
-  it("Free: the lock with Pro, and test polls work", async () => {
-    polls.createPollSource.mockResolvedValue({ id: "t9" });
+  it("Free: the lock with Pro", async () => {
     await mount(false, [], null);
     // The usual lock + "Pro" label, explaining what Pro unlocks.
     expect(await screen.findAllByRole("button", { name: "New poll: needs Kinetra Pro" })).not.toHaveLength(0);
     expect(screen.queryByText(/Open now/)).toBeNull();
     // Someone whose Pro ended can list their polls once, on demand.
     expect(screen.getByRole("button", { name: "Show my existing polls" })).toBeInTheDocument();
-    await fireEvent.click(screen.getAllByRole("button", { name: "New test poll" })[0]);
-    expect(polls.createPollSource).toHaveBeenCalledWith("Test poll", {
-      test: { question: "", options: ["", ""], votes: [], status: "draft" },
-    });
+    expect(screen.queryByRole("button", { name: "New test poll" })).toBeNull();
     // Nothing that needs Pro was asked for.
     expect(polls.createPoll).not.toHaveBeenCalled();
     expect(polls.openPoll).not.toHaveBeenCalled();
@@ -249,25 +225,5 @@ describe("Polls page", () => {
     await fireEvent.input(screen.getByLabelText("Answer 2"), { target: { value: "Second" } });
     await fireEvent.click(screen.getByRole("button", { name: "Create poll" }));
     expect(polls.createPoll).toHaveBeenCalledWith({ question: "Best goal?", options: ["First", "Second"], showResults: true });
-  });
-
-  it("test polls: clearly marked, simulated votes with speed and leader", async () => {
-    polls.getPollSource.mockResolvedValue({
-      id: "t1",
-      name: "Test poll",
-      kind: "poll",
-      link: null,
-      cache: null,
-      test: { question: "Snack?", options: ["Popcorn", "Nachos"], votes: [0, 0], status: "draft" },
-      updatedAt: "",
-    });
-    await mount(false, [], null, [testSource]);
-    await fireEvent.click(screen.getByRole("option", { name: /Test poll/ }));
-    expect((await screen.findAllByText("Test data")).length).toBeGreaterThan(0);
-    expect(await screen.findByText("Test link: it doesn't take votes.")).toBeInTheDocument();
-    await fireEvent.click(screen.getByRole("radio", { name: "Rush" }));
-    await fireEvent.change(screen.getByLabelText("Leading answer"), { target: { value: "1" } });
-    await fireEvent.click(screen.getByRole("button", { name: "Simulate votes" }));
-    expect(polls.simulateTestPoll).toHaveBeenCalledWith("t1", { run: true, rate: 20, lead: 1 });
   });
 });

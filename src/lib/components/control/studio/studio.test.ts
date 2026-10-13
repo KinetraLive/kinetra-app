@@ -27,8 +27,6 @@ const api = vi.hoisted(() => ({
   liveClear: vi.fn(),
   liveClearAll: vi.fn(),
   livePanic: vi.fn(),
-  testDataAllowed: vi.fn(() => Promise.resolve(false)),
-  allowTestDataOnAir: vi.fn(() => Promise.resolve()),
   setStudio: vi.fn(),
   studioOp: vi.fn(),
   previewView: vi.fn(),

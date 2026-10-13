@@ -493,9 +493,7 @@ fn poll_mock_start(rt: &Runtime, state: &AppState, poll: &str) -> Result<String,
     state.cloud_init();
     let polls = rt.block_on(state.list_polls(true)).map_err(text)?;
     let first = polls.into_iter().next().ok_or("the mock lists no poll")?;
-    let doc = state
-        .create_poll_source("Poll", Some(first), None)
-        .map_err(text)?;
+    let doc = state.create_poll_source("Poll", first).map_err(text)?;
     Ok(doc.id)
 }
 
@@ -833,29 +831,16 @@ fn run(
             state.set_ui_state(ui).map(drop).map_err(text)?
         }
         // ---- Live polls ----
-        "testpoll" => {
-            let test: kinetra_lib::core::model::TestPoll = json("TestPoll", arg)?;
+        "pollsource" => {
+            let wire: kinetra_lib::core::cloud::api::PollWire = json("poll", arg)?;
             let doc = state
-                .create_poll_source("Test poll", None, Some(test))
+                .create_poll_source("Poll", wire.into())
                 .map_err(text)?;
             value = Some(doc.id);
         }
-        "testpollvotes" => {
-            let (id, votes) = arg
-                .trim()
-                .split_once(' ')
-                .ok_or("usage: testpollvotes <sourceId> <[votes]>")?;
-            let votes: Vec<u64> = json("votes", votes)?;
-            state.set_test_poll_votes(id, &votes).map_err(text)?;
-        }
-        "testpollstatus" => {
-            let (id, status) = arg
-                .trim()
-                .split_once(' ')
-                .ok_or("usage: testpollstatus <sourceId> <draft|open|closed>")?;
-            let status: kinetra_lib::core::model::PollStatus =
-                json("status", &format!("\"{}\"", status.trim()))?;
-            state.set_test_poll_status(id, status).map_err(text)?;
+        "polldata" => {
+            let wire: kinetra_lib::core::cloud::api::PollWire = json("poll", arg)?;
+            state.poll_apply(wire.into());
         }
         "polltoscreen" => {
             let (source, screen) = arg

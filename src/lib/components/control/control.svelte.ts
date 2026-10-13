@@ -33,12 +33,9 @@ import {
   liveHide,
   livePanic,
   liveShow,
-  allowTestDataOnAir,
-  testDataAllowed,
   setLayerFields,
 } from "$lib/api/live";
 import { getScreen } from "$lib/api/screens";
-import { previews } from "$lib/stores/preview.svelte";
 import { listSources, stepSource } from "$lib/api/sources";
 import { listTemplates } from "$lib/api/templates";
 import { live } from "$lib/stores/live.svelte";
@@ -55,7 +52,6 @@ import {
   type SourceStep,
   type SourceSummary,
   type TemplateScreenLayer,
-  type TestDataBlocked,
   type TemplateSummary,
   type TimerAction,
 } from "$lib/types";
@@ -162,78 +158,6 @@ export class ControlCtl {
 
   constructor(typing: Typing = () => false) {
     this.#typing = typing;
-    // A Studio take brings the layers cued in to Program: test poll data asks first.
-    this.studio.beforeTake = async (screenId) =>
-      !this.#mayAskTestData() ||
-      this.#allowTestData(
-        screenId,
-        (previews.views.get(screenId)?.cues ?? []).filter((c) => c.visible === true).map((c) => c.layerId),
-      );
-  }
-
-  // ---- Test poll data ------------------------------------------------------------------------------
-
-  /** The core's session flag: test poll data may go to Program (set by "Allow test data on air";
-   *  every take path follows it). */
-  testDataAllowed = $state(false);
-  /** The last remote take the core refused for test data (MIDI, OSC, the API, a flow); null when
-   *  none or once allowed. */
-  testDataBlocked = $state.raw<TestDataBlocked | null>(null);
-
-  /** "Allow test data on air" for this session (the operator chose it in the app). */
-  allowTestData = async (): Promise<boolean> => {
-    this.testDataAllowed = true;
-    this.testDataBlocked = null;
-    try {
-      await allowTestDataOnAir(true);
-      return true;
-    } catch (e) {
-      this.testDataAllowed = false;
-      toasts.push({ kind: "error", message: `Couldn't allow test data on air: ${toAppError(e).message}` });
-      return false;
-    }
-  };
-
-  /** Poll sources with test data (simulated votes). */
-  testPolls = $derived(new Set(this.sources.filter((s) => s.kind === "poll" && s.poll?.test).map((s) => s.id)));
-  /** The project also shows a real poll. */
-  realPolls = $derived(this.sources.some((s) => s.kind === "poll" && !s.poll?.test && !!s.poll?.pollId));
-
-  /** A layer of the selected screen shows a test poll's data. */
-  testData(layerId: string): boolean {
-    if (this.testPolls.size === 0) return false;
-    const b = this.#docLayer(layerId)?.bindings;
-    return !!b && Object.values(b).some((x) => this.testPolls.has(x.sourceId));
-  }
-
-  /** Set by the page's lazy dialog (only while the project has test and real polls): asks whether
-   *  test data may go to Program. */
-  confirmTestData: ((layerNames: string[]) => Promise<boolean>) | null = null;
-
-  /** Whether a take could ask about test data at all (cheap and synchronous: a take without it
-   *  stays instant). */
-  #mayAskTestData(): boolean {
-    return !this.testDataAllowed && this.confirmTestData !== null && this.realPolls && this.testPolls.size > 0;
-  }
-
-  /** Taking these layers to Program is fine: no test data, already confirmed this session, or the
-   *  operator says yes (asked once per session, only when the project also runs real polls). */
-  async #allowTestData(screenId: string, layerIds: readonly string[]): Promise<boolean> {
-    if (this.testDataAllowed || !this.confirmTestData || !this.realPolls || this.testPolls.size === 0) return true;
-    if (layerIds.length === 0) return true;
-    let doc = this.doc?.id === screenId ? this.doc : null;
-    if (!doc) {
-      try {
-        doc = (await getScreen(screenId)).doc;
-      } catch {
-        return true;
-      }
-    }
-    const names = (doc.layers as TemplateScreenLayer[])
-      .filter((l) => layerIds.includes(l.id) && Object.values(l.bindings ?? {}).some((b) => this.testPolls.has(b.sourceId)))
-      .map((l) => l.name);
-    if (names.length === 0) return true;
-    return (await this.confirmTestData(names)) && (await this.allowTestData());
   }
 
   // ---- Lifecycle ---------------------------------------------------------------------------------
@@ -249,17 +173,6 @@ export class ControlCtl {
       else if (c.kind === "screen" && c.id === this.selectedId) void this.loadDoc(c.id);
     });
     const offSource = on("source-changed", (s) => this.putSource(s));
-    const offAllowed = on("test-data-allowed", (v) => {
-      this.testDataAllowed = v;
-      if (v) this.testDataBlocked = null;
-    });
-    const offBlocked = on("test-data-blocked", (b) => {
-      if (b.via !== "app") this.testDataBlocked = b;
-    });
-    testDataAllowed().then(
-      (v) => (this.testDataAllowed = v),
-      () => {},
-    );
     const offFlows = this.flows.connect();
     void this.loadTemplates();
     void this.loadSources();
@@ -267,8 +180,6 @@ export class ControlCtl {
       offFlows();
       this.flowEditor.close();
       offSource();
-      offAllowed();
-      offBlocked();
       offFiles();
       this.capturing = null;
       void this.#edits.flushAll();
@@ -392,8 +303,6 @@ export class ControlCtl {
     // A layer whose media isn't loaded on every output asks once (the core never blocks a take;
     // without media to load the question answers yes at once).
     if (this.confirmMedia && !(await this.confirmMedia(layer))) return;
-    // Test poll data going to Program asks once per session (already on air: an update).
-    if (!layer.onAir && this.#mayAskTestData() && !(await this.#allowTestData(screenId, [layer.id]))) return;
     const rollback = this.#optimisticLayer(screenId, layer, { onAir: true, pending: false });
     // TAKE plays what is typed right now.
     await this.#edits.flush(hotkeyKey(screenId, layerId));
@@ -401,11 +310,6 @@ export class ControlCtl {
       live.putLayer(screenId, await liveShow(screenId, layerId));
     } catch (e) {
       rollback();
-      // The core refused test data Control didn't see coming: ask, then take again.
-      if (toAppError(e).code === "testData" && this.confirmTestData && !this.testDataAllowed) {
-        if ((await this.confirmTestData([layer.name])) && (await this.allowTestData())) await this.take(screenId, layerId);
-        return;
-      }
       toasts.push({ kind: "error", message: `Couldn't take ${layer.name}: ${toAppError(e).message}` });
     }
   };

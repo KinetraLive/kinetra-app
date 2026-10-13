@@ -98,12 +98,8 @@ export class StudioCtl {
     if (choice) await this.ui?.turnOff(this, choice);
   };
 
-  /** Asked before a take (Control: test poll data going to Program); false cancels it. */
-  beforeTake: ((screenId: string) => Promise<boolean>) | null = null;
-
   /** TAKE: the screen's Preview to Program (null = the project default). */
   take = async (screenId: string, transition: TakeTransition | null = null): Promise<boolean> => {
-    if (this.beforeTake && !(await this.beforeTake(screenId))) return false;
     return (await this.#chunk())?.take(screenId, transition) ?? false;
   };
 

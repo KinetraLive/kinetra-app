@@ -42,7 +42,7 @@ use std::collections::HashMap;
 use std::net::IpAddr;
 
 use crate::core::control_actions::ControlInput;
-use crate::core::model::{ControlTarget, MediaAction, TakeVia, ValueTarget};
+use crate::core::model::{ControlTarget, MediaAction, ValueTarget};
 use crate::core::state::AppState;
 
 /// Longest `trigger.osc` address pattern.
@@ -312,7 +312,7 @@ impl AppState {
                         .map(drop)
                         .map_err(Into::into)
                 }
-                (_, Some(input)) => self.run_control_via(&action.target(), input, TakeVia::Osc),
+                (_, Some(input)) => self.run_control(&action.target(), input),
             };
             if let Err(e) = done {
                 tracing::debug!("OSC {}: {e}", m.address);

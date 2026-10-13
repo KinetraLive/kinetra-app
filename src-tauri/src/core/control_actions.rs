@@ -34,8 +34,7 @@ use std::time::{Duration, Instant};
 
 use crate::core::live::{is_reserved_screen, LiveError};
 use crate::core::model::{
-    ControlTarget, MediaAction, ScreenLayerKind, SourceStep, StudioOp, TakeVia, ValueTarget,
-    VariableKind,
+    ControlTarget, MediaAction, ScreenLayerKind, SourceStep, StudioOp, ValueTarget, VariableKind,
 };
 use crate::core::protocol::FieldType;
 use crate::core::state::AppState;
@@ -270,24 +269,13 @@ impl AppState {
     /// `notFound` for an unknown screen / layer / flow / source, `invalid` for an unknown command
     /// id, a value target of the wrong type or a level outside 0..=1.
     pub fn run_control(&self, target: &ControlTarget, input: ControlInput) -> AppResult<()> {
-        self.run_control_via(target, input, TakeVia::Api)
-    }
-
-    /// [`Self::run_control`] from a given path (MIDI, OSC, the API): it names the path when the
-    /// test-data safeguard refuses a take.
-    pub fn run_control_via(
-        &self,
-        target: &ControlTarget,
-        input: ControlInput,
-        via: TakeVia,
-    ) -> AppResult<()> {
         self.project_dir()?;
         match target {
             ControlTarget::Command { command_id } => {
                 let cmd = parse_command(command_id)
                     .ok_or_else(|| AppError::Invalid(format!("Unknown action: {command_id}")))?;
                 match input {
-                    ControlInput::Press => self.run_command(cmd, via),
+                    ControlInput::Press => self.run_command(cmd),
                     ControlInput::Release | ControlInput::Level(_) => Ok(()),
                 }
             }
@@ -309,7 +297,7 @@ impl AppState {
         }
     }
 
-    fn run_command(&self, cmd: ControlCommand<'_>, via: TakeVia) -> AppResult<()> {
+    fn run_command(&self, cmd: ControlCommand<'_>) -> AppResult<()> {
         let studio = self.live().is_studio();
         match cmd {
             ControlCommand::Toggle { screen, layer } => {
@@ -322,14 +310,20 @@ impl AppState {
                         .map(drop)
                         .map_err(Into::into)
                 } else {
-                    self.live_take(screen, layer, via).map(drop)
+                    self.live()
+                        .show(screen, layer)
+                        .map(drop)
+                        .map_err(Into::into)
                 }
             }
             ControlCommand::Take { screen, layer } => {
                 if studio {
                     self.studio_cue(screen, layer, true)
                 } else {
-                    self.live_take(screen, layer, via).map(drop)
+                    self.live()
+                        .show(screen, layer)
+                        .map(drop)
+                        .map_err(Into::into)
                 }
             }
             ControlCommand::Clear { screen, layer } => {
@@ -346,7 +340,7 @@ impl AppState {
                 if studio {
                     // Staged content reaches Program only with a take of the Preview.
                     self.live().layer_view(screen, layer)?;
-                    self.apply_studio_op_via(screen, StudioOp::Take { transition: None }, via)
+                    self.apply_studio_op(screen, StudioOp::Take { transition: None })
                         .map(drop)
                 } else if self.live().layer_view(screen, layer)?.on_air {
                     // `show` on an on-air layer applies its staged content without replaying it.

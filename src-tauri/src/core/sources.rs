@@ -335,10 +335,8 @@ pub fn validate(mut doc: SourceDoc) -> SourceResult<SourceDoc> {
             *index = clamp_index(*index, rows.len());
             return Ok(doc);
         }
-        SourceKind::Poll {
-            link, test, cache, ..
-        } => {
-            polls::validate(link, test, cache).map_err(invalid)?;
+        SourceKind::Poll { link, cache, .. } => {
+            polls::validate(link, cache).map_err(invalid)?;
             return Ok(doc);
         }
     };
@@ -883,17 +881,14 @@ impl SourceStore {
 
     /// Poll sources as `(source id, linked poll id or None, test)`, for the poll service (cheap:
     /// nothing cloned but ids). A gone poll counts as unlinked.
-    pub(crate) fn poll_links(&self) -> Vec<(String, Option<String>, bool)> {
+    pub(crate) fn poll_links(&self) -> Vec<(String, Option<String>)> {
         lock(&self.loaded)
             .docs
             .values()
             .filter_map(|d| match &d.meta.kind {
-                SourceKind::Poll {
-                    link, test, gone, ..
-                } => Some((
+                SourceKind::Poll { link, gone, .. } => Some((
                     d.id.clone(),
                     link.as_ref().filter(|_| !gone).map(|l| l.id.clone()),
-                    test.is_some(),
                 )),
                 _ => None,
             })

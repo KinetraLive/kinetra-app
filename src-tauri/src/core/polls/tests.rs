@@ -14,7 +14,7 @@ use tokio::sync::broadcast;
 use super::*;
 use crate::core::cloud::service::S_SESSION;
 use crate::core::events::EventSink;
-use crate::core::model::{PollConn, PollData, PollOption, PollStatus, TestPoll};
+use crate::core::model::{PollConn, PollData, PollOption, PollStatus};
 use crate::core::secrets::{MemorySecrets, SecretStore};
 use crate::core::sources::Current;
 
@@ -140,7 +140,6 @@ fn a_poll_source_reads_like_any_source() {
                     id: PID.into(),
                     code: CODE.into(),
                 }),
-                test: None,
                 cache: Some(poll(&[2, 6])),
                 gone: false,
             },
@@ -167,7 +166,6 @@ fn a_poll_source_reads_like_any_source() {
     let mut empty = doc.clone();
     empty.meta.kind = SourceKind::Poll {
         link: None,
-        test: None,
         cache: None,
         gone: false,
     };
@@ -234,27 +232,18 @@ fn input_rules_match_the_server() {
 
 #[test]
 fn validation_of_poll_sources() {
-    let mut test = Some(TestPoll {
-        question: "  Q ".into(),
-        options: vec![" A".into(), "B ".into(), "C".into()],
-        votes: vec![4],
-        status: PollStatus::Draft,
-    });
-    validate(&None, &mut test, &None).unwrap();
-    let t = test.unwrap();
-    assert_eq!((t.question.as_str(), t.options[0].as_str()), ("Q", "A"));
-    assert_eq!(t.votes, [4, 0, 0], "votes follow the answers");
     let link = Some(PollLink {
         id: PID.into(),
         code: CODE.into(),
     });
-    assert!(validate(&link, &mut Some(TestPoll::default()), &None).is_err());
+    validate(&link, &Some(poll(&[1, 2]))).unwrap();
+    validate(&None, &None).unwrap();
     let bad = Some(PollLink {
         id: "../x".into(),
         code: CODE.into(),
     });
-    assert!(validate(&bad, &mut None, &None).is_err());
-    assert!(is_code("K7P2QX") && is_code(TEST_CODE) && !is_code("K7P2Q0") && !is_code("k7p2qx"));
+    assert!(validate(&bad, &None).is_err());
+    assert!(is_code("K7P2QX") && !is_code("TEST00") && !is_code("K7P2Q0") && !is_code("k7p2qx"));
 }
 
 #[test]
@@ -455,7 +444,6 @@ fn env() -> Env {
         fallback_every: Duration::from_millis(60),
         stream_retry: Duration::from_millis(400),
         read_timeout: Duration::from_secs(3),
-        sim_tick: Duration::from_millis(40),
     }));
     Env {
         _tmp: tmp,
@@ -811,7 +799,7 @@ fn linked(e: &Env) -> String {
             ..PollInput::default()
         }))
         .unwrap();
-    e.st.create_poll_source("Poll", Some(p), None).unwrap().id
+    e.st.create_poll_source("Poll", p).unwrap().id
 }
 
 #[test]
@@ -926,444 +914,12 @@ fn signed_out_streams_nothing() {
     assert!(e.calls().is_empty());
 }
 
-// ---- Test mode ------------------------------------------------------------------------------
-
-#[test]
-fn test_polls_simulate_votes_offline_for_free_users() {
-    let e = env();
-    e.pro(false);
-    e.project();
-    let doc =
-        e.st.create_poll_source(
-            "Rehearsal",
-            None,
-            Some(TestPoll {
-                question: "Best snack?".into(),
-                options: vec!["Popcorn".into(), "Nachos".into(), "Candy".into()],
-                votes: vec![],
-                status: PollStatus::Draft,
-            }),
-        )
-        .unwrap();
-    let votes = |e: &Env| match e.st.sources().doc(&doc.id).unwrap().meta.kind {
-        SourceKind::Poll { test: Some(t), .. } => (t.votes, t.status),
-        _ => unreachable!(),
-    };
-    e.st.simulate_test_poll(
-        &doc.id,
-        PollSimulation {
-            run: true,
-            rate: 50,
-            lead: Some(1),
-        },
-    )
-    .unwrap();
-    assert_eq!(e.st.poll_service().sim_count(), 1);
-    wait_until("votes", || votes(&e).0.iter().sum::<u64>() >= 60);
-    let (v, status) = votes(&e);
-    assert_eq!(status, PollStatus::Open, "simulating opens the poll");
-    assert!(v[1] > v[0] && v[1] > v[2], "the chosen answer leads: {v:?}");
-    let view =
-        e.st.source_summary(&e.st.sources().doc(&doc.id).unwrap())
-            .poll
-            .unwrap();
-    assert!(view.test && view.simulating && view.conn == PollConn::Test);
-    assert_eq!(view.code.as_deref(), Some(TEST_CODE));
-    // Rows point at the harmless test link.
-    let rows = rows(&test_data(
-        &match e.st.sources().doc(&doc.id).unwrap().meta.kind {
-            SourceKind::Poll { test: Some(t), .. } => t,
-            _ => unreachable!(),
-        },
-    ));
-    assert_eq!(rows[0]["short_url"], "poll.kinetra.live/TEST00");
-    // Closing stops the simulation; reset zeroes.
-    e.st.set_test_poll_status(&doc.id, PollStatus::Closed)
-        .unwrap();
-    assert_eq!(e.st.poll_service().sim_count(), 0);
-    let frozen = votes(&e).0;
-    std::thread::sleep(Duration::from_millis(150));
-    assert_eq!(votes(&e).0, frozen, "no votes after closing");
-    e.st.reset_test_poll(&doc.id).unwrap();
-    assert!(votes(&e).0.iter().all(|v| *v == 0));
-    // Deleting the source ends everything; no network was used.
-    e.st.simulate_test_poll(
-        &doc.id,
-        PollSimulation {
-            run: true,
-            rate: 5,
-            lead: None,
-        },
-    )
-    .unwrap();
-    e.st.delete_source(&doc.id).unwrap();
-    assert_eq!(e.st.poll_service().sim_count(), 0);
-    assert!(e.calls().is_empty());
-    assert!(!e.st.project_uses_real_polls());
-}
-
-#[test]
-fn saving_a_test_poll_keeps_its_votes_and_the_core_owns_links() {
-    let e = env();
-    e.project();
-    let doc =
-        e.st.create_poll_source(
-            "Rehearsal",
-            None,
-            Some(TestPoll {
-                question: "Snack?".into(),
-                options: vec!["Popcorn".into(), "Nachos".into()],
-                votes: vec![5, 3],
-                status: PollStatus::Open,
-            }),
-        )
-        .unwrap();
-    // An editor saves a new question with stale votes and status: the core's stay.
-    let mut edited = doc.clone();
-    if let SourceKind::Poll { test: Some(t), .. } = &mut edited.meta.kind {
-        t.question = "Best snack?".into();
-        t.votes = vec![0, 0];
-        t.status = PollStatus::Draft;
-    }
-    let saved = e.st.save_source(edited.clone()).unwrap();
-    let SourceKind::Poll {
-        test: Some(t),
-        link,
-        ..
-    } = &saved.meta.kind
-    else {
-        unreachable!()
-    };
-    assert_eq!(
-        (t.question.as_str(), t.votes.clone(), t.status),
-        ("Best snack?", vec![5, 3], PollStatus::Open)
-    );
-    assert!(
-        link.is_none(),
-        "a save can't link a test poll to a server poll"
-    );
-    // Changed answers start the votes again.
-    if let SourceKind::Poll { test: Some(t), .. } = &mut edited.meta.kind {
-        t.options.push("Candy".into());
-    }
-    let saved = e.st.save_source(edited).unwrap();
-    let SourceKind::Poll { test: Some(t), .. } = &saved.meta.kind else {
-        unreachable!()
-    };
-    assert_eq!(t.votes, vec![0, 0, 0]);
-}
-
-// ---- The test-data safeguard (every path to Program) ------------------------------------------
-
-mod safeguard {
-    use std::collections::BTreeMap;
-
-    use super::*;
-    use crate::core::control_actions::ControlInput;
-    use crate::core::model::{
-        ControlMapping, ControlTarget, ControlsDoc, FlowEdge, FlowNode, MidiKind, MidiSource,
-        NewFlow, NewScreen, NodeKind, PortRef, PreviewAfterTake, Rect, Retrigger, ScreenLayer,
-        ScreenLayerKind, SourceBinding, StudioOp, StudioSettings, TakeTransition, TakeVia,
-        TemplateSource, WireKind,
-    };
-
-    /// A project with a test poll bound to layer `l1` of a screen, layer `l2` unbound, and (when
-    /// `real`) a source linked to a real poll. Returns the screen id.
-    fn setup(e: &Env, real: bool) -> String {
-        e.project();
-        let test =
-            e.st.create_poll_source(
-                "Rehearsal",
-                None,
-                Some(TestPoll {
-                    question: "Snack?".into(),
-                    options: vec!["Popcorn".into(), "Nachos".into()],
-                    votes: vec![3, 1],
-                    status: PollStatus::Open,
-                }),
-            )
-            .unwrap();
-        if real {
-            e.st.create_poll_source("Final vote", Some(poll(&[1, 2])), None)
-                .unwrap();
-        }
-        let dir = e.st.project_dir().unwrap();
-        let t =
-            e.st.templates()
-                .create(
-                    &dir,
-                    "Bar",
-                    &TemplateSource::Preset {
-                        preset_id: "classic-bar".into(),
-                    },
-                )
-                .unwrap()
-                .id;
-        let mut doc =
-            e.st.create_screen(&NewScreen {
-                name: "Main".into(),
-                width: 1920,
-                height: 1080,
-                background: "transparent".into(),
-            })
-            .unwrap()
-            .doc;
-        let layer = |id: &str, name: &str, bound: bool| {
-            let mut bindings = BTreeMap::new();
-            if bound {
-                bindings.insert(
-                    "name".to_string(),
-                    SourceBinding {
-                        source_id: test.id.clone(),
-                        column: "label".into(),
-                        sort: None,
-                        limit: None,
-                        row: None,
-                    },
-                );
-            }
-            ScreenLayer {
-                id: id.into(),
-                name: name.into(),
-                rect: Rect {
-                    x: 0,
-                    y: 0,
-                    w: 1920,
-                    h: 1080,
-                },
-                kind: ScreenLayerKind::Template {
-                    template_id: t.clone(),
-                    fields: Fields::new(),
-                    vars: Fields::new(),
-                    bindings,
-                    variant: None,
-                    sizing: None,
-                    opacity: None,
-                },
-                anchor: None,
-            }
-        };
-        doc.meta.layers.push(layer("l1", "Poll results", true));
-        doc.meta.layers.push(layer("l2", "Logo", false));
-        e.st.save_screen(doc).unwrap().doc.id
-    }
-
-    fn on_air(e: &Env, s: &str, l: &str) -> bool {
-        e.st.live().layer_view(s, l).unwrap().on_air
-    }
-
-    /// The `via` of every `test-data-blocked` event so far.
-    fn blocked(e: &Env) -> Vec<String> {
-        e.events(names::TEST_DATA_BLOCKED)
-            .iter()
-            .map(|v| v["via"].as_str().unwrap_or_default().to_string())
-            .collect()
-    }
-
-    fn refused<T>(r: AppResult<T>) {
-        match r {
-            Err(AppError::TestData(names)) => assert_eq!(names, "Poll results"),
-            Err(e) => panic!("expected the test-data refusal, got {e:?}"),
-            Ok(_) => panic!("expected the test-data refusal, the take went through"),
-        }
-    }
-
-    #[test]
-    fn the_app_path_is_refused_until_allowed_for_the_session() {
-        let e = env();
-        let s = setup(&e, true);
-        refused(e.st.live_take(&s, "l1", TakeVia::App));
-        assert!(!on_air(&e, &s, "l1"));
-        assert_eq!(blocked(&e), ["app"]);
-        let ev = &e.events(names::TEST_DATA_BLOCKED)[0];
-        assert_eq!(ev["screenId"].as_str(), Some(s.as_str()));
-        assert_eq!(ev["layers"][0].as_str(), Some("Poll results"));
-        // A layer without test data goes on air; so does everything once allowed.
-        e.st.live_take(&s, "l2", TakeVia::App).unwrap();
-        e.st.allow_test_data_on_air(true);
-        assert_eq!(e.events(names::TEST_DATA_ALLOWED), [Value::Bool(true)]);
-        e.st.live_take(&s, "l1", TakeVia::App).unwrap();
-        assert!(on_air(&e, &s, "l1"));
-        // An update of an on-air layer is never refused (it already shows).
-        e.st.allow_test_data_on_air(false);
-        e.st.live_take(&s, "l1", TakeVia::App).unwrap();
-        assert_eq!(blocked(&e), ["app"]);
-    }
-
-    #[test]
-    fn midi_takes_are_refused_with_a_notice() {
-        let e = env();
-        let s = setup(&e, true);
-        e.st.save_controls(ControlsDoc {
-            mappings: vec![ControlMapping {
-                id: "m1".into(),
-                source: MidiSource {
-                    device: None,
-                    channel: None,
-                    kind: MidiKind::Note,
-                    number: 60,
-                },
-                target: ControlTarget::Command {
-                    command_id: format!("live.take:{s}/l1"),
-                },
-                feedback: false,
-            }],
-        })
-        .unwrap();
-        e.st.inject_midi("Pad", &[0x90, 60, 100]);
-        assert!(!on_air(&e, &s, "l1"));
-        assert_eq!(blocked(&e), ["midi"]);
-        e.st.allow_test_data_on_air(true);
-        e.st.inject_midi("Pad", &[0x90, 60, 100]);
-        assert!(on_air(&e, &s, "l1"));
-    }
-
-    #[test]
-    fn osc_takes_are_refused_with_a_notice() {
-        let e = env();
-        let s = setup(&e, true);
-        let take = crate::core::osc::OscMessage {
-            address: format!("/kinetra/layer/{s}/l1/take"),
-            args: vec![],
-        };
-        e.st.osc_message(&take);
-        assert!(!on_air(&e, &s, "l1"));
-        assert_eq!(blocked(&e), ["osc"]);
-        e.st.allow_test_data_on_air(true);
-        e.st.osc_message(&take);
-        assert!(on_air(&e, &s, "l1"));
-    }
-
-    #[test]
-    fn api_and_companion_takes_are_refused() {
-        let e = env();
-        let s = setup(&e, true);
-        let take = ControlTarget::Command {
-            command_id: format!("live.take:{s}/l1"),
-        };
-        refused(e.st.run_control(&take, ControlInput::Press));
-        // The toggle takes too.
-        let toggle = ControlTarget::Command {
-            command_id: format!("live.toggle:{s}/l1"),
-        };
-        refused(e.st.run_control(&toggle, ControlInput::Press));
-        assert_eq!(blocked(&e), ["api", "api"]);
-        assert!(!on_air(&e, &s, "l1"));
-    }
-
-    #[test]
-    fn flow_takes_are_refused() {
-        let e = env();
-        let s = setup(&e, true);
-        let node = |id: &str, kind: NodeKind| FlowNode {
-            id: id.into(),
-            position: Default::default(),
-            kind,
-        };
-        let flow =
-            e.st.create_flow(NewFlow {
-                name: "Show results".into(),
-                armed: true,
-                retrigger: Retrigger::Restart,
-                origin: None,
-                nodes: vec![
-                    node("cue", NodeKind::Cue { label: None }),
-                    node(
-                        "take",
-                        NodeKind::Take {
-                            screen_id: s.clone(),
-                            layer_id: "l1".into(),
-                            for_ms: None,
-                        },
-                    ),
-                ],
-                edges: vec![FlowEdge {
-                    id: "e1".into(),
-                    from: PortRef {
-                        node: "cue".into(),
-                        port: "fired".into(),
-                    },
-                    to: PortRef {
-                        node: "take".into(),
-                        port: "in".into(),
-                    },
-                    kind: WireKind::Event,
-                }],
-            })
-            .unwrap()
-            .flow
-            .id;
-        e.st.run_flow(&flow, None).unwrap();
-        wait_until("refused", || blocked(&e) == ["flow"]);
-        assert!(!on_air(&e, &s, "l1"));
-    }
-
-    #[test]
-    fn studio_takes_and_the_tbar_are_refused() {
-        let e = env();
-        let s = setup(&e, true);
-        e.st.set_studio(
-            StudioSettings {
-                enabled: true,
-                preview_after_take: PreviewAfterTake::Keep,
-                transition: TakeTransition::default(),
-            },
-            None,
-        )
-        .unwrap();
-        // Cueing into Preview is fine; bringing it to Program is not.
-        e.st.apply_studio_op(
-            &s,
-            StudioOp::Cue {
-                layer_id: "l1".into(),
-                visible: Some(true),
-            },
-        )
-        .unwrap();
-        refused(e.st.apply_studio_op(&s, StudioOp::Take { transition: None }));
-        refused(e.st.apply_studio_op(&s, StudioOp::TbarBegin { transition: None }));
-        assert!(!on_air(&e, &s, "l1"));
-        assert_eq!(blocked(&e), ["app", "app"]);
-        // A MIDI "update" in Studio mode is a take of the Preview: refused, named MIDI.
-        let update = ControlTarget::Command {
-            command_id: format!("live.update:{s}/l1"),
-        };
-        refused(e.st.run_control_via(&update, ControlInput::Press, TakeVia::Midi));
-        assert_eq!(blocked(&e), ["app", "app", "midi"]);
-        e.st.allow_test_data_on_air(true);
-        e.st.apply_studio_op(&s, StudioOp::Take { transition: None })
-            .unwrap();
-        assert!(on_air(&e, &s, "l1"));
-    }
-
-    #[test]
-    fn without_a_real_poll_test_data_goes_on_air() {
-        let e = env();
-        let s = setup(&e, false);
-        e.st.live_take(&s, "l1", TakeVia::Midi).unwrap();
-        assert!(on_air(&e, &s, "l1"));
-        assert!(blocked(&e).is_empty());
-    }
-}
-
 #[test]
 fn add_to_screen_binds_the_poll_graphic_to_the_poll() {
     use crate::core::model::NewScreen;
     let e = env();
     e.project();
-    let src =
-        e.st.create_poll_source(
-            "Rehearsal",
-            None,
-            Some(TestPoll {
-                question: "Best snack?".into(),
-                options: vec!["Popcorn".into(), "Nachos".into()],
-                votes: vec![1, 3],
-                status: PollStatus::Open,
-            }),
-        )
-        .unwrap()
-        .id;
+    let src = e.st.create_poll_source("Poll", poll(&[1, 3])).unwrap().id;
     let screen =
         e.st.create_screen(&NewScreen {
             name: "Main".into(),
@@ -1386,16 +942,16 @@ fn add_to_screen_binds_the_poll_graphic_to_the_poll() {
             })
             .unwrap()
     };
-    assert_eq!(field("question"), "Best snack?");
+    assert_eq!(field("question"), "Who wins tonight?");
     assert_eq!(field("status"), "open");
     assert_eq!(field("total_votes"), "4");
-    assert_eq!(field("short_url"), "poll.kinetra.live/TEST00");
+    assert_eq!(field("short_url"), format!("poll.kinetra.live/{CODE}"));
     assert!(field("qr").starts_with("data:image/svg+xml,"));
     let rows: Vec<Value> = serde_json::from_str(&field("options")).unwrap();
     assert_eq!(rows.len(), 2);
     assert_eq!(
         (rows[1]["label"].as_str(), rows[1]["pct_round"].as_str()),
-        (Some("Nachos"), Some("75"))
+        (Some("Away"), Some("75"))
     );
     assert_eq!(rows[1]["_leader"].as_str(), Some("true"));
     // A second add reuses the project's Poll template.
@@ -1408,10 +964,13 @@ fn add_to_screen_binds_the_poll_graphic_to_the_poll() {
             .count(),
         1
     );
-    // New votes reach the layer; closing marks the winner.
-    e.st.reset_test_poll(&src).unwrap();
+    // New results reach the layer; a closed poll shows as closed.
+    e.st.poll_apply(poll(&[0, 0]));
     assert_eq!(field("total_votes"), "0");
-    e.st.set_test_poll_status(&src, PollStatus::Closed).unwrap();
+    e.st.poll_apply(PollData {
+        status: PollStatus::Closed,
+        ..poll(&[2, 5])
+    });
     assert_eq!(field("status"), "closed");
     // Not a poll source: refused.
     let text = e.st.create_source("Plain").unwrap();

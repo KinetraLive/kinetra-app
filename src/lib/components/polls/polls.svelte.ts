@@ -1,24 +1,21 @@
 // The Polls page's state: the account's polls (from the server, only when the core may ask), the
-// quota, this project's test polls (poll sources with test data), live updates (`poll-live`,
-// `source-changed`) and the actions. Every failure becomes a toast in plain words (`pollError`);
+// quota, live updates (`poll-live`) and the actions. Every failure becomes a toast in plain words (`pollError`);
 // the core decides access, the page only displays it.
 
 import { on, toAppError } from "$lib/api";
 import * as api from "$lib/api/polls";
-import { deleteSource, listSources } from "$lib/api/sources";
+import { listSources } from "$lib/api/sources";
 import { toasts } from "$lib/stores/toasts.svelte";
-import type { PollConn, PollData, PollInput, PollQuota, PollSimulation, PollStatus, SourceSummary, TestPoll } from "$lib/types";
+import type { PollConn, PollData, PollInput, PollQuota } from "$lib/types";
 import { pollError } from "./model";
 
-export type Selection = { kind: "poll"; id: string } | { kind: "test"; id: string } | { kind: "new" } | null;
+export type Selection = { kind: "poll"; id: string } | { kind: "new" } | null;
 
 export class PollsState {
   /** The account's polls, newest first (empty without access). */
   polls = $state.raw<PollData[]>([]);
   /** Null: not asked (no access) or not loaded yet. */
   quota = $state.raw<PollQuota | null>(null);
-  /** This project's test polls (poll sources with test data), by name. */
-  tests = $state.raw<SourceSummary[]>([]);
   /** Poll sources linked to a server poll: poll id → source id ("Use in a source" reuses it). */
   linked = $state.raw<ReadonlyMap<string, string>>(new Map());
   /** How each poll's results arrive (only polls with a stream or a watcher). */
@@ -38,16 +35,12 @@ export class PollsState {
       if (l.poll) this.#put(l.poll);
       if (l.conn === "gone") this.#drop(l.id);
     });
-    const offSource = on("source-changed", (s) => {
-      if (s.kind === "poll") this.#putSource(s);
-    });
     const offFiles = on("project-files-changed", (c) => {
       if (c.kind === "source") void this.loadSources();
     });
     void this.load();
     return () => {
       offLive();
-      offSource();
       offFiles();
       this.watch(null);
     };
@@ -58,7 +51,7 @@ export class PollsState {
     this.loaded = true;
     if (!this.selection) {
       const first = this.polls[0] ?? null;
-      this.select(first ? { kind: "poll", id: first.id } : this.tests[0] ? { kind: "test", id: this.tests[0].id } : null);
+      this.select(first ? { kind: "poll", id: first.id } : null);
     }
   }
 
@@ -77,10 +70,9 @@ export class PollsState {
   async loadSources(): Promise<void> {
     try {
       const all = (await listSources()).filter((s) => s.kind === "poll");
-      this.tests = all.filter((s) => s.poll?.test).sort((a, b) => a.name.localeCompare(b.name));
       this.linked = new Map(all.flatMap((s) => (s.poll?.pollId ? [[s.poll.pollId, s.id] as const] : [])));
     } catch {
-      // No project: no test polls.
+      // No project: no poll sources.
     }
   }
 
@@ -95,11 +87,6 @@ export class PollsState {
   get selectedPoll(): PollData | null {
     const s = this.selection;
     return s?.kind === "poll" ? (this.polls.find((p) => p.id === s.id) ?? null) : null;
-  }
-
-  get selectedTest(): SourceSummary | null {
-    const s = this.selection;
-    return s?.kind === "test" ? (this.tests.find((t) => t.id === s.id) ?? null) : null;
   }
 
   select(s: Selection): void {
@@ -128,15 +115,6 @@ export class PollsState {
     if (this.selection?.kind === "poll" && this.selection.id === id) {
       const next = this.polls[Math.min(i, this.polls.length - 1)];
       this.select(next ? { kind: "poll", id: next.id } : null);
-    }
-  }
-
-  #putSource(s: SourceSummary): void {
-    if (s.poll?.test) {
-      const has = this.tests.some((t) => t.id === s.id);
-      this.tests = (has ? this.tests.map((t) => (t.id === s.id ? s : t)) : [...this.tests, s]).sort((a, b) =>
-        a.name.localeCompare(b.name),
-      );
     }
   }
 
@@ -207,62 +185,12 @@ export class PollsState {
     const have = this.linked.get(p.id) ?? (await api.pollSourceFor(p.id).catch(() => null));
     if (have) return have;
     try {
-      const doc = await api.createPollSource(p.question.slice(0, 100) || "Poll", { poll: p });
+      const doc = await api.createPollSource(p.question.slice(0, 100) || "Poll", p);
       this.linked = new Map([...this.linked, [p.id, doc.id]]);
       return doc.id;
     } catch (e) {
       toasts.push({ kind: "error", message: `Couldn't make a source for this poll: ${toAppError(e).message}` });
       return null;
-    }
-  }
-
-  // ---- Test polls ----
-
-  async createTest(name: string, test: TestPoll): Promise<void> {
-    try {
-      const doc = await api.createPollSource(name, { test });
-      await this.loadSources();
-      this.select({ kind: "test", id: doc.id });
-    } catch (e) {
-      toasts.push({ kind: "error", message: `Couldn't create the test poll: ${toAppError(e).message}` });
-    }
-  }
-
-  async saveTest(id: string, question: string, options: string[]): Promise<void> {
-    try {
-      const doc = await api.getPollSource(id);
-      if (!doc.test) return;
-      await api.savePollSource({ ...doc, test: { ...doc.test, question, options } });
-    } catch (e) {
-      toasts.push({ kind: "error", message: `Couldn't save the test poll: ${toAppError(e).message}` });
-    }
-  }
-
-  simulate = (id: string, sim: PollSimulation) =>
-    this.#test("simulate votes", () => api.simulateTestPoll(id, sim));
-  resetTest = (id: string) => this.#test("reset the votes", () => api.resetTestPoll(id));
-  setTestStatus = (id: string, status: PollStatus) =>
-    this.#test(status === "open" ? "open the test poll" : "close the test poll", () => api.setTestPollStatus(id, status));
-
-  async removeTest(id: string): Promise<void> {
-    try {
-      await deleteSource(id);
-      const i = this.tests.findIndex((t) => t.id === id);
-      this.tests = this.tests.filter((t) => t.id !== id);
-      if (this.selection?.kind === "test" && this.selection.id === id) {
-        const next = this.tests[Math.min(i, this.tests.length - 1)];
-        this.select(next ? { kind: "test", id: next.id } : null);
-      }
-    } catch (e) {
-      toasts.push({ kind: "error", message: `Couldn't delete the test poll: ${toAppError(e).message}` });
-    }
-  }
-
-  async #test(what: string, f: () => Promise<void>): Promise<void> {
-    try {
-      await f();
-    } catch (e) {
-      toasts.push({ kind: "error", message: `Couldn't ${what}: ${toAppError(e).message}` });
     }
   }
 }

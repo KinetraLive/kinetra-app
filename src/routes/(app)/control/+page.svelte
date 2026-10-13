@@ -132,11 +132,6 @@
   {#if prefs.value?.outputs?.length}
     {#await import("$lib/components/control/OutputsStrip.svelte") then m}<m.default {ctl} />{/await}
   {/if}
-  <!-- Test poll data: the question before Program and the notice when a remote take was refused
-       (lazy; only while the project has test and real polls). -->
-  {#if ctl.realPolls && ctl.testPolls.size > 0}
-    {#await import("$lib/components/control/TestDataConfirm.svelte") then m}<m.default {ctl} />{/await}
-  {/if}
 
   {#if live.loaded && ctl.screens.length === 0}
     <div class="center">

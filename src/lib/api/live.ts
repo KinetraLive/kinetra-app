@@ -35,8 +35,3 @@ export const studioOp = (screenId: string, op: import("../types").StudioOp) =>
 export const previewView = (screenId: string) =>
   call<import("../types").PreviewView>("preview_view", { screenId });
 
-// ---- Test poll data (core/polls.rs: the safeguard every take path goes through) ----
-/** Whether test poll data may go to Program this session. */
-export const testDataAllowed = () => call<boolean>("test_data_allowed");
-/** "Allow test data on air" for this session (the app asks first). */
-export const allowTestDataOnAir = (on: boolean) => call<void>("allow_test_data_on_air", { on });

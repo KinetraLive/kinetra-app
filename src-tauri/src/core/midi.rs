@@ -60,7 +60,6 @@ use crate::core::control_actions::{parse_command, ControlCommand, ControlInput};
 use crate::core::events::names;
 use crate::core::model::{
     ControlTarget, ControlsDoc, MidiDevice, MidiFeedbackProfile, MidiKind, MidiLearned, MidiSource,
-    TakeVia,
 };
 use crate::core::state::{AppState, StateChange};
 use crate::error::{AppError, AppResult};
@@ -813,7 +812,7 @@ impl AppState {
             }
         };
         let Some(input) = input else { return };
-        if let Err(e) = self.run_control_via(&entry.target, input, TakeVia::Midi) {
+        if let Err(e) = self.run_control(&entry.target, input) {
             tracing::debug!("MIDI mapping {}: {e}", entry.id);
         }
     }

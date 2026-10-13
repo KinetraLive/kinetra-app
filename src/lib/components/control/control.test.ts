@@ -51,8 +51,6 @@ const api = vi.hoisted(() => ({
   listRecipeInstances: vi.fn(),
   getSource: vi.fn(),
   saveSource: vi.fn(),
-  testDataAllowed: vi.fn(),
-  allowTestDataOnAir: vi.fn(),
 }));
 vi.mock("$lib/api", () => ({
   ...api,
@@ -264,7 +262,6 @@ beforeEach(() => {
     layer(l, { fields: { ...layer(l).fields, ...f } }),
   );
   api.livePanic.mockResolvedValue([s1()]);
-  api.testDataAllowed.mockResolvedValue(false);
   api.liveClear.mockImplementation(async (id: string) => view(id, [layer("logo"), layer("lower")]));
   api.liveClearAll.mockResolvedValue([s1()]);
   api.stepSource.mockImplementation(async (_id: string, step: { delta: number }) => ({
@@ -391,97 +388,6 @@ describe("Control layers", () => {
     await flush();
     expect(within(row("lower")).getByRole("img", { name: "Off air" })).toBeTruthy();
     expect(toasts.list.at(-1)?.message).toContain("gone");
-  });
-
-  describe("test poll data", () => {
-    const poll = (test: boolean) => ({
-      test,
-      pollId: test ? null : "p1",
-      code: test ? "TEST00" : "K7P2QX",
-      conn: test ? ("test" as const) : ("live" as const),
-      state: "open",
-      totalVotes: 12,
-      simulating: test,
-    });
-    /** "lower" is bound to "guests": a test poll here; the project also shows a real poll. */
-    async function mountPolls() {
-      api.testDataAllowed.mockResolvedValue(false);
-      api.allowTestDataOnAir.mockResolvedValue(undefined);
-      api.listSources.mockResolvedValue([
-        { ...guests, name: "Rehearsal", kind: "poll", poll: poll(true) },
-        { ...guests, id: "final", name: "Final vote", kind: "poll", usedBy: [], poll: poll(false) },
-      ]);
-      await mount([s1()]);
-      await import("./TestDataConfirm.svelte");
-      await flush();
-    }
-
-    it("marked on the row; the app asks before Program and allows it in the core", async () => {
-      await mountPolls();
-      expect(within(row("lower")).getByText("Test data")).toBeTruthy();
-      expect(within(row("logo")).queryByText("Test data")).toBeNull();
-      // Cancel: nothing goes on air, nothing is allowed.
-      await fireEvent.click(screen.getByRole("button", { name: "Take Lower third" }));
-      expect(await screen.findByText("Allow test data on air?")).toBeTruthy();
-      await fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-      await flush();
-      expect(api.liveShow).not.toHaveBeenCalled();
-      expect(api.allowTestDataOnAir).not.toHaveBeenCalled();
-      // Allow: the core's session flag (every take path), then the take.
-      await fireEvent.click(screen.getByRole("button", { name: "Take Lower third" }));
-      await fireEvent.click(await screen.findByRole("button", { name: "Allow test data on air" }));
-      await flush();
-      expect(api.allowTestDataOnAir).toHaveBeenCalledWith(true);
-      expect(api.liveShow).toHaveBeenCalledWith("s1", "lower");
-      // Not asked again this session.
-      await fireEvent.click(screen.getByRole("button", { name: "Clear Lower third" }));
-      await flush();
-      await fireEvent.click(screen.getByRole("button", { name: "Take Lower third" }));
-      await flush();
-      expect(screen.queryByText("Allow test data on air?")).toBeNull();
-      expect(api.liveShow).toHaveBeenCalledTimes(2);
-    });
-
-    it("a layer without test data never asks; an allowed session never asks", async () => {
-      await mountPolls();
-      await fireEvent.click(screen.getByRole("button", { name: "Take Logo" }));
-      await flush();
-      expect(screen.queryByText("Allow test data on air?")).toBeNull();
-      expect(api.liveShow).toHaveBeenCalledWith("s1", "logo");
-      events.handlers.get("test-data-allowed")!(true);
-      await flush();
-      await fireEvent.click(screen.getByRole("button", { name: "Take Lower third" }));
-      await flush();
-      expect(screen.queryByText("Allow test data on air?")).toBeNull();
-      expect(api.liveShow).toHaveBeenCalledWith("s1", "lower");
-    });
-
-    it("a refused remote take shows a notice with Allow test data on air", async () => {
-      await mountPolls();
-      events.handlers.get("test-data-blocked")!({ screenId: "s1", layers: ["Lower third"], via: "midi", at: 1 });
-      await flush();
-      expect(await screen.findByText("A MIDI control tried to take Lower third to Program.")).toBeTruthy();
-      await fireEvent.click(screen.getByRole("button", { name: "Allow test data on air" }));
-      await flush();
-      expect(api.allowTestDataOnAir).toHaveBeenCalledWith(true);
-      expect(screen.queryByText("A MIDI control tried to take Lower third to Program.")).toBeNull();
-      // The app's own refusals never show the notice (the app asks instead).
-      events.handlers.get("test-data-allowed")!(false);
-      events.handlers.get("test-data-blocked")!({ screenId: "s1", layers: ["Lower third"], via: "app", at: 2 });
-      await flush();
-      expect(screen.queryByText(/tried to take/)).toBeNull();
-    });
-
-    it("the core refusing a take Control didn't see coming: ask, allow, take again", async () => {
-      await mountPolls();
-      api.liveShow.mockRejectedValueOnce({ code: "testData", message: "Logo shows test poll data." });
-      await fireEvent.click(screen.getByRole("button", { name: "Take Logo" }));
-      await fireEvent.click(await screen.findByRole("button", { name: "Allow test data on air" }));
-      await flush();
-      expect(api.allowTestDataOnAir).toHaveBeenCalledWith(true);
-      expect(api.liveShow).toHaveBeenCalledTimes(2);
-      expect(toasts.list.some((t) => t.message.includes("test poll data"))).toBe(false);
-    });
   });
 
   it("field edits are debounced into setLayerFields and flushed before TAKE", async () => {

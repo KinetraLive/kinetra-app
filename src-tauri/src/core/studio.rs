@@ -11,7 +11,7 @@
 
 use crate::core::live::{is_reserved_screen, PreviewView};
 use crate::core::live_hub::StudioAction;
-use crate::core::model::{StudioExit, StudioOp, StudioSettings, TakeVia};
+use crate::core::model::{StudioExit, StudioOp, StudioSettings};
 use crate::core::state::AppState;
 use crate::error::{AppError, AppResult};
 
@@ -45,17 +45,6 @@ impl AppState {
     /// also carries the Preview edits). `invalid` when Studio mode is off; `notFound` for an
     /// unknown screen or layer. Returns the screen's Preview afterwards.
     pub fn apply_studio_op(&self, screen_id: &str, op: StudioOp) -> AppResult<PreviewView> {
-        self.apply_studio_op_via(screen_id, op, TakeVia::App)
-    }
-
-    /// [`Self::apply_studio_op`] from a given path: a Take, a T-bar's start and its commit bring the
-    /// cued-in layers to Program, so they pass the test-data safeguard first.
-    pub fn apply_studio_op_via(
-        &self,
-        screen_id: &str,
-        op: StudioOp,
-        via: TakeVia,
-    ) -> AppResult<PreviewView> {
         self.project_dir()?;
         if is_reserved_screen(screen_id) {
             return Err(AppError::NotFound(format!("Screen not found: {screen_id}")));
@@ -65,14 +54,6 @@ impl AppState {
             return Err(AppError::Invalid("Studio mode is off".into()));
         }
         let after = settings.preview_after_take;
-        if matches!(
-            op,
-            StudioOp::Take { .. } | StudioOp::TbarBegin { .. } | StudioOp::TbarEnd { commit: true }
-        ) {
-            let incoming = self.studio_incoming(screen_id);
-            let ids: Vec<&str> = incoming.iter().map(String::as_str).collect();
-            self.guard_test_data(screen_id, &ids, via)?;
-        }
         let view = match &op {
             StudioOp::Cue { layer_id, visible } => self.live().studio_op(
                 screen_id,

@@ -5,7 +5,6 @@
 
   Props:
     poll: PollData
-    test?: boolean   a test poll: the link goes nowhere, so the panel says so
 -->
 <script lang="ts">
   import Copy from "lucide-svelte/icons/copy";
@@ -15,7 +14,7 @@
   import type { PollData } from "$lib/types";
   import { shortUrl } from "./model";
 
-  let { poll, test = false }: { poll: PollData; test?: boolean } = $props();
+  let { poll }: { poll: PollData } = $props();
 
   let qr = $state("");
   $effect(() => {
@@ -63,9 +62,6 @@
     <span class="section-label">Vote at</span>
     <span class="code mono" aria-label="Code {poll.code.split('').join(' ')}">{poll.code}</span>
     <span class="url mono">{shortUrl(poll.url)}</span>
-    {#if test}
-      <span class="note">Test link: it doesn't take votes.</span>
-    {/if}
     <div class="actions">
       <Button size="sm" onclick={copyLink}>
         {#snippet icon()}<Copy size={14} />{/snippet}
@@ -102,10 +98,6 @@
   }
   .url {
     color: var(--text-muted);
-    font-size: var(--fs-sm);
-  }
-  .note {
-    color: var(--warning);
     font-size: var(--fs-sm);
   }
   .actions {

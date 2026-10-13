@@ -368,14 +368,12 @@ export function installMockTauri(s: MockScenario): void {
   const scheds = new Map<string, ScheduleDoc>((s.scheduleDocs ?? []).map((d) => [d.id, d]));
   const pollDocs = new Map<string, PollSourceDoc>((s.pollSources ?? []).map((d) => [d.id, d]));
   const pollSummary = (d: PollSourceDoc) => {
-    const data = d.test
-      ? { status: d.test.status, total: d.test.votes.reduce((a, b) => a + b, 0) }
-      : { status: d.cache?.status ?? "draft", total: d.cache?.totalVotes ?? 0 };
+    const data = { status: d.cache?.status ?? "draft", total: d.cache?.totalVotes ?? 0 };
     return {
       id: d.id,
       name: d.name,
       kind: "poll" as const,
-      rowCount: d.test ? d.test.options.length : (d.cache?.options.length ?? 0),
+      rowCount: d.cache?.options.length ?? 0,
       index: 0,
       current: {},
       columns: [],
@@ -386,13 +384,11 @@ export function installMockTauri(s: MockScenario): void {
       nowId: null,
       nextId: null,
       poll: {
-        test: !!d.test,
         pollId: d.link?.id ?? null,
-        code: d.link?.code ?? (d.test ? "TEST00" : null),
-        conn: d.test ? ("test" as const) : ("live" as const),
+        code: d.link?.code ?? null,
+        conn: "live" as const,
         state: data.status,
         totalVotes: data.total,
-        simulating: !!d.test && d.test.status === "open",
       },
     };
   };
@@ -896,10 +892,6 @@ export function installMockTauri(s: MockScenario): void {
     watch_poll: () => null,
     poll_qr: (a) => fakeQr(String(a.text)),
     poll_source_for: () => null,
-    project_uses_real_polls: () => [...pollDocs.values()].some((d) => !!d.link),
-    simulate_test_poll: () => null,
-    reset_test_poll: () => null,
-    set_test_poll_status: () => null,
     create_source: (a) => {
       const d: SourceDoc = {
         id: newId(),

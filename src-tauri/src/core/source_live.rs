@@ -118,19 +118,11 @@ impl AppState {
                 rows.clone_from(have);
                 fetched_at.clone_from(at);
             }
-            // A poll source: the link and the server's data are the core's, a test poll's votes and
-            // status the simulation's (an editor saves the question and answers; votes stay while
-            // the answers are the same, else they start again).
+            // A poll source: the link and the server's data are the core's.
             if let (
-                SourceKind::Poll {
-                    link,
-                    test,
-                    cache,
-                    gone,
-                },
+                SourceKind::Poll { link, cache, gone },
                 Some(SourceKind::Poll {
                     link: l0,
-                    test: t0,
                     cache: c0,
                     gone: g0,
                 }),
@@ -139,17 +131,6 @@ impl AppState {
                 link.clone_from(l0);
                 cache.clone_from(c0);
                 *gone = *g0;
-                match (test.as_mut(), t0) {
-                    (Some(t), Some(t0)) => {
-                        t.status = t0.status;
-                        t.votes = if t.options == t0.options {
-                            t0.votes.clone()
-                        } else {
-                            vec![0; t.options.len()]
-                        };
-                    }
-                    _ => test.clone_from(t0),
-                }
             }
             let before = self.row_mark(&doc.id);
             let saved = sources::save(&dir, doc, false)?;

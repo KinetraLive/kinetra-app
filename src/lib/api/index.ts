@@ -21,7 +21,6 @@ import type {
   MoveProgress,
   PollLive,
   Prefs,
-  TestDataBlocked,
   Project,
   RecentProject,
   ServerStatus,
@@ -90,10 +89,6 @@ export interface EventPayloads {
   "source-changed": SourceSummary;
   /** A poll's latest data or how it arrives (polls with a stream or a watcher; ≤ 4/s). */
   "poll-live": PollLive;
-  /** A remote take (MIDI, OSC, the API, a flow) of test poll data to Program was refused. */
-  "test-data-blocked": TestDataBlocked;
-  /** Whether test data is allowed on air this session (changed in the app). */
-  "test-data-allowed": boolean;
   "schedule-changed": ScheduleView;
   /** A flow started, finished, stopped or failed (replaces macro-state and recipe-state). */
   "flow-state": FlowState;

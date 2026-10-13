@@ -94,9 +94,8 @@ export function usedByLabel(n: number): string {
 const KIND_LABEL = { text: "Data table", schedule: "Schedule", api: "API", poll: "Poll" } as const;
 
 /** What a source is called in lists: an API source fetching CSV is a "CSV link" (as in New source). */
-export function kindLabel(s: Pick<SourceSummary, "kind" | "format" | "poll">): string {
+export function kindLabel(s: Pick<SourceSummary, "kind" | "format">): string {
   if (s.kind === "api" && s.format === "csv") return "CSV link";
-  if (s.kind === "poll" && s.poll?.test) return "Test poll";
   return KIND_LABEL[s.kind] ?? s.kind;
 }
 

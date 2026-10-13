@@ -1,7 +1,6 @@
 <!--
-  PollSourceEditor: a poll source on the Sources page. Its name, which poll it shows (a poll of
-  the account or a test poll, clearly marked), the results as templates get them, and where to run
-  it: the Polls page. Bind it like any source; its columns are the answers (label, votes, pct,
+  PollSourceEditor: a poll source on the Sources page. Its name, which poll of the account it
+  shows, the results as templates get them, and where to run it: the Polls page. Bind it like any source; its columns are the answers (label, votes, pct,
   pct_round) plus the poll's own values on every row (question, total, status, leader, url,
   short_url, code, qr).
 
@@ -15,7 +14,7 @@
   import { getPollSource } from "$lib/api/polls";
   import { deleteSource, renameSource } from "$lib/api/sources";
   import PollResults from "$lib/components/polls/PollResults.svelte";
-  import { shortUrl, STATE_LABEL, stateOf, testData } from "$lib/components/polls/model";
+  import { shortUrl, STATE_LABEL, stateOf } from "$lib/components/polls/model";
   import { toasts } from "$lib/stores/toasts.svelte";
   import { SOURCE_NAME_MAX, type PollSourceDoc, type SourceSummary } from "$lib/types";
   import { usedByLabel } from "../model";
@@ -59,7 +58,7 @@
     });
   });
 
-  const data = $derived(doc?.test ? testData(doc.test) : (doc?.cache ?? null));
+  const data = $derived(doc?.cache ?? null);
 
   async function rename() {
     const next = name.trim();
@@ -102,7 +101,7 @@
           onkeydown={(e) => e.key === "Enter" && e.currentTarget.blur()}
         />
       </span>
-      {#if doc.test}<span class="chip">Test data</span>{:else}<span class="muted">Poll</span>{/if}
+      <span class="muted">Poll</span>
       <span class="muted">{usedByLabel(usedBy.length)}</span>
       <span class="spacer"></span>
       <Button href="/polls">Open in Polls</Button>
@@ -118,11 +117,10 @@
           <h2>{data.question || "Untitled"}</h2>
           <p class="muted">
             {STATE_LABEL[stateOf(data)]}
-            {#if !doc.test}· <span class="mono">{shortUrl(data.url)}</span>{/if}
-            {#if doc.test}· Votes are simulated on this computer.{/if}
+            · <span class="mono">{shortUrl(data.url)}</span>
           </p>
-          <PollResults poll={data} conn={doc.test ? undefined : view?.conn} />
-          {#if !doc.test && (view?.conn ?? "idle") === "idle"}
+          <PollResults poll={data} conn={view?.conn} />
+          {#if (view?.conn ?? "idle") === "idle"}
             <p class="muted">Results update live while a screen uses this source or the Polls page shows the poll.</p>
           {/if}
         </section>
@@ -136,9 +134,7 @@
     {#await import("$lib/components/ConfirmDialog.svelte") then { default: ConfirmDialog }}
       <ConfirmDialog
         title="Delete {doc.name}?"
-        message={doc.test
-          ? "The test poll and its simulated votes are deleted. Layers bound to it keep their own field values."
-          : "Only this source is deleted; the poll keeps running on the Polls page."}
+        message="Only this source is deleted; the poll keeps running on the Polls page."
         confirmLabel="Delete source"
         danger
         onconfirm={remove}
@@ -180,15 +176,6 @@
   }
   .spacer {
     flex: 1;
-  }
-  .chip {
-    padding: 0 var(--s-2);
-    border-radius: var(--r-control);
-    box-shadow: inset 0 0 0 1px var(--warning);
-    color: var(--warning);
-    font-size: var(--fs-xs);
-    font-weight: 600;
-    line-height: 20px;
   }
   .muted {
     margin: 0;

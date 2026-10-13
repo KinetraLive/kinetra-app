@@ -11,7 +11,6 @@
     submitLabel: string        "Create poll" / "Save changes"
     busy?: boolean
     dirtyOnly?: boolean        the button only when something changed (editing)
-    simple?: boolean           question and answers only (test polls)
     onsubmit: (d: Draft) => void
 -->
 <script lang="ts">
@@ -32,7 +31,6 @@
     submitLabel,
     busy = false,
     dirtyOnly = false,
-    simple = false,
     onsubmit,
   }: {
     initial: Draft;
@@ -42,7 +40,6 @@
     submitLabel: string;
     busy?: boolean;
     dirtyOnly?: boolean;
-    simple?: boolean;
     onsubmit: (d: Draft) => void;
   } = $props();
 
@@ -141,7 +138,6 @@
     {#if textLocked}<p class="hint">{textLocked}</p>{/if}
   </fieldset>
 
-  {#if !simple}
   <div class="row">
     <Switch
       label="Time limit"
@@ -166,7 +162,6 @@
   <div class="row">
     <Switch label="Show results to voters" bind:checked={draft.showResults} />
   </div>
-  {/if}
 
   {#if touched && problem}<p class="bad" role="alert">{problem}</p>{/if}
   {#if !dirtyOnly || dirty}

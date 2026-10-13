@@ -176,9 +176,7 @@
         </span>
         {#if s.kind === "poll"}
           <!-- A poll is pinned to its first row: no stepping or auto-advance, its status instead. -->
-          {#if s.poll?.test}
-            <span class="test">Test data</span>
-          {:else if s.poll && POLL_CONN[s.poll.conn]}
+          {#if s.poll && POLL_CONN[s.poll.conn]}
             <span class="api"><TallyDot state={POLL_CONN[s.poll.conn]![1]} /><span class="api-text">{POLL_CONN[s.poll.conn]![0]}</span></span>
           {/if}
         {:else}
@@ -280,16 +278,6 @@
 </section>
 
 <style>
-  .test {
-    flex: none;
-    padding: 0 var(--s-1);
-    border-radius: var(--r-control);
-    box-shadow: inset 0 0 0 1px var(--warning);
-    color: var(--warning);
-    font-size: var(--fs-xs);
-    font-weight: 600;
-    line-height: 18px;
-  }
   .strip {
     display: flex;
     flex-direction: column;

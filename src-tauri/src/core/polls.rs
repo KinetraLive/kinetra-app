@@ -2,7 +2,7 @@
 //!
 //! # Data for templates
 //! A poll source (`SourceKind::Poll`) shows one poll: a linked server poll (`link` + the last
-//! known `cache`) or a local test poll (`test`). Its rows are the answers in position order
+//! known `cache`). Its rows are the answers in position order
 //! ([`rows`]); the poll's own values (question, total, status, links, QR) are on every row, so a
 //! single field binds them with the normal binding (current row = the first answer) and a list
 //! field takes every answer. `pct` has two decimals (bars and the `_winner` ranking: no false
@@ -30,19 +30,13 @@
 //! their on-air layers forced (straight to Program; Studio rebases the Preview), `source-changed`
 //! and `poll-live`. **A dropped connection never clears output:** sources keep their last data.
 //!
-//! # Test polls
-//! Typed locally, available to everyone, no network. `simulate_test_poll` runs one sleeping task
-//! per simulated source (votes added every [`Timing::sim_tick`], weighted towards a chosen
-//! leader); none when paused.
-//!
 //! Locking: the service lock is a data lock, held briefly; never across I/O, the hub, the screen
 //! store or the source store. Events go out after it is released.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use crate::core::live::LiveLayerView;
-use crate::core::model::{ScreenLayerKind, TakeVia, TestDataBlocked};
+use crate::core::model::ScreenLayerKind;
 use std::sync::{Mutex, MutexGuard, OnceLock, PoisonError};
 use std::time::{Duration, Instant};
 
@@ -53,10 +47,9 @@ use tokio::task::AbortHandle;
 use crate::core::cloud::api::{CallError, PollWire};
 use crate::core::events::names;
 use crate::core::model::{
-    ColumnKind, PollConn, PollData, PollInput, PollLink, PollLive, PollOption, PollQuota,
-    PollSimulation, PollSourceView, PollStatus, SourceColumn, SourceDoc, SourceKind, TestPoll,
-    POLL_DURATION_MAX_S, POLL_DURATION_MIN_S, POLL_OPTIONS_MAX, POLL_OPTIONS_MIN, POLL_OPTION_MAX,
-    POLL_QUESTION_MAX,
+    ColumnKind, PollConn, PollData, PollInput, PollLink, PollLive, PollQuota, PollSourceView,
+    PollStatus, SourceColumn, SourceDoc, SourceKind, POLL_DURATION_MAX_S, POLL_DURATION_MIN_S,
+    POLL_OPTIONS_MAX, POLL_OPTIONS_MIN, POLL_OPTION_MAX, POLL_QUESTION_MAX,
 };
 use crate::core::persist::{self, Store};
 use crate::core::protocol::Fields;
@@ -73,16 +66,10 @@ mod tests;
 pub const PRO_POLLS: &str = kinetra_license::entitlements::PRO_POLLS;
 /// The voting site's host (short links read `poll.kinetra.live/K7P2QX`).
 pub const VOTE_HOST: &str = "poll.kinetra.live";
-/// A test poll's code: not a valid code (it has a 0), so the voting site answers "No poll with
-/// this code" if someone scans a rehearsal QR.
-pub const TEST_CODE: &str = "TEST00";
-pub const TEST_ID: &str = "test";
 /// Streams at once (the server's `KINETRA_POLL_SSE_MAX_STREAMS_PER_ACCOUNT`).
 pub const MAX_STREAMS: usize = 5;
 /// Failed stream connects in a row before falling back to polling.
 pub const FAILS_BEFORE_FALLBACK: u32 = 3;
-/// Simulated votes per second, at most.
-pub const SIM_RATE_MAX: u32 = 50;
 /// Polls remembered per machine.
 const KNOWN_MAX: usize = 500;
 /// The voting code alphabet (docs/API.md: no 0/O, 1/I/L, U).
@@ -114,9 +101,9 @@ pub fn is_poll_id(s: &str) -> bool {
     (1..=64).contains(&s.len()) && s.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
 }
 
-/// A voting code: 6 characters of the code alphabet (or the test code).
+/// A voting code: 6 characters of the code alphabet.
 pub fn is_code(s: &str) -> bool {
-    s == TEST_CODE || (s.len() == 6 && s.chars().all(|c| CODE_ALPHABET.contains(c)))
+    s.len() == 6 && s.chars().all(|c| CODE_ALPHABET.contains(c))
 }
 
 /// The columns of a poll source.
@@ -131,41 +118,12 @@ pub fn columns() -> Vec<SourceColumn> {
         .collect()
 }
 
-/// Checks a poll source on save (hard checks: nothing is written when one fails). Test polls are
-/// lenient while being typed (an empty question or answer is allowed); votes follow the answers.
-pub fn validate(
-    link: &Option<PollLink>,
-    test: &mut Option<TestPoll>,
-    cache: &Option<PollData>,
-) -> Result<(), String> {
-    if link.is_some() && test.is_some() {
-        return Err("A poll source shows a poll or a test poll, not both".into());
-    }
+/// Checks a poll source on save (hard checks: nothing is written when one fails).
+pub fn validate(link: &Option<PollLink>, cache: &Option<PollData>) -> Result<(), String> {
     if let Some(l) = link {
         if !is_poll_id(&l.id) || !is_code(&l.code) {
             return Err("The linked poll's id or code is not valid".into());
         }
-    }
-    if let Some(t) = test {
-        t.question = t.question.trim().to_string();
-        if t.question.chars().count() > POLL_QUESTION_MAX {
-            return Err(format!(
-                "The question is too long: at most {POLL_QUESTION_MAX} characters."
-            ));
-        }
-        if t.options.len() > POLL_OPTIONS_MAX {
-            return Err(format!("A poll has at most {POLL_OPTIONS_MAX} answers."));
-        }
-        for (i, o) in t.options.iter_mut().enumerate() {
-            *o = o.trim().to_string();
-            if o.chars().count() > POLL_OPTION_MAX {
-                return Err(format!(
-                    "Answer {} is too long: at most {POLL_OPTION_MAX} characters.",
-                    i + 1
-                ));
-            }
-        }
-        t.votes.resize(t.options.len(), 0);
     }
     if let Some(c) = cache {
         if c.options.len() > POLL_OPTIONS_MAX
@@ -233,36 +191,9 @@ pub fn check_input(input: &PollInput, max_options: usize) -> Result<(), String> 
     Ok(())
 }
 
-/// A test poll as poll data: the test code and link, totals from its votes.
-pub fn test_data(t: &TestPoll) -> PollData {
-    let options: Vec<PollOption> = t
-        .options
-        .iter()
-        .enumerate()
-        .map(|(i, label)| PollOption {
-            position: i as u32,
-            label: label.clone(),
-            votes: t.votes.get(i).copied().unwrap_or(0),
-        })
-        .collect();
-    PollData {
-        id: TEST_ID.into(),
-        code: TEST_CODE.into(),
-        url: format!("https://{VOTE_HOST}/{TEST_CODE}"),
-        question: t.question.clone(),
-        total_votes: options.iter().map(|o| o.votes).sum(),
-        options,
-        status: t.status,
-        show_results: true,
-        round: 1,
-        ..PollData::default()
-    }
-}
-
-/// What a poll source shows: the test poll, or the linked poll's last known data.
+/// What a poll source shows: the linked poll's last known data.
 pub fn data_of(kind: &SourceKind) -> Option<PollData> {
     match kind {
-        SourceKind::Poll { test: Some(t), .. } => Some(test_data(t)),
         SourceKind::Poll { cache, .. } => cache.clone(),
         _ => None,
     }
@@ -492,8 +423,6 @@ pub struct Timing {
     pub stream_retry: Duration,
     /// No bytes for this long ends the stream (the server pings every 30 s).
     pub read_timeout: Duration,
-    /// Test simulation step.
-    pub sim_tick: Duration,
 }
 
 impl Timing {
@@ -503,7 +432,6 @@ impl Timing {
         fallback_every: Duration::from_secs(5),
         stream_retry: Duration::from_secs(60),
         read_timeout: Duration::from_secs(75),
-        sim_tick: Duration::from_millis(250),
     };
 }
 
@@ -526,28 +454,19 @@ struct Task {
     stream: bool,
 }
 
-struct Sim {
-    gen: u64,
-    abort: AbortHandle,
-}
-
 #[derive(Default)]
 struct Svc {
     tasks: HashMap<String, Task>,
     conn: HashMap<String, PollConn>,
     watch: HashMap<String, u32>,
-    /// By source id.
-    sims: HashMap<String, Sim>,
     /// `None` until first read from disk.
     known: Option<Vec<String>>,
 }
 
-/// Live poll results and test simulations (see the module docs).
+/// Live poll results (see the module docs).
 #[derive(Default)]
 pub struct PollService {
     inner: Mutex<Svc>,
-    /// The operator allowed test poll data on Program this session (`AppState::guard_test_data`).
-    test_data_allowed: std::sync::atomic::AtomicBool,
     stream_client: OnceLock<Result<reqwest::Client, String>>,
     test_timing: Mutex<Option<Timing>>,
 }
@@ -591,11 +510,6 @@ impl PollService {
         lock(&self.inner).tasks.len()
     }
 
-    /// Number of running test simulations.
-    pub fn sim_count(&self) -> usize {
-        lock(&self.inner).sims.len()
-    }
-
     /// How `id`'s data arrives (`Idle` when not in use).
     pub fn conn(&self, id: &str) -> PollConn {
         lock(&self.inner).conn.get(id).copied().unwrap_or_default()
@@ -613,21 +527,11 @@ impl PollService {
             .is_some_and(|t| t.gen == gen)
     }
 
-    fn sim_current(&self, source: &str, gen: u64) -> bool {
-        lock(&self.inner)
-            .sims
-            .get(source)
-            .is_some_and(|s| s.gen == gen)
-    }
-
-    /// Stops every task and simulation (project closed or reloaded). The remembered polls stay.
+    /// Stops every task (project closed or reloaded). The remembered polls stay.
     pub(crate) fn stop_all(&self) {
         let mut s = lock(&self.inner);
         for (_, t) in s.tasks.drain() {
             t.abort.abort();
-        }
-        for (_, m) in s.sims.drain() {
-            m.abort.abort();
         }
         s.conn.clear();
         s.watch.clear();
@@ -642,29 +546,6 @@ enum StreamEnd {
     Deleted,
     /// The task was replaced or stopped.
     Stale,
-}
-
-/// A small xorshift generator for simulated votes (no crate; quality doesn't matter here).
-struct Rng(u64);
-
-impl Rng {
-    fn new(seed: u64) -> Self {
-        Self(seed | 1)
-    }
-
-    fn next(&mut self) -> u64 {
-        let mut x = self.0;
-        x ^= x << 13;
-        x ^= x >> 7;
-        x ^= x << 17;
-        self.0 = x;
-        x
-    }
-
-    /// In `[0, 1)`.
-    fn unit(&mut self) -> f64 {
-        (self.next() >> 11) as f64 / (1u64 << 53) as f64
-    }
 }
 
 /// The wait after `fails` failed connects in a row: `base` doubling up to `cap`.
@@ -954,39 +835,18 @@ impl AppState {
 
     // ---- Poll sources ----
 
-    /// A new poll source showing `poll` (linked, its data as the first cache) or a test poll.
-    pub fn create_poll_source(
-        &self,
-        name: &str,
-        poll: Option<PollData>,
-        test: Option<TestPoll>,
-    ) -> AppResult<SourceDoc> {
-        let kind = match (poll, test) {
-            (Some(p), None) => {
-                if !is_poll_id(&p.id) || !is_code(&p.code) {
-                    return Err(AppError::Invalid("Unknown poll".into()));
-                }
-                SourceKind::Poll {
-                    link: Some(PollLink {
-                        id: p.id.clone(),
-                        code: p.code.clone(),
-                    }),
-                    test: None,
-                    cache: Some(p),
-                    gone: false,
-                }
-            }
-            (None, Some(t)) => SourceKind::Poll {
-                link: None,
-                test: Some(t),
-                cache: None,
-                gone: false,
-            },
-            _ => {
-                return Err(AppError::Invalid(
-                    "A poll source shows a poll or a test poll".into(),
-                ))
-            }
+    /// A new poll source showing `poll` (linked, its data as the first cache).
+    pub fn create_poll_source(&self, name: &str, poll: PollData) -> AppResult<SourceDoc> {
+        if !is_poll_id(&poll.id) || !is_code(&poll.code) {
+            return Err(AppError::Invalid("Unknown poll".into()));
+        }
+        let kind = SourceKind::Poll {
+            link: Some(PollLink {
+                id: poll.id.clone(),
+                code: poll.code.clone(),
+            }),
+            cache: Some(poll),
+            gone: false,
         };
         let doc = {
             let (dir, _w) = self.screen_guard()?;
@@ -1004,58 +864,36 @@ impl AppState {
             .sources()
             .poll_links()
             .into_iter()
-            .filter(|(_, l, _)| l.as_deref() == Some(poll_id))
-            .map(|(s, _, _)| s)
+            .filter(|(_, l)| l.as_deref() == Some(poll_id))
+            .map(|(s, _)| s)
             .collect();
         ids.sort();
         ids.into_iter().next()
     }
 
-    /// Whether the open project has a poll source linked to a real poll (for the test-data
-    /// confirmation before Program).
-    pub fn project_uses_real_polls(&self) -> bool {
-        self.sources()
-            .poll_links()
-            .iter()
-            .any(|(_, l, test)| l.is_some() && !test)
-    }
-
     /// The poll part of a source summary.
     pub(crate) fn poll_view(&self, doc: &SourceDoc) -> Option<PollSourceView> {
-        let SourceKind::Poll {
-            link, test, gone, ..
-        } = &doc.meta.kind
-        else {
+        let SourceKind::Poll { link, gone, .. } = &doc.meta.kind else {
             return None;
         };
         let data = data_of(&doc.meta.kind);
         let svc = self.poll_service();
-        let (conn, simulating) = {
+        let conn = if *gone {
+            PollConn::Gone
+        } else {
             let s = lock(&svc.inner);
-            let conn = if test.is_some() {
-                PollConn::Test
-            } else if *gone {
-                PollConn::Gone
-            } else {
-                link.as_ref()
-                    .and_then(|l| s.conn.get(&l.id).copied())
-                    .unwrap_or_default()
-            };
-            (conn, s.sims.contains_key(&doc.id))
+            link.as_ref()
+                .and_then(|l| s.conn.get(&l.id).copied())
+                .unwrap_or_default()
         };
         Some(PollSourceView {
-            test: test.is_some(),
             poll_id: link.as_ref().map(|l| l.id.clone()),
-            code: link
-                .as_ref()
-                .map(|l| l.code.clone())
-                .or_else(|| test.as_ref().map(|_| TEST_CODE.to_string())),
+            code: link.as_ref().map(|l| l.code.clone()),
             conn,
             state: data.as_ref().map(|d| state_of(d).to_string()),
             total_votes: data.as_ref().map_or(0, |d| {
                 d.total_votes.max(d.options.iter().map(|o| o.votes).sum())
             }),
-            simulating,
         })
     }
 
@@ -1063,8 +901,8 @@ impl AppState {
 
     /// New data for a poll: every linked source's cache (written coalesced), bound screens
     /// re-applied with their on-air layers forced, `source-changed` per changed source and
-    /// `poll-live` for watchers.
-    pub(crate) fn poll_apply(&self, data: PollData) {
+    /// `poll-live` for watchers. Also how the e2e fixture feeds results.
+    pub fn poll_apply(&self, data: PollData) {
         let changed = self.poll_put(&data.id, |kind| {
             let SourceKind::Poll { cache, gone, .. } = kind else {
                 return false;
@@ -1176,7 +1014,7 @@ impl AppState {
             conn,
             poll: None,
         });
-        for (sid, l, _) in self.sources().poll_links() {
+        for (sid, l) in self.sources().poll_links() {
             if l.as_deref() == Some(id) {
                 self.emit_source_changed(&sid);
             }
@@ -1185,8 +1023,7 @@ impl AppState {
 
     // ---- Reconcile ----
 
-    /// Starts and stops live-result tasks (see the module docs) and drops simulations of sources
-    /// that are gone. Cheap when nothing involves polls; runs after every live change, source
+    /// Starts and stops live-result tasks (see the module docs). Cheap when nothing involves polls; runs after every live change, source
     /// change, flow deploy and license change.
     pub(crate) fn polls_reconcile(&self) {
         let links = if self.project_dir().is_ok() {
@@ -1197,31 +1034,15 @@ impl AppState {
         let svc = self.poll_service();
         let watched: Vec<String> = {
             let s = lock(&svc.inner);
-            if links.is_empty() && s.watch.is_empty() && s.tasks.is_empty() && s.sims.is_empty() {
+            if links.is_empty() && s.watch.is_empty() && s.tasks.is_empty() {
                 return;
             }
             s.watch.keys().cloned().collect()
         };
-        // Simulations of deleted or no-longer-test sources stop.
-        {
-            let tests: HashSet<&str> = links
-                .iter()
-                .filter(|(_, _, t)| *t)
-                .map(|(s, _, _)| s.as_str())
-                .collect();
-            let mut s = lock(&svc.inner);
-            s.sims.retain(|id, m| {
-                let keep = tests.contains(id.as_str());
-                if !keep {
-                    m.abort.abort();
-                }
-                keep
-            });
-        }
         let mut wanted: HashSet<String> = watched.into_iter().collect();
         let linked: Vec<(&String, &String)> = links
             .iter()
-            .filter_map(|(s, l, _)| l.as_ref().map(|l| (s, l)))
+            .filter_map(|(s, l)| l.as_ref().map(|l| (s, l)))
             .collect();
         if !linked.is_empty() {
             let usage = self.screens().source_usage();
@@ -1296,149 +1117,6 @@ impl AppState {
             };
             self.poll_set_conn(&id, Some(gen), conn);
         }
-    }
-
-    // ---- Test polls ----
-
-    fn test_doc(&self, source: &str) -> AppResult<SourceDoc> {
-        let doc = self
-            .sources()
-            .doc(source)
-            .ok_or_else(|| AppError::NotFound(format!("source {source}")))?;
-        if !matches!(doc.meta.kind, SourceKind::Poll { test: Some(_), .. }) {
-            return Err(AppError::Invalid("Not a test poll".into()));
-        }
-        Ok(doc)
-    }
-
-    /// Changes a test poll in memory (written coalesced) and re-applies its screens.
-    fn test_put(&self, source: &str, f: impl FnOnce(&mut TestPoll) -> bool) -> AppResult<bool> {
-        let changed = {
-            let (dir, _w) = self.screen_guard()?;
-            let mut doc = self.test_doc(source)?;
-            let SourceKind::Poll { test: Some(t), .. } = &mut doc.meta.kind else {
-                return Ok(false);
-            };
-            if !f(t) {
-                return Ok(false);
-            }
-            self.sources().put_dirty(doc);
-            for screen in self.screens().source_users(source) {
-                let force = screens::bound_layers(&screen, source);
-                if let Err(e) = self.apply_screen_doc_forcing(&dir, &screen, &force) {
-                    tracing::warn!("test poll {source}: applying screen {}: {e}", screen.id);
-                }
-            }
-            true
-        };
-        self.schedule_content_flush();
-        self.emit_source_changed(source);
-        Ok(changed)
-    }
-
-    /// Opens, closes or re-drafts a test poll. Closing stops a simulation.
-    pub fn set_test_poll_status(&self, source: &str, status: PollStatus) -> AppResult<()> {
-        if status != PollStatus::Open {
-            self.stop_sim(source);
-        }
-        self.test_put(source, |t| {
-            let changed = t.status != status;
-            t.status = status;
-            changed
-        })?;
-        Ok(())
-    }
-
-    /// Zeroes a test poll's votes.
-    pub fn reset_test_poll(&self, source: &str) -> AppResult<()> {
-        self.test_put(source, |t| {
-            let changed = t.votes.iter().any(|v| *v > 0);
-            t.votes.iter_mut().for_each(|v| *v = 0);
-            changed
-        })?;
-        Ok(())
-    }
-
-    /// Starts (opening the poll) or stops simulated votes.
-    pub fn simulate_test_poll(&self, source: &str, sim: PollSimulation) -> AppResult<()> {
-        self.test_doc(source)?;
-        if !sim.run {
-            self.stop_sim(source);
-            self.emit_source_changed(source);
-            return Ok(());
-        }
-        let rate = sim.rate.clamp(1, SIM_RATE_MAX);
-        self.test_put(source, |t| {
-            let changed = t.status != PollStatus::Open;
-            t.status = PollStatus::Open;
-            changed
-        })?;
-        let Some(h) = self.live().runtime_handle() else {
-            return Err(AppError::Internal("No async runtime".into()));
-        };
-        let gen = next_gen();
-        {
-            let mut s = lock(&self.poll_service().inner);
-            if let Some(old) = s.sims.remove(source) {
-                old.abort.abort();
-            }
-            let task = h.spawn(sim_task(
-                self.downgrade(),
-                source.to_string(),
-                gen,
-                rate,
-                sim.lead,
-            ));
-            s.sims.insert(
-                source.to_string(),
-                Sim {
-                    gen,
-                    abort: task.abort_handle(),
-                },
-            );
-        }
-        self.emit_source_changed(source);
-        Ok(())
-    }
-
-    fn stop_sim(&self, source: &str) {
-        if let Some(m) = lock(&self.poll_service().inner).sims.remove(source) {
-            m.abort.abort();
-        }
-    }
-
-    /// One simulation step: `adds` votes per answer. `false` ends the task (stale, not a test
-    /// poll any more, or not open).
-    fn sim_step(&self, source: &str, gen: u64, adds: &[u64]) -> bool {
-        if !self.poll_service().sim_current(source, gen) {
-            return false;
-        }
-        let mut open = true;
-        let r = self.test_put(source, |t| {
-            if t.status != PollStatus::Open {
-                open = false;
-                return false;
-            }
-            t.votes.resize(t.options.len(), 0);
-            let mut any = false;
-            for (v, a) in t.votes.iter_mut().zip(adds) {
-                if *a > 0 {
-                    *v = v.saturating_add(*a);
-                    any = true;
-                }
-            }
-            any
-        });
-        if r.is_err() || !open {
-            let mut s = lock(&self.poll_service().inner);
-            if s.sims.get(source).is_some_and(|m| m.gen == gen) {
-                s.sims.remove(source);
-            }
-            drop(s);
-            self.emit_source_changed(source);
-            return false;
-        }
-        true
     }
 }
 
@@ -1619,179 +1297,6 @@ async fn read_stream(
     }
 }
 
-/// A test simulation: every tick, `rate × tick` votes (fractions carried over), weighted three
-/// to one towards `lead` (or even, with a little drift).
-async fn sim_task(weak: WeakState, source: String, gen: u64, rate: u32, lead: Option<u32>) {
-    let seed = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(gen, |d| d.as_nanos() as u64 ^ gen);
-    let mut rng = Rng::new(seed);
-    let mut carry = 0.0f64;
-    loop {
-        let Some(st) = weak.upgrade() else { return };
-        let tick = st.poll_service().timing().sim_tick;
-        let n = st
-            .sources()
-            .doc(&source)
-            .and_then(|d| match d.meta.kind {
-                SourceKind::Poll { test: Some(t), .. } => Some(t.options.len()),
-                _ => None,
-            })
-            .unwrap_or(0);
-        drop(st);
-        tokio::time::sleep(tick).await;
-        if n == 0 {
-            continue;
-        }
-        carry += f64::from(rate) * tick.as_secs_f64();
-        let votes = carry.floor() as u64;
-        carry -= votes as f64;
-        let weights: Vec<f64> = (0..n)
-            .map(|i| match lead {
-                Some(l) if l as usize == i => 3.0,
-                Some(_) => 1.0,
-                None => 0.8 + 0.4 * rng.unit(),
-            })
-            .collect();
-        let sum: f64 = weights.iter().sum();
-        let mut adds = vec![0u64; n];
-        for _ in 0..votes {
-            let mut r = rng.unit() * sum;
-            for (i, w) in weights.iter().enumerate() {
-                if r < *w || i == n - 1 {
-                    adds[i] += 1;
-                    break;
-                }
-                r -= w;
-            }
-        }
-        let Some(st) = weak.upgrade() else { return };
-        let s = source.clone();
-        let go = tokio::task::spawn_blocking(move || st.sim_step(&s, gen, &adds)).await;
-        if !matches!(go, Ok(true)) {
-            return;
-        }
-    }
-}
-
-// ---- The test-data safeguard ---------------------------------------------------------------------
-
-impl AppState {
-    /// Whether the operator allowed test poll data on Program this session.
-    pub fn test_data_allowed(&self) -> bool {
-        self.poll_service()
-            .test_data_allowed
-            .load(Ordering::Relaxed)
-    }
-
-    /// The app's "Allow test data on air" (for this session; the app asks first). Tells every
-    /// window when it changes.
-    pub fn allow_test_data_on_air(&self, on: bool) {
-        let was = self
-            .poll_service()
-            .test_data_allowed
-            .swap(on, Ordering::Relaxed);
-        if was != on {
-            self.events()
-                .emit(names::TEST_DATA_ALLOWED, Value::Bool(on));
-        }
-    }
-
-    /// Names of the layers among `layer_ids` (of `screen_id`) bound to a test poll source.
-    fn test_data_layers(&self, screen_id: &str, layer_ids: &[&str]) -> Vec<String> {
-        let tests: HashSet<String> = self
-            .sources()
-            .poll_links()
-            .into_iter()
-            .filter(|(_, _, test)| *test)
-            .map(|(id, _, _)| id)
-            .collect();
-        if tests.is_empty() {
-            return Vec::new();
-        }
-        let Some(doc) = self.screens().doc(screen_id) else {
-            return Vec::new();
-        };
-        doc.meta
-            .layers
-            .iter()
-            .filter(|l| layer_ids.contains(&l.id.as_str()))
-            .filter(|l| match &l.kind {
-                ScreenLayerKind::Template { bindings, .. } => {
-                    bindings.values().any(|b| tests.contains(&b.source_id))
-                }
-                _ => false,
-            })
-            .map(|l| l.name.clone())
-            .collect()
-    }
-
-    /// The safeguard every path to Program goes through (the app, MIDI, OSC, the API / Companion,
-    /// flows): when the project also shows a real poll and test data isn't allowed on air this
-    /// session, a take that would put test poll data on Program is refused, with a log entry and a
-    /// `test-data-blocked` event (Control shows a notice with "Allow test data on air"). Cheap
-    /// when the project has no test polls.
-    pub fn guard_test_data(
-        &self,
-        screen_id: &str,
-        layer_ids: &[&str],
-        via: TakeVia,
-    ) -> AppResult<()> {
-        if layer_ids.is_empty() || self.test_data_allowed() || !self.project_uses_real_polls() {
-            return Ok(());
-        }
-        let layers = self.test_data_layers(screen_id, layer_ids);
-        if layers.is_empty() {
-            return Ok(());
-        }
-        let list = layers.join(", ");
-        tracing::warn!(
-            "refused a {via:?} take of {list} on screen {screen_id}: it shows test poll data and \
-             the project also shows a real poll (allow test data on air in Control)"
-        );
-        let blocked = TestDataBlocked {
-            screen_id: screen_id.to_string(),
-            layers,
-            via,
-            at: crate::core::fsx::now_epoch_ms(),
-        };
-        match serde_json::to_value(&blocked) {
-            Ok(v) => self.events().emit(names::TEST_DATA_BLOCKED, v),
-            Err(e) => tracing::warn!("test-data-blocked payload: {e}"),
-        }
-        Err(AppError::TestData(list))
-    }
-
-    /// TAKE of one layer from any path: the safeguard (only when it isn't on air yet: an update of
-    /// an on-air layer changes nothing about what is on Program), then the live rules.
-    pub fn live_take(
-        &self,
-        screen_id: &str,
-        layer_id: &str,
-        via: TakeVia,
-    ) -> AppResult<LiveLayerView> {
-        let on_air = self.live().layer_view(screen_id, layer_id)?.on_air;
-        if !on_air {
-            self.guard_test_data(screen_id, &[layer_id], via)?;
-        }
-        Ok(self.live().show(screen_id, layer_id)?)
-    }
-
-    /// The layers a Studio take of `screen_id` would bring to Program (cued in).
-    pub(crate) fn studio_incoming(&self, screen_id: &str) -> Vec<String> {
-        self.live()
-            .preview_view(screen_id)
-            .map(|v| {
-                v.cues
-                    .into_iter()
-                    .filter(|c| c.visible == Some(true))
-                    .map(|c| c.layer_id)
-                    .collect()
-            })
-            .unwrap_or_default()
-    }
-}
-
 // ---- Add to screen ---------------------------------------------------------------------------------
 
 /// The Poll preset's field → the poll source column it shows (`""`: the list of every answer).
@@ -1885,20 +1390,5 @@ impl AppState {
         let state = self.save_screen(screen)?;
         self.polls_reconcile();
         Ok(state)
-    }
-}
-
-impl AppState {
-    /// Test seam (the e2e fixture, tests): sets a test poll's votes exactly, like a simulation step
-    /// (the answers keep their order; missing ones are zero). Applies through the source path.
-    pub fn set_test_poll_votes(&self, source: &str, votes: &[u64]) -> AppResult<()> {
-        self.test_put(source, |t| {
-            let mut next = votes.to_vec();
-            next.resize(t.options.len(), 0);
-            let changed = t.votes != next;
-            t.votes = next;
-            changed
-        })?;
-        Ok(())
     }
 }
