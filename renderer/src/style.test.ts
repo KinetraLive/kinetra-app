@@ -1,4 +1,5 @@
 // Style library markup: data-empty, data-fit and the font preload before play-in.
+import { env } from "node:process";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./app";
 import { FONT_CAP_MS, faces, resetFonts } from "./fonts";
@@ -212,7 +213,9 @@ describe("data-fit", () => {
     const ms = performance.now() - t0;
     expect(px(name)).toBe(BASE * 0.6);
     expect(probe.reads).toBeLessThanOrEqual(3); // too wide even at the minimum: no search
-    expect(ms).toBeLessThan(4);
+    // 4 ms here; shared CI runners are several times slower and noisier, so CI only catches a
+    // real slowdown.
+    expect(ms).toBeLessThan(env.CI ? 20 : 4);
     l.patch({ name: "Ada" });
     expect(size(name)).toBe(""); // back to the CSS size
   });
