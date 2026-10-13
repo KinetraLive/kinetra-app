@@ -2194,6 +2194,10 @@ export type RemoteView = RemotePhase & {
   lastError: string | null;
   /** The project has a remote control ID ("Make this a separate show" is offered). */
   hasShowId: boolean;
+  /** This build offers remote control (KINETRA_REMOTE at build time). */
+  available: boolean;
+  /** Screens beyond what remote users see (the protocol shows the first 32); 0 when all show. */
+  screensHidden: number;
 };
 
 /** An accepted remote command (`remote-activity`; this run only). */

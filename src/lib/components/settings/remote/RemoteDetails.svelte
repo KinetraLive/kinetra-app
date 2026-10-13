@@ -5,7 +5,7 @@
   or tokens.
     Test connection  §4a probe while off, a ping on the live connection while on; the result in
                      plain words with its step times (rate limited: the button waits)
-    numbers          state, server version, run / show IDs (Copy run ID), round trip (last /
+    numbers          state, server version, the 32-screen note (when the project has more), run / show IDs (Copy run ID), round trip (last /
                      median / max) and clock offset, snapshot, messages per type, commands,
                      connections and the last close, recent refused commands
     Export diagnostics…  a JSON file (save dialog); nothing is uploaded
@@ -20,6 +20,7 @@
   import { remoteDiagWatch, remoteExportDiagnostics, remoteTest } from "$lib/api/remote";
   import { toasts } from "$lib/stores/toasts.svelte";
   import type { RemoteDiag, RemoteTestResult } from "$lib/types";
+  import { remote } from "$lib/components/remote/state.svelte";
 
   let diag = $state.raw<RemoteDiag | null>(null);
   $effect(() => {
@@ -133,6 +134,11 @@
         {#if diag.showId}<span class="id">Show <span class="mono">{diag.showId}</span></span>{/if}
       </div>
     </SettingsRow>
+    {#if remote.view?.on && remote.view.screensHidden > 0}
+      <SettingsRow label="Screens">
+        <span>Remote users see the first 32 screens ({remote.view.screensHidden} more in this project).</span>
+      </SettingsRow>
+    {/if}
     <SettingsRow label="Round trip">
       <span class="tnum">
         {`Last ${ms(diag.rtt.last)} · median ${ms(diag.rtt.median)} · max ${ms(diag.rtt.max)}`}{diag.clockOffsetMs !== null ? ` · clock offset ${ms(diag.clockOffsetMs)}` : ""}

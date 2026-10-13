@@ -7,6 +7,7 @@
 
 import type { Component } from "svelte";
 import type { PreferenceSectionId } from "$lib/types";
+import { REMOTE_BUILD } from "$remote";
 
 export interface PreferenceSection {
   id: PreferenceSectionId;
@@ -91,7 +92,7 @@ export const PREFERENCE_ENTRIES: readonly { id: string; title: string }[] = [
   { id: "outputs", title: "Outputs" },
   { id: "network", title: "Network & API" },
   { id: "server", title: "Server" },
-  { id: "remote", title: "Remote control" },
+  ...(REMOTE_BUILD ? [{ id: "remote", title: "Remote control" }] : []),
   { id: "midi", title: "MIDI & OSC" },
   { id: "shortcuts", title: "Keyboard shortcuts" },
   { id: "advanced", title: "Advanced" },

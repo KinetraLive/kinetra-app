@@ -546,6 +546,44 @@ fn cue_flow(e: &Env, name: &str) -> String {
 // ---- Tests ------------------------------------------------------------------------------------
 
 #[test]
+fn a_build_without_remote_control_refuses_the_switch() {
+    let e = env();
+    e.st.remote()
+        .test_unavailable
+        .store(true, std::sync::atomic::Ordering::Relaxed);
+    let r = e.st.remote_set(true);
+    let test = e.rt.block_on(e.st.remote_test());
+    let view = e.st.remote_view();
+    assert!(matches!(r, Err(crate::error::AppError::Invalid(_))));
+    assert!(!view.available);
+    assert_eq!(test.code, "unavailable");
+    std::thread::sleep(Duration::from_millis(50));
+    assert!(e.connects().is_empty());
+    assert!(e.st.project_remote_id().is_none());
+    // Debug builds (these tests) have it.
+    assert!(REMOTE_BUILD);
+}
+
+#[test]
+fn more_than_32_screens_are_reported() {
+    let e = env();
+    assert_eq!(e.st.remote_view().screens_hidden, 0);
+    for i in 0..33 {
+        e.st.create_screen(&NewScreen {
+            name: format!("Extra {i}"),
+            width: 1920,
+            height: 1080,
+            background: "transparent".into(),
+        })
+        .unwrap();
+    }
+    // 34 screens: two beyond the protocol's 32.
+    assert_eq!(e.st.remote_view().screens_hidden, 2);
+    let snap = e.live();
+    assert_eq!(snap["screen_order"].as_array().unwrap().len(), 32);
+}
+
+#[test]
 fn off_at_start_and_off_costs_nothing() {
     let e = env();
     std::thread::sleep(Duration::from_millis(100));

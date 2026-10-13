@@ -14,7 +14,8 @@ export interface ShellActions {
   go: (href: string) => void;
   toggleAutomation: () => void;
   automationOff: () => boolean;
-  toggleRemote: () => void;
+  /** Absent in builds without remote control: no command then. */
+  toggleRemote?: () => void;
   remoteOn: () => boolean;
 }
 
@@ -48,15 +49,19 @@ export function shellCommands(a: ShellActions): Command[] {
       section: "settings",
       run: a.toggleAutomation,
     },
-    {
-      id: "shell.remote",
-      get title() {
-        return a.remoteOn() ? "Remote control off" : "Remote control on";
-      },
-      keywords: ["remote", "crew", "browser"],
-      section: "settings",
-      run: a.toggleRemote,
-    },
+    ...(a.toggleRemote
+      ? [
+          {
+            id: "shell.remote",
+            get title() {
+              return a.remoteOn() ? "Remote control off" : "Remote control on";
+            },
+            keywords: ["remote", "crew", "browser"],
+            section: "settings" as const,
+            run: a.toggleRemote,
+          },
+        ]
+      : []),
     applyStyleCommand,
   ];
 }

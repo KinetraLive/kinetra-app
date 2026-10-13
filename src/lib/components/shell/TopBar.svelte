@@ -1,7 +1,7 @@
 <!--
   App top bar, left to right: Kinetra logo (mark centred over the rail) · divider · project
-  switcher · flexible space · remote control's chip (only while it is on: a lazy chunk with its
-  panel) · output server status · theme toggle. Watches remote control (`remote`: the view and
+  switcher · flexible space · remote control's chip (only in builds with remote control and while
+  it is on: a lazy chunk with its panel; `$remote`) · output server status · theme toggle. Watches remote control (`remote`: the view and
   the cue list's position, which Control's cue strip reads) on every app page.
 
   Server status is a tally dot + text, never the program (on-air) colour:
@@ -23,6 +23,7 @@
   import Logo from "./Logo.svelte";
   import ProjectSwitcher from "./ProjectSwitcher.svelte";
   import { remote } from "$lib/components/remote/state.svelte";
+  import { loadChip } from "$remote";
 
   $effect(() => server.watch());
   $effect(() => remote.watch());
@@ -39,8 +40,8 @@
   <span class="divider" aria-hidden="true"></span>
   <ProjectSwitcher />
   <div class="right">
-    {#if remote.view?.on}
-      {#await import("$lib/components/remote/RemoteChip.svelte") then m}<m.default />{/await}
+    {#if loadChip && remote.view?.on}
+      {#await loadChip() then Chip}<Chip />{/await}
     {/if}
     <div class="status" role="status">
       {#if status?.state === "running"}

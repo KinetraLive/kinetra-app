@@ -72,6 +72,10 @@
     {#if view.state === "live" && view.rttMs !== null}<span class="muted tnum">· {view.rttMs} ms</span>{/if}
   </p>
 
+  {#if view.on && view.screensHidden > 0}
+    <p class="note">Remote users see the first 32 screens.</p>
+  {/if}
+
   {#if view.licenseWarning}
     <p class="warn">{view.licenseWarning.message || "Your license ended."} Remote control stops at {clock(view.licenseWarning.endsMs)}.</p>
   {/if}
@@ -208,6 +212,10 @@
   }
   .warn {
     color: var(--warning);
+    font-size: var(--fs-sm);
+  }
+  .note {
+    color: var(--text-muted);
     font-size: var(--fs-sm);
   }
 </style>

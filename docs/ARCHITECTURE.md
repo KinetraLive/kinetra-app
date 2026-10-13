@@ -131,6 +131,8 @@ A project is a plain folder of JSON, HTML and CSS, portable and git-friendly:
 
 People control a running show from a browser at `control.kinetra.live`. The contract is
 [CONTROL_PROTOCOL.md](CONTROL_PROTOCOL.md) (a copy of kinetra-cloud's; the protocol wins).
+It is in a build only with `KINETRA_REMOTE=1` (debug builds and `pnpm dev` have it; release
+builds get it from a CI variable once the relay is live; see [RELEASING.md](RELEASING.md)).
 
 - **One outgoing WebSocket** to `api.kinetra.live` while the switch is on for the open project
   (`core/remote/`); nothing connects in to the show machine. The switch lasts for the app

@@ -30,6 +30,22 @@ fn build_info() {
     };
     println!("cargo:rustc-env=KINETRA_CHANNEL={channel}");
 
+    // Remote control (core::remote) ships only where KINETRA_REMOTE=1: CI release builds leave it
+    // off until kinetra-cloud's relay is live. Without the variable it is on in debug builds
+    // (local dev, tests, e2e) and off in release builds. 1 | 0; anything else fails the build.
+    println!("cargo:rerun-if-env-changed=KINETRA_REMOTE");
+    println!("cargo:rustc-check-cfg=cfg(kinetra_remote)");
+    let debug = std::env::var("PROFILE").is_ok_and(|p| p == "debug");
+    let remote = match std::env::var("KINETRA_REMOTE").unwrap_or_default().trim() {
+        "" => debug,
+        "1" => true,
+        "0" => false,
+        other => panic!("KINETRA_REMOTE must be \"1\" or \"0\", not {other:?}"),
+    };
+    if remote {
+        println!("cargo:rustc-cfg=kinetra_remote");
+    }
+
     let commit = std::process::Command::new("git")
         .args(["rev-parse", "--short", "HEAD"])
         .output()

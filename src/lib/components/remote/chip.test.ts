@@ -43,6 +43,8 @@ const live: RemoteView = {
   licenseWarning: null,
   lastError: null,
   hasShowId: true,
+  available: true,
+  screensHidden: 0,
 };
 
 beforeEach(() => {
@@ -72,6 +74,12 @@ describe("RemoteChip", () => {
     expect(screen.getByText("Kari N.")).toBeTruthy();
     expect(screen.getByText(/Viewer · since/)).toBeTruthy();
     expect(screen.getByText(/42 ms/)).toBeTruthy();
+  });
+
+  it("says when remote users don't see every screen", () => {
+    remote.view = { ...live, screensHidden: 3 };
+    render(RemoteChip);
+    expect(screen.getByText("Remote users see the first 32 screens.")).toBeTruthy();
   });
 
   it("locks remote take", async () => {

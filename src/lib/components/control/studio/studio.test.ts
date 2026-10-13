@@ -19,7 +19,7 @@ import type {
 type Handler = (payload: unknown) => void;
 const events = vi.hoisted(() => ({ handlers: new Map<string, Handler>() }));
 const api = vi.hoisted(() => ({
-  remoteView: vi.fn(async () => ({ state: "off", on: false, takeLocked: false, crew: [], showId: null, crewUrl: null, controllerUrl: null, serverVersion: null, rttMs: null, licenseWarning: null, lastError: null, hasShowId: false })),
+  remoteView: vi.fn(async () => ({ state: "off", on: false, takeLocked: false, crew: [], showId: null, crewUrl: null, controllerUrl: null, serverVersion: null, rttMs: null, licenseWarning: null, lastError: null, hasShowId: false, available: true, screensHidden: 0 })),
   cuePosition: vi.fn(async () => ({ current: null, next: null })),
   remoteDiagWatch: vi.fn(async () => null),
   licenseView: vi.fn(async () => null),

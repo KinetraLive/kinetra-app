@@ -15,6 +15,8 @@ const base: RemoteView = {
   licenseWarning: null,
   lastError: null,
   hasShowId: false,
+  available: true,
+  screensHidden: 0,
 };
 const v = (over: Partial<RemoteView> & Pick<RemoteView, "state">) => ({ ...base, on: true, ...over }) as RemoteView;
 const act = (name: string, text: string, at = 0): RemoteActivity => ({ at, name, role: "operator", text });

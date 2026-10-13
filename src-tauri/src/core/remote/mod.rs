@@ -56,6 +56,11 @@ use crate::core::model::Project;
 use crate::core::state::{AppState, StateChange, WeakState};
 use crate::error::{AppError, AppResult};
 
+/// Remote control is in this build (`KINETRA_REMOTE` at build time, see `build.rs`): off in
+/// release builds until kinetra-cloud's relay is live, on in debug builds. Without it the core
+/// refuses to turn remote control on and the UI leaves the switch out.
+pub const REMOTE_BUILD: bool = cfg!(kinetra_remote);
+
 /// The entitlement remote control needs (`kinetra_license::entitlements::PRO_CONTROL`).
 pub const PRO_CONTROL: &str = kinetra_license::entitlements::PRO_CONTROL;
 /// Recent remote actions kept (in memory, this run only).
@@ -124,6 +129,11 @@ pub struct RemoteView {
     pub last_error: Option<String>,
     /// The project has a remote control ID ("Make this a separate show" is offered).
     pub has_show_id: bool,
+    /// This build offers remote control (`REMOTE_BUILD`).
+    pub available: bool,
+    /// Screens in the project beyond what remote users see (the protocol shows at most
+    /// [`proto::SCREENS_MAX`]): "Remote users see the first 32 screens". 0 when all show.
+    pub screens_hidden: u32,
 }
 
 /// One accepted remote command (in memory only, this run; gone when the run or app ends).
@@ -196,6 +206,9 @@ pub struct Remote {
     /// The newest connection task that has finished (quit waits for it).
     finished: AtomicU64,
     diag: Mutex<Diag>,
+    /// Tests: pretend this build has no remote control.
+    #[cfg(test)]
+    test_unavailable: AtomicBool,
 }
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -220,6 +233,15 @@ impl Remote {
 }
 
 impl AppState {
+    /// Whether this build offers remote control ([`REMOTE_BUILD`]; tests can pretend not).
+    pub fn remote_available(&self) -> bool {
+        #[cfg(test)]
+        if self.remote().test_unavailable.load(Ordering::Relaxed) {
+            return false;
+        }
+        REMOTE_BUILD
+    }
+
     /// Registers the change listener, the project observer and the flow hook. Called once by
     /// `AppState::load`; costs nothing while remote control is off.
     pub(crate) fn remote_init(&self) {
@@ -300,6 +322,14 @@ impl AppState {
     pub fn remote_view(&self) -> RemoteView {
         let mut v = lock(&self.remote().inner).view.clone();
         v.has_show_id = self.project_remote_id().is_some();
+        v.available = self.remote_available();
+        v.screens_hidden = u32::try_from(
+            self.live()
+                .user_screen_ids()
+                .len()
+                .saturating_sub(proto::SCREENS_MAX),
+        )
+        .unwrap_or(u32::MAX);
         v
     }
 
@@ -351,6 +381,11 @@ impl AppState {
             self.remote_stop(EndReason::Disabled);
             self.remote_emit();
             return Ok(self.remote_view());
+        }
+        if !self.remote_available() {
+            return Err(AppError::Invalid(
+                "Remote control isn't available in this version of Kinetra yet.".into(),
+            ));
         }
         self.require_new_pro_work(PRO_CONTROL)?;
         if lock(&self.remote().inner).conn.is_some() {
@@ -631,6 +666,13 @@ impl AppState {
 
     /// Test connection (§4a): a probe while off; a ping on the live connection while on.
     pub async fn remote_test(&self) -> TestResult {
+        if !self.remote_available() {
+            return TestResult {
+                code: "unavailable".into(),
+                message: "Remote control isn't available in this version of Kinetra yet.".into(),
+                ..Default::default()
+            };
+        }
         let live = {
             let g = lock(&self.remote().inner);
             matches!(g.view.phase, Phase::Live { .. })
