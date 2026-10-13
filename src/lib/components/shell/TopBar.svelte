@@ -1,6 +1,8 @@
 <!--
   App top bar, left to right: Kinetra logo (mark centred over the rail) · divider · project
-  switcher · flexible space · output server status · theme toggle.
+  switcher · flexible space · remote control's chip (only while it is on: a lazy chunk with its
+  panel) · output server status · theme toggle. Watches remote control (`remote`: the view and
+  the cue list's position, which Control's cue strip reads) on every app page.
 
   Server status is a tally dot + text, never the program (on-air) colour:
     running      preview dot + mono URL (127.0.0.1:7770, or LAN 192.168.x.x:7770) + copy button
@@ -20,8 +22,10 @@
   import { preferencesLink } from "$lib/components/settings/open";
   import Logo from "./Logo.svelte";
   import ProjectSwitcher from "./ProjectSwitcher.svelte";
+  import { remote } from "$lib/components/remote/state.svelte";
 
   $effect(() => server.watch());
+  $effect(() => remote.watch());
 
   const status = $derived(server.status);
   /** What "Copy output URL" copies: the LAN URL when there is one (it works everywhere). */
@@ -35,6 +39,9 @@
   <span class="divider" aria-hidden="true"></span>
   <ProjectSwitcher />
   <div class="right">
+    {#if remote.view?.on}
+      {#await import("$lib/components/remote/RemoteChip.svelte") then m}<m.default />{/await}
+    {/if}
     <div class="status" role="status">
       {#if status?.state === "running"}
         <span class="state">

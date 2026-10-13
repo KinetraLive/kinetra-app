@@ -316,6 +316,7 @@ pub(super) async fn send(tx: &mut Tx, weak: &WeakState, m: &Out, within: Duratio
                 ms,
             });
             tracing::debug!("remote → {} {bytes} B", m.kind());
+            st.remote_diag_touch();
         }
     }
     ok
@@ -344,6 +345,7 @@ fn record_in(weak: &WeakState, m: &In, bytes: usize) {
             ms: None,
         });
         tracing::debug!("remote ← {} {bytes} B", m.kind());
+        st.remote_diag_touch();
     }
 }
 

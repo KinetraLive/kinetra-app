@@ -1,4 +1,5 @@
-// The shell's commands (palette, navigation, theme, sidebar pin, Automation off / on, Apply
+// The shell's commands (palette, navigation, theme, sidebar pin, Automation off / on, Remote
+// control on / off, Apply
 // style…) as a factory: AppShell registers them with real actions, and Preferences > Keyboard
 // shortcuts (another window, without the shell) lists inert copies from the same factory, so
 // titles, ids and default keys can't drift.
@@ -13,6 +14,8 @@ export interface ShellActions {
   go: (href: string) => void;
   toggleAutomation: () => void;
   automationOff: () => boolean;
+  toggleRemote: () => void;
+  remoteOn: () => boolean;
 }
 
 export function shellCommands(a: ShellActions): Command[] {
@@ -44,6 +47,15 @@ export function shellCommands(a: ShellActions): Command[] {
       },
       section: "settings",
       run: a.toggleAutomation,
+    },
+    {
+      id: "shell.remote",
+      get title() {
+        return a.remoteOn() ? "Remote control off" : "Remote control on";
+      },
+      keywords: ["remote", "crew", "browser"],
+      section: "settings",
+      run: a.toggleRemote,
     },
     applyStyleCommand,
   ];

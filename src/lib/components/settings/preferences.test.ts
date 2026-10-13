@@ -13,6 +13,10 @@ type Handler = (payload: unknown) => void;
 const events = vi.hoisted(() => ({ handlers: new Map<string, Handler>() }));
 
 const api = vi.hoisted(() => ({
+  remoteView: vi.fn(async () => ({ state: "off", on: false, takeLocked: false, crew: [], showId: null, crewUrl: null, controllerUrl: null, serverVersion: null, rttMs: null, licenseWarning: null, lastError: null, hasShowId: false })),
+  cuePosition: vi.fn(async () => ({ current: null, next: null })),
+  remoteDiagWatch: vi.fn(async () => null),
+  licenseView: vi.fn(async () => null),
   appInfo: vi.fn(),
   openPreferences: vi.fn(async (_section?: string | null) => {}),
   currentProject: vi.fn(),
@@ -49,6 +53,8 @@ const api = vi.hoisted(() => ({
   installUpdate: vi.fn(),
   setZoom: vi.fn(async (z: number) => z),
 }));
+vi.mock("$lib/api/remote", () => api);
+vi.mock("$lib/api/license", () => api);
 vi.mock("$lib/api", () => ({
   ...api,
   toAppError: (e: unknown) =>
@@ -371,12 +377,14 @@ describe("Appearance", () => {
 // ---- Network & API / Advanced -------------------------------------------------------------------
 
 describe("Network & API", () => {
-  it("Advanced: Server with OSC and MIDI & OSC; anchors server, osc and midi", async () => {
+  it("Advanced: Server with OSC, Remote control and MIDI & OSC; anchors server, osc, remote and midi", async () => {
     const { container } = render(NetworkPane);
     expect(screen.getByRole("heading", { name: "Server" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "MIDI & OSC" })).toBeTruthy();
     expect(container.querySelector("#server")).toBeTruthy();
     expect(container.querySelector("#midi")).toBeTruthy();
+    expect(container.querySelector("#remote")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Remote control" })).toBeTruthy();
     await waitFor(() => expect(container.querySelector("#osc")).toBeTruthy());
     expect(screen.queryByText(/available in Advanced mode/)).toBeNull();
   });

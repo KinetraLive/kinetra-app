@@ -98,7 +98,7 @@ function view(pro: boolean, over: Partial<LicenseView> = {}): LicenseView {
     plan: pro ? "pro_yearly" : "free",
     planName: null,
     entitlements: pro ? ["core.app", "pro.polls"] : ["core.app"],
-    features: { ai: pro, polls: pro },
+    features: { ai: pro, polls: pro, control: pro },
     pending: null,
     endsAt: null,
     updatesUntil: null,

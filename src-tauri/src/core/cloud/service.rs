@@ -159,6 +159,8 @@ pub struct Features {
     pub ai: bool,
     /// Live polls (`pro.polls`).
     pub polls: bool,
+    /// Remote control (`pro.control`).
+    pub control: bool,
 }
 
 impl Features {
@@ -167,6 +169,7 @@ impl Features {
         Self {
             ai: has(kinetra_license::entitlements::PRO_AI),
             polls: has(kinetra_license::entitlements::PRO_POLLS),
+            control: has(kinetra_license::entitlements::PRO_CONTROL),
         }
     }
 }

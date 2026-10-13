@@ -11,7 +11,8 @@
   with the text "Disarmed" (arm it in Flows or under Automation). "New cue" opens the lazy linear editor.
   A "MIDI" chip shows when a MIDI control is assigned (the source in its tooltip). Right-click (or
   Shift+F10 / the menu key on the cue; the page's side panel handles it) opens the lazy context menu: Assign MIDI…, Remove MIDI,
-  Set hotkey.
+  Set hotkey. "Next" marks the cue GO runs next (the one after the last cue run, from any path; the
+  same cue remote users see as next; `remote.cues`, which the toolbar watches).
 
   Props:
     ctl: ControlCtl
@@ -28,6 +29,7 @@
   import { aimsAt, cueLabel, relTime } from "$lib/components/flows/flows.svelte";
   import type { ControlCtl } from "./control.svelte";
   import { flowHotkey, flowHotkeyKey } from "./hotkeys";
+  import { remote } from "$lib/components/remote/state.svelte";
   import { lazy } from "./LayerRow.svelte";
 
   let { ctl }: { ctl: ControlCtl } = $props();
@@ -84,6 +86,7 @@
               <span class="muted" title={f.lastFiredAt}>{relTime(f.lastFiredAt)}</span>
             {/if}
           </span>
+          {#if remote.cues.next === f.id}<span class="badge next" title="Next in the cue list">Next</span>{/if}
           {#if hotkey}<span class="badge mono" title="Hotkey">{hotkey}</span>{/if}
           {#if lazy.body}<lazy.body.MidiChip k={key} />{/if}
           {#if capturing}
@@ -192,6 +195,10 @@
     color: var(--text-muted);
     font-size: var(--fs-xs);
     line-height: 18px;
+  }
+  .badge.next {
+    box-shadow: inset 0 0 0 1px var(--accent);
+    color: var(--accent-text);
   }
   .empty {
     display: flex;

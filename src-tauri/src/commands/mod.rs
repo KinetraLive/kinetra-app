@@ -21,6 +21,7 @@ pub mod prefs;
 pub mod project;
 pub mod recents;
 pub mod recipes;
+pub mod remote;
 pub mod reset;
 pub mod screens;
 pub mod settings_io;

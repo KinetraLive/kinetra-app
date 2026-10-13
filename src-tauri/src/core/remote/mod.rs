@@ -166,6 +166,18 @@ struct Inner {
     /// The assets remote users may pick (`None`: read again before the next build).
     assets: Option<Arc<Vec<RemoteAsset>>>,
     activity: VecDeque<Activity>,
+    /// The cue position last announced (`cue-position`).
+    cue_announced: Option<CuePosition>,
+}
+
+/// The cue list's position (`cue-position`; Control's "Next" mark shows `next`).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CuePosition {
+    /// The last cue run (a flow id).
+    pub current: Option<String>,
+    /// What GO runs next.
+    pub next: Option<String>,
 }
 
 /// Remote control's state on `AppState`.
@@ -174,6 +186,10 @@ pub struct Remote {
     inner: Mutex<Inner>,
     /// A connection task exists: the change listener only wakes it then.
     active: AtomicBool,
+    /// Connection details windows open (`remote_diag_watch`, counted).
+    diag_watchers: std::sync::atomic::AtomicUsize,
+    /// A `remote-diag` is scheduled.
+    diag_pending: AtomicBool,
     /// Wakes the connection task: something it shows may have changed.
     dirty: Arc<Notify>,
     gen: AtomicU64,
@@ -217,6 +233,7 @@ impl AppState {
         self.flows().set_changed_hook(Arc::new(move || {
             if let Some(st) = weak.upgrade() {
                 st.remote_touch();
+                st.remote_announce_cues();
             }
         }));
         self.add_project_observer(Arc::new(Observer(self.downgrade())));
@@ -251,13 +268,32 @@ impl AppState {
         if let Some(pos) = cues.iter().position(|c| c.id == id) {
             lock(&self.remote().inner).last_cue = Some((id.to_string(), pos));
         }
+        self.remote_announce_cues();
     }
 
-    /// The cue list's `current` and `next` cue ids (Control's "Next" mark shows the same).
-    pub fn remote_cue_position(&self) -> (Option<String>, Option<String>) {
+    /// The cue list's `current` and `next` (Control's "Next" mark shows the same).
+    pub fn remote_cue_position(&self) -> CuePosition {
         let order: Vec<String> = state::cues(self).into_iter().map(|c| c.id).collect();
         let last = lock(&self.remote().inner).last_cue.clone();
-        state::current_next(&order, last.as_ref())
+        let (current, next) = state::current_next(&order, last.as_ref());
+        CuePosition { current, next }
+    }
+
+    /// Emits `cue-position` when it changed (a cue ran, cues were added, removed or renamed,
+    /// another project opened).
+    fn remote_announce_cues(&self) {
+        let pos = self.remote_cue_position();
+        {
+            let mut g = lock(&self.remote().inner);
+            if g.cue_announced.as_ref() == Some(&pos) {
+                return;
+            }
+            g.cue_announced = Some(pos.clone());
+        }
+        match serde_json::to_value(&pos) {
+            Ok(v) => self.events().emit(names::CUE_POSITION, v),
+            Err(e) => tracing::warn!("cue-position payload: {e}"),
+        }
     }
 
     /// The current view (`remote_view`).
@@ -329,6 +365,19 @@ impl AppState {
         Ok(self.remote_view())
     }
 
+    /// End remote control: every browser is told the show machine ended it; the switch stays on
+    /// with Start again (§5). Nothing on air changes.
+    pub fn remote_end(&self) -> AppResult<RemoteView> {
+        self.project_dir()?;
+        let had = lock(&self.remote().inner).conn.is_some();
+        if had {
+            self.remote_stop(EndReason::Disabled);
+            lock(&self.remote().inner).view.phase = Phase::Ended;
+            self.remote_emit();
+        }
+        Ok(self.remote_view())
+    }
+
     /// "Start again" after the run ended or remote control stopped (the switch is still on).
     pub fn remote_start_again(&self) -> AppResult<RemoteView> {
         self.remote_set(true)
@@ -386,11 +435,17 @@ impl AppState {
     }
 
     pub(crate) fn remote_record_activity(&self, a: Activity) {
-        let mut g = lock(&self.remote().inner);
-        if g.activity.len() == ACTIVITY_CAP {
-            g.activity.pop_front();
+        {
+            let mut g = lock(&self.remote().inner);
+            if g.activity.len() == ACTIVITY_CAP {
+                g.activity.pop_front();
+            }
+            g.activity.push_back(a.clone());
         }
-        g.activity.push_back(a);
+        match serde_json::to_value(&a) {
+            Ok(v) => self.events().emit(names::REMOTE_ACTIVITY, v),
+            Err(e) => tracing::warn!("remote-activity payload: {e}"),
+        }
     }
 
     /// The tree's inputs besides the app state: the lock, the last cue run and the assets
@@ -551,6 +606,7 @@ impl AppState {
             (switched, renamed, start)
         };
         if switched {
+            self.remote_announce_cues();
             let had = lock(&self.remote().inner).conn.is_some();
             if had {
                 self.remote_stop(EndReason::ProjectClosed);
@@ -596,6 +652,51 @@ impl AppState {
         self.remote()
             .diag()
             .export(&state, env!("CARGO_PKG_VERSION"), std::env::consts::OS)
+    }
+
+    /// What Connection details shows: the export with the last 50 message records.
+    pub fn remote_diag_view(&self) -> Value {
+        let mut v = self.remote_diagnostics();
+        if let Some(m) = v["messages"].as_array_mut() {
+            let n = m.len().saturating_sub(50);
+            m.drain(..n);
+        }
+        v
+    }
+
+    /// Opens (`true`) or closes a Connection details watch (counted): while one is open,
+    /// `remote-diag` follows every change, at most twice a second. Returns the view now.
+    pub fn remote_diag_watch(&self, on: bool) -> Value {
+        let w = &self.remote().diag_watchers;
+        if on {
+            w.fetch_add(1, Ordering::Relaxed);
+        } else {
+            let _ = w.try_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_sub(1));
+        }
+        self.remote_diag_view()
+    }
+
+    /// The diagnostics changed: `remote-diag` within 500 ms while someone watches (ONE sleeping
+    /// task while one is pending; nothing without a watcher).
+    pub(crate) fn remote_diag_touch(&self) {
+        let r = self.remote();
+        if r.diag_watchers.load(Ordering::Relaxed) == 0
+            || r.diag_pending.swap(true, Ordering::Relaxed)
+        {
+            return;
+        }
+        let Some(rt) = self.live().runtime_handle() else {
+            r.diag_pending.store(false, Ordering::Relaxed);
+            return;
+        };
+        let weak = self.downgrade();
+        rt.spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            let Some(st) = weak.upgrade() else { return };
+            st.remote().diag_pending.store(false, Ordering::Relaxed);
+            let v = st.remote_diag_view();
+            st.events().emit(names::REMOTE_DIAG, v);
+        });
     }
 
     /// Writes [`AppState::remote_diagnostics`] to `path` (atomically). Touches the disk.

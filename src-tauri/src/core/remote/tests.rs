@@ -990,8 +990,21 @@ fn cue_list_follows_every_run_and_two_gos_run_one_cue() {
     assert_eq!(e.tree()["cue_lists"]["cues"]["next"], json!(b));
     assert_eq!(
         e.st.remote_cue_position(),
-        (Some(a.clone()), Some(b.clone()))
+        CuePosition {
+            current: Some(a.clone()),
+            next: Some(b.clone())
+        }
     );
+    let announced: Vec<Value> = e
+        .rec
+        .0
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|(n, _)| n == names::CUE_POSITION)
+        .map(|(_, v)| v.clone())
+        .collect();
+    assert_eq!(announced.last().unwrap(), &json!({"current": a, "next": b}));
     // Two people press GO having seen the same state: one runs, the other is stale.
     let seen = e.seq();
     let r1 = e.command(
@@ -1120,6 +1133,22 @@ fn end_on_off_and_on_project_close() {
     wait_until("end 2", || e.of("end").len() == 2);
     assert_eq!(e.of("end")[1]["reason"], "project_closed");
     assert!(!e.st.remote_view().on);
+}
+
+#[test]
+fn end_remote_control_keeps_the_switch_on() {
+    let e = env();
+    e.live();
+    let v = e.st.remote_end().unwrap();
+    assert_eq!(v.phase, Phase::Ended);
+    assert!(v.on);
+    wait_until("end", || !e.of("end").is_empty());
+    assert_eq!(e.of("end")[0]["reason"], "disabled");
+    std::thread::sleep(Duration::from_millis(150));
+    assert_eq!(e.st.remote_view().phase, Phase::Ended);
+    assert_eq!(e.connects().len(), 1);
+    e.st.remote_start_again().unwrap();
+    wait_until("live again", || e.of("snapshot").len() == 2);
 }
 
 #[test]

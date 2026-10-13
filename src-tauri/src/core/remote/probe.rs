@@ -88,6 +88,7 @@ fn record(st: &AppState, r: &TestResult) {
         welcome_ms: r.welcome_ms,
         rtt_ms: r.rtt_ms,
     });
+    st.remote_diag_touch();
 }
 
 /// With remote control live: a ping round trip on the connection.

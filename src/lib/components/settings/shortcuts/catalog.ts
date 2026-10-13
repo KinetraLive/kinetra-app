@@ -20,7 +20,7 @@ const never = () => false;
 /** The pages' commands, with actions that do nothing. */
 export function pageCommands(): Command[] {
   return [
-    ...shellCommands({ openPalette: noop, go: noop, toggleAutomation: noop, automationOff: never }),
+    ...shellCommands({ openPalette: noop, go: noop, toggleAutomation: noop, automationOff: never, toggleRemote: noop, remoteOn: never }),
     // The native menu's app commands (registered by the main window's menu sync).
     ...appCommands(),
     ...controlCommands({ capturing: null } as unknown as ControlCtl, [], []),

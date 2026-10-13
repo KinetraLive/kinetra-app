@@ -42,7 +42,7 @@ function view(over: Partial<LicenseView> = {}): LicenseView {
     plan: null,
     planName: null,
     entitlements: ["core.app"],
-    features: { ai: false, polls: false },
+    features: { ai: false, polls: false, control: false },
     pending: null,
     endsAt: null,
     updatesUntil: null,

@@ -45,6 +45,8 @@ import type {
   TemplateDoc,
   UpdateCheck,
   LicenseView,
+  RemoteActivity,
+  RemoteView,
   PollData,
   PollQuota,
   PollSourceDoc,
@@ -160,6 +162,12 @@ export interface MockScenario {
   audioDevices?: string[];
   /** What the system file dialog returns (`plugin:dialog|open`); default null (cancelled). */
   dialogPick?: string[];
+  /** Remote control: the view (merged over "off"), recent actions, and the cue list's next cue.
+   *  `remote_set` turns it on as live with no one connected (or off); `remote_lock` toggles the
+   *  lock; `remote_test` answers Connected after ~300 ms; Connection details shows sample numbers. */
+  remote?: Partial<RemoteView>;
+  remoteActivity?: RemoteActivity[];
+  cueNext?: string | null;
 }
 
 export function installMockTauri(s: MockScenario): void {
@@ -1115,6 +1123,13 @@ export function installMockTauri(s: MockScenario): void {
     }
   };
   const timers = new Map<string, ReturnType<typeof setTimeout>>();
+  let remoteState: Partial<RemoteView> = s.remote ?? {};
+  const remoteNow = (): RemoteView =>
+    ({
+      state: "off", on: false, takeLocked: false, crew: [], showId: null, crewUrl: null, controllerUrl: null,
+      serverVersion: null, rttMs: null, licenseWarning: null, lastError: null, hasShowId: false,
+      ...remoteState,
+    }) as RemoteView;
   const flowState = (id: string, state: string) => ({ id, state, node: null, message: null, at: new Date().toISOString() });
   const flowHandlers: Record<string, (args: Record<string, unknown>) => unknown> = {
     list_flows: () => flows,
@@ -1757,6 +1772,58 @@ export function installMockTauri(s: MockScenario): void {
       channel: "stable",
       commit: "fa23a08",
     }),
+    // ---- Remote control ----
+    remote_view: () => remoteNow(),
+    remote_set: (a) => {
+      remoteState = a.on
+        ? { ...remoteState, on: true, state: "live", runId: "0193b2c4-5d6e-7f80-9a1b-2c3d4e5f6a7b", resumed: false, hasShowId: true,
+            crewUrl: "https://control.kinetra.live/s/0193/crew", controllerUrl: "https://control.kinetra.live/s/0193" }
+        : { ...remoteState, on: false, state: "off" };
+      emit("remote-control", remoteNow());
+      return remoteNow();
+    },
+    remote_lock: (a) => {
+      remoteState = { ...remoteState, takeLocked: Boolean(a.on) };
+      emit("remote-control", remoteNow());
+      return remoteNow();
+    },
+    remote_end: () => {
+      remoteState = { ...remoteState, state: "ended", crew: [] };
+      emit("remote-control", remoteNow());
+      return remoteNow();
+    },
+    remote_start_again: () => {
+      remoteState = { ...remoteState, state: "live" };
+      emit("remote-control", remoteNow());
+      return remoteNow();
+    },
+    remote_takeover: () => undefined,
+    remote_new_show: () => remoteNow(),
+    remote_activity: () => s.remoteActivity ?? [],
+    cue_position: () => ({ current: null, next: s.cueNext ?? null }),
+    remote_test: () =>
+      new Promise((r) =>
+        setTimeout(() => r({ ok: true, code: "ok", message: "Connected", detail: null, serverVersion: "kinetra-cloud 0.9.2 (61a3cd2)",
+          connectMs: 84, welcomeMs: 131, rttMs: 38, retryAfterS: null, live: remoteNow().state === "live" }), 300),
+      ),
+    remote_diag_watch: () => ({
+      serverVersion: "kinetra-cloud 0.9.2 (61a3cd2)", state: remoteNow().state, runId: remoteNow().state === "live" ? "0193b2c4-5d6e-7f80-9a1b-2c3d4e5f6a7b" : null,
+      showId: "0193a7f1-2b3c-7d4e-8f50-6a7b8c9d0e1f", protocol: 1,
+      rtt: { last: 38, median: 41, max: 97 }, clockOffsetMs: -12, connects: 2,
+      commands: { received: 14, accepted: 12, resultMsMedian: 6, resultMsMax: 22 },
+      counters: { command: { in: 14, inBytes: 4120, out: 0, outBytes: 0 }, diff: { in: 0, inBytes: 0, out: 63, outBytes: 18450 },
+        ping: { in: 9, inBytes: 760, out: 9, outBytes: 770 }, result: { in: 0, inBytes: 0, out: 14, outBytes: 1960 },
+        snapshot: { in: 0, inBytes: 0, out: 2, outBytes: 24800 } },
+      snapshot: { seq: 64, bytes: 12400, sent: 2, resyncs: 0, lastResync: null },
+      lastClose: { code: 1006, reason: "closed" },
+      reconnects: [{ at: Date.now() - 3600_000, closeCode: 1006, reason: "No connection to the server", backoffMs: 512 }],
+      refused: [
+        { at: Date.now() - 600_000, corr: "c1", action: "update_fields", role: "data_editor", code: "on_air", layer: "l2bug0001" },
+        { at: Date.now() - 120_000, corr: "c2", action: "take", role: "operator", code: "locked", layer: "l1guest01" },
+      ],
+      errors: [],
+      probe: null,
+    }),
     // ---- Licensing ----
     license_view: () => {
       const now = Math.floor(Date.UTC(2026, 9, 10, 12) / 1000);
@@ -1771,7 +1838,7 @@ export function installMockTauri(s: MockScenario): void {
         plan: "pro_yearly",
         planName: "Kinetra Pro (yearly)",
         entitlements: ["core.app", "pro.ai", "pro.polls"],
-        features: { ai: true, polls: true },
+        features: { ai: true, polls: true, control: true },
         pending: null,
         endsAt: now + 200 * 86400,
         updatesUntil: null,

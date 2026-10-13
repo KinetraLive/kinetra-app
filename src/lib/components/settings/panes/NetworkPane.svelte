@@ -1,6 +1,6 @@
 <!--
   Preferences > Network & API: Server (`#server`, project settings; OSC `#osc` inside it in Advanced
-  mode) and MIDI & OSC (`#midi`: devices on this computer, the project's mappings). In Simple mode
+  mode), Remote control (`#remote`, project-only, Pro; Connection details inside it) and MIDI & OSC (`#midi`: devices on this computer, the project's mappings). In Simple mode
   the MIDI and OSC blocks give way to one "Available in Advanced mode" hint; mappings keep working.
   No props.
 -->
@@ -11,6 +11,7 @@
   import AdvancedHint from "$lib/components/AdvancedHint.svelte";
   import { isAdvanced } from "$lib/stores/mode.svelte";
   import MidiSection from "../MidiSection.svelte";
+  import RemoteSection from "../RemoteSection.svelte";
   import ServerSection from "../ServerSection.svelte";
   import Anchor from "./Anchor.svelte";
   import ProjectOnly from "./ProjectOnly.svelte";
@@ -19,6 +20,12 @@
 <Anchor id="server">
   <ProjectOnly title="Server">
     <ServerSection />
+  </ProjectOnly>
+</Anchor>
+
+<Anchor id="remote">
+  <ProjectOnly title="Remote control">
+    <RemoteSection />
   </ProjectOnly>
 </Anchor>
 
