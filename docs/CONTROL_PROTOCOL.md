@@ -83,6 +83,8 @@ app                                             server
  |<------------------------------- close 1000 -----|
 ```
 
+A **probe** connection (§4a) stops after `welcome`, one ping and `end`; it never registers.
+
 A connection carries **one run of one show** (§5). To control another project, end the run
 and register again on the same connection, or reconnect.
 
@@ -114,6 +116,7 @@ license changed, refresh first.
 {
   "t": "welcome",
   "protocol": 1,
+  "mode": "run",
   "server_version": "kinetra-cloud 0.9.0 (fff6168)",
   "server_time_ms": 1791590400123,
   "heartbeat_s": 20,
@@ -129,6 +132,49 @@ from the defaults in §11).
 
 Fatal handshake errors: `unsupported_protocol`, `unauthorized`, `entitlement_required`,
 `clock_skew` (`details.server_time_ms`), `replayed_request`, `bad_message`, `timeout`.
+
+## 4a. Probe mode ("Test connection")
+
+For the app's **Test connection** button: the full handshake and one ping, then close,
+without registering a show or starting a run. It checks everything a real connection needs
+(network and TLS, session, license token, `pro.control`, clock) and measures the round trip.
+
+```
+app                                                    server
+ |-- upgrade wss://…/v1/control/app?mode=probe ---------->|   rate-limited (below)
+ |-- hello --------------------------------------------->|   same checks as §4
+ |<---------------------------- welcome (mode: probe) ----|
+ |-- ping ---------------------------------------------->|
+ |<-------------------------------------------- pong -----|
+ |-- end {reason: probe_done} -------------------------->|
+ |<------------------------------------ close 1000 -------|
+```
+
+- The mode is chosen by the **upgrade URL** (`?mode=probe`); without it the connection is a
+  normal one. `welcome` echoes `"mode": "probe"` (normal connections: `"mode": "run"`).
+- After `welcome` only `ping`, `pong` and `end` are allowed. Anything else (`register`,
+  `snapshot`, …) → fatal `bad_message`. The server doesn't ping a probe itself.
+- A probe lasts at most **15 s** from the upgrade, then the server closes it with `timeout`.
+  The app may also simply close with 1000 after the pong instead of sending `end`.
+- `hello` is the same as for a run and consumes its nonce. Every handshake error (§4) comes
+  back exactly as on a real connection, so the button can tell the user what's wrong:
+
+  | Outcome | App shows |
+  |---|---|
+  | `welcome` + `pong` | "Connected" + round trip (§10.1), server version |
+  | `unauthorized` | "Sign in again" |
+  | `entitlement_required` | the `message` (which plan includes cloud control) |
+  | `clock_skew` | "Your computer's date or time is wrong" |
+  | `unsupported_protocol` | "Update Kinetra" |
+  | HTTP `429 rate_limited` | "Tested too often, try again in N s" (`Retry-After`) |
+  | network / TLS failure, 1006, `timeout` | "Can't reach Kinetra cloud" + the error |
+
+- **Rate-limited before the upgrade** (HTTP `429 rate_limited` with `Retry-After`, no
+  WebSocket opened), separately from normal connections: **10 per 10 minutes per account
+  (burst 5)** and **30 per 10 minutes per IP** (defaults, server config). Probes don't count
+  toward the plan's live runs; they do count toward the server's global socket cap.
+- A probe never creates or touches a show, a run, the crew or the audit log, and browsers
+  never see it.
 
 ## 5. Shows and runs
 
@@ -187,7 +233,7 @@ Non-fatal errors (the connection stays open; the app may retry or show the messa
 ### `end` (app → server)
 
 `{"t":"end","reason":"disabled"}`: remote control turned off, project closed or app quitting
-(`reason`: `disabled | project_closed | quit | other`). The switch stays as the user left it
+(`reason`: `disabled | project_closed | quit | probe_done | other`). The switch stays as the user left it
 (§0.4): after the server ends a run the app shows "Remote control ended" with **Start again**,
 and doesn't reconnect by itself. The server ends the run, tells the
 browsers "The show machine ended remote control", and closes with `1000`. A connection that
@@ -548,6 +594,7 @@ connection is dead; reconnect. Answer WebSocket-level ping frames as well (libra
 | Handshake / resync reply | 10 s each |
 | Offline window (run resumable) | 30 min |
 | Max run length | 24 h, then ended with `ended` (register again to continue) |
+| Probe (§4a) | 15 s per probe; 10 per 10 min per account (burst 5), 30 per 10 min per IP |
 
 Per-plan limits (live runs, crew, browsers, commands per second) are checked by the server;
 the app sees them only as `register` errors.
@@ -574,6 +621,10 @@ IP addresses, on either side.
   `corr`, message type, size in bytes, timing (queue time in the hub, time to the app, time
   to the result), result and error codes, close codes and reasons, resyncs with their reason,
   round trip and clock offset from pings (sampled once a minute per connection).
+- **Probes (§4a) are counted separately** from runs: logged with `mode=probe`, the
+  account, outcome (`ok` or the error code), round trip and app version, and never as a run.
+  Rate-limited probes are logged too (`outcome=rate_limited`). The admin site shows probe
+  counts per outcome for the last hour and 24 h.
 - **Admin page per live run** (admin site, Tailscale only): the connected app (app version,
   protocol version, machine name, connected since, round trip, clock offset), connected
   browsers (role, protocol version, since, round trip; names only for members), message
@@ -631,6 +682,18 @@ leg.
 ← close 1000 ended
 ```
 
+A probe (§4a):
+
+```text
+   upgrade    wss://api.kinetra.live/v1/control/app?mode=probe
+→ hello      {"t":"hello","protocol":1,"app_version":"1.4.0","machine":"9f…","license_token":"…","nonce":"z1…","timestamp":1791590500}
+← welcome    {"t":"welcome","protocol":1,"mode":"probe","server_version":"…","server_time_ms":1791590500087,"heartbeat_s":20,"limits":{…}}
+→ ping       {"t":"ping","corr":"09…","sent_ms":1791590500102}
+← pong       {"t":"pong","corr":"09…","ping_sent_ms":1791590500102,"received_ms":1791590500121,"sent_ms":1791590500121}
+→ end        {"t":"end","reason":"probe_done"}
+← close 1000 ended
+```
+
 ## 16. Decisions (owner, 2026-10-13)
 
 1. The remote control switch stays on for the app session, including after a run ends; it is
@@ -644,3 +707,5 @@ leg.
    added for now.
 6. Diagnostics: timestamped ping/pong, correlation IDs on every request and its answer,
    per-run logs, an admin page per live run, and a Connection details panel (§10.1, §12a).
+7. Probe mode for the app's "Test connection" button: hello, one ping, close, no run;
+   counted separately in the logs and rate-limited on its own (§4a).
