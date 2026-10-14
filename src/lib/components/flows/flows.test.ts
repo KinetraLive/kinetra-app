@@ -566,6 +566,9 @@ describe("linear editor", () => {
     expect(await trigger()).toEqual({ type: "trigger.sourceRow", config: { sourceId: "sp" } });
     await change(dlg.getByLabelText("Trigger"), "trigger.runByFlow");
     expect(await trigger()).toEqual({ type: "trigger.runByFlow", config: {} });
+    await change(dlg.getByLabelText("Trigger"), "trigger.rest");
+    expect(await trigger()).toEqual({ type: "trigger.rest", config: {} });
+    expect(dlg.getByText("Companion or a script runs it through the Control API.")).toBeTruthy();
     await change(dlg.getByLabelText("Trigger"), "trigger.cue");
     await fireEvent.input(dlg.getByLabelText("Button label"), { target: { value: "Go" } });
     await change(dlg.getByLabelText("When it runs again"), "ignore");

@@ -7,9 +7,10 @@ use serde::Serialize;
 use serde_json::Value;
 
 use crate::core::control_actions::ControlInput;
+use crate::core::flow_engine::RestRunRefusal;
 use crate::core::model::{ControlTarget, MediaAction, StudioOp, TimerAction, ValueTarget};
 use crate::core::protocol::{Fields, TakeTransition, TakeTransitionKind};
-use crate::core::remote::proto::VALUES_MAX;
+use crate::core::remote::proto::{VALUES_MAX, VALUE_MAX};
 use crate::core::remote::state::split_local_key;
 use crate::core::state::AppState;
 use crate::core::template_safety;
@@ -34,7 +35,7 @@ fn invalid(message: impl Into<String>) -> Refused {
 }
 
 /// Optional commands this version has (`welcome.features`).
-pub const FEATURES: &[&str] = &["studio_take", "automation", "timer"];
+pub const FEATURES: &[&str] = &["studio_take", "automation", "timer", "run_flow"];
 
 fn str_arg<'a>(args: &'a Value, key: &str) -> Result<&'a str, Refused> {
     args.get(key)
@@ -188,6 +189,27 @@ pub fn run(st: &AppState, tree: &Value, action: &str, args: &Value) -> Result<()
                 return Err(refuse("not_found", "That cue doesn't exist."));
             }
             press(st, &format!("cue.go:{cue}"))
+        }
+        "run_flow" => {
+            let flow = str_arg(args, "flow")?;
+            let value = match args.get("value") {
+                None | Some(Value::Null) => None,
+                Some(v) => Some(
+                    value_text(v)
+                        .filter(|t| t.len() <= VALUE_MAX)
+                        .ok_or_else(|| invalid("\"value\" is text (at most 16 KB)."))?,
+                ),
+            };
+            st.run_flow_rest(flow, value).map_err(|r| match r {
+                RestRunRefusal::NotFound => {
+                    refuse("not_found", "No flow with an API call trigger has that id.")
+                }
+                RestRunRefusal::Disarmed => refuse("disarmed", "That flow is disarmed."),
+                RestRunRefusal::TooOften => refuse("rate_limited", "That flow runs too often."),
+                RestRunRefusal::Unavailable => {
+                    refuse("failed", "Flows can't run right now. Restart Kinetra.")
+                }
+            })
         }
         "go_next" => {
             let next = tree["cue_lists"]["cues"]["next"]

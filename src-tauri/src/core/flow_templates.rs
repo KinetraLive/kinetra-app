@@ -219,6 +219,7 @@ pub fn node_label(ty: &str) -> &str {
         "trigger.slideshowWrap" => "Slideshow wrap",
         "trigger.sourceRow" => "Source row changed",
         "trigger.runByFlow" => "Run by flow",
+        "trigger.rest" => "API call",
         "data.sourceRow" => "Source row",
         "data.scheduleItem" => "Schedule now/next",
         "data.fieldValue" => "Field value",

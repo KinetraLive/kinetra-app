@@ -168,6 +168,7 @@ describe("summaries", () => {
     expect(s({ sourceId: "sp" }, "trigger.slideshowWrap")).toBe("When Sponsors wraps");
     expect(s({ sourceId: "sp" }, "trigger.sourceRow")).toBe("When the row of Sponsors changes");
     expect(s({}, "trigger.runByFlow")).toBe("When run by another flow");
+    expect(s({}, "trigger.rest")).toBe("When an API call arrives");
     expect(s({ sourceId: "gone", status: "next", itemId: "i1" }, "trigger.itemStatus")).toBe(
       "When a chosen item becomes UP NEXT in a missing source",
     );

@@ -521,6 +521,70 @@ fn welcome_names_the_app_and_features() {
     assert_eq!(w["protocol"], 1);
     assert_eq!(w["app"], "Kinetra");
     assert_eq!(w["project"]["name"], "Nordlys Live");
-    assert_eq!(w["features"], json!(["studio_take", "automation", "timer"]));
+    assert_eq!(
+        w["features"],
+        json!(["studio_take", "automation", "timer", "run_flow"])
+    );
     assert!(w["now"].as_u64().unwrap() > 0);
+}
+
+#[test]
+fn flows_with_an_api_call_trigger_are_listed_and_run() {
+    let e = env();
+    e.enable();
+    let n = |id: &str, kind| FlowNode {
+        id: id.into(),
+        position: NodePos::default(),
+        kind,
+    };
+    let flow =
+        e.st.create_flow(NewFlow {
+            name: "Goal".into(),
+            armed: true,
+            retrigger: Retrigger::Restart,
+            origin: None,
+            nodes: vec![
+                n("r", NodeKind::Rest {}),
+                n(
+                    "t",
+                    NodeKind::Take {
+                        screen_id: e.screen.clone(),
+                        layer_id: "l1".into(),
+                        for_ms: None,
+                    },
+                ),
+            ],
+            edges: vec![FlowEdge {
+                id: "e1".into(),
+                from: PortRef {
+                    node: "r".into(),
+                    port: "fired".into(),
+                },
+                to: PortRef {
+                    node: "t".into(),
+                    port: "in".into(),
+                },
+                kind: WireKind::Event,
+            }],
+        })
+        .unwrap()
+        .flow
+        .id;
+    assert_eq!(
+        e.tree()["api_flows"],
+        json!({&flow: {"name": "Goal", "armed": true}})
+    );
+    e.cmd("run_flow", json!({"flow": flow, "value": 3}))
+        .unwrap();
+    wait_until("on air", || {
+        e.st.live().layer_view(&e.screen, "l1").unwrap().on_air
+    });
+    assert_eq!(e.code("run_flow", json!({"flow": "nope"})), "not_found");
+    assert_eq!(
+        e.code("run_flow", json!({"flow": flow, "value": {"a": 1}})),
+        "invalid"
+    );
+    e.st.set_flow_armed(&flow, false).unwrap();
+    assert_eq!(e.tree()["api_flows"][&flow]["armed"], false);
+    assert_eq!(e.code("run_flow", json!({"flow": flow})), "disarmed");
 }

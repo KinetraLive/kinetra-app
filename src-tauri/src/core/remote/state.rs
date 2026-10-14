@@ -460,10 +460,21 @@ pub fn build(st: &AppState, input: &BuildInput) -> Value {
         tree["sources"] = Value::Object(sources);
         tree["source_order"] = json!(order);
         tree["automation_off"] = json!(st.flow_engine().automation_off());
+        tree["api_flows"] = Value::Object(local_api_flows(st));
     } else {
         tree["remote"] = json!({"take_locked": input.take_locked});
     }
     tree
+}
+
+/// Local flavor: flows with an API call trigger (`trigger.rest`), which `run_flow` may start.
+fn local_api_flows(st: &AppState) -> Map<String, Value> {
+    st.flows()
+        .all()
+        .into_iter()
+        .filter(|f| f.nodes.iter().any(|n| matches!(n.kind, NodeKind::Rest {})))
+        .map(|f| (f.id, json!({"name": name_of(&f.name), "armed": f.armed})))
+        .collect()
 }
 
 /// Local flavor: a layer's preload status, `{loaded, total}` (null when it has none).

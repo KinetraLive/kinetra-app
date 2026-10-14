@@ -557,3 +557,60 @@ fn close_codes_are_application_codes() {
         assert!(matches!(CloseCode::from(c), CloseCode::Library(_)));
     }
 }
+
+#[test]
+fn the_flow_route_fires_the_api_call_trigger() {
+    use crate::core::model::{FlowEdge, FlowNode, NewFlow, NodeKind, PortRef, Retrigger, WireKind};
+    let e = env();
+    let n = |id: &str, kind| FlowNode {
+        id: id.into(),
+        position: Default::default(),
+        kind,
+    };
+    let flow =
+        e.st.create_flow(NewFlow {
+            name: "Goal".into(),
+            armed: true,
+            retrigger: Retrigger::Restart,
+            origin: None,
+            nodes: vec![
+                n("r", NodeKind::Rest {}),
+                n(
+                    "t",
+                    NodeKind::Take {
+                        screen_id: e.screen.clone(),
+                        layer_id: "l1".into(),
+                        for_ms: None,
+                    },
+                ),
+            ],
+            edges: vec![FlowEdge {
+                id: "e1".into(),
+                from: PortRef {
+                    node: "r".into(),
+                    port: "fired".into(),
+                },
+                to: PortRef {
+                    node: "t".into(),
+                    port: "in".into(),
+                },
+                kind: WireKind::Event,
+            }],
+        })
+        .unwrap()
+        .flow
+        .id;
+    let (s, b) = e.req(
+        reqwest::Method::POST,
+        &format!("/api/flows/{flow}/run"),
+        Some(json!({"value": "Home 2–1"})),
+    );
+    assert_eq!((s, b), (200, json!({"ok": true})));
+    wait_until("on air", || e.on_air());
+    // No body is fine too; unknown and disarmed flows have their own statuses.
+    assert_eq!(e.post(&format!("/api/flows/{flow}/run")).0, 200);
+    assert_eq!(e.post("/api/flows/nope/run").0, 404);
+    e.st.set_flow_armed(&flow, false).unwrap();
+    let (s, b) = e.post(&format!("/api/flows/{flow}/run"));
+    assert_eq!((s, b["code"].clone()), (409, json!("disarmed")));
+}

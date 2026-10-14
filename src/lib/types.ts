@@ -1927,6 +1927,9 @@ export type NodeKind =
   | { type: "trigger.slideshowWrap"; config: { sourceId: string } }
   | { type: "trigger.sourceRow"; config: { sourceId: string } }
   | { type: "trigger.runByFlow"; config: Record<string, never> }
+  /** Fired by the Control API (`POST /api/flows/{id}/run`): runs while Automation is off, like a
+   * cue; at most one per flow (● value: text). */
+  | { type: "trigger.rest"; config: Record<string, never> }
   /** An API source's data changed: with `column`, that column of the current row (● value: text);
    * without, any row (● row). */
   | { type: "trigger.apiChanged"; config: { sourceId: string; column?: string | null } }

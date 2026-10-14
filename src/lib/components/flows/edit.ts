@@ -43,6 +43,7 @@ export const TRIGGER_OPTIONS: { value: TriggerType; label: string }[] = [
   { value: "trigger.sourceRow", label: "A source's row changes" },
   { value: "trigger.apiChanged", label: "API value changed" },
   { value: "trigger.runByFlow", label: "Run by another flow" },
+  { value: "trigger.rest", label: "An API call (Companion, scripts)" },
   { value: "trigger.midi", label: "MIDI in" },
   { value: "trigger.osc", label: "OSC in" },
   { value: "trigger.mediaEnded", label: "Media ends" },
@@ -137,6 +138,7 @@ export function triggerIssue(t: TriggerConf, k: Lookups): Issue | null {
   switch (t.type) {
     case "trigger.cue":
     case "trigger.runByFlow":
+    case "trigger.rest":
       return null;
     case "trigger.midi": {
       const c = t.config;

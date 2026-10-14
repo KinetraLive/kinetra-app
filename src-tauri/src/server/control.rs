@@ -101,6 +101,7 @@ fn router(ctl: Ctl) -> Router {
         .route("/api/clear-all", post(clear_all))
         .route("/api/panic", post(panic))
         .route("/api/sources/{id}/{dir}", post(source_step))
+        .route("/api/flows/{id}/run", post(run_flow))
         .layer(middleware::from_fn_with_state(ctl.clone(), guard))
         .with_state(ctl)
 }
@@ -425,6 +426,23 @@ async fn source_step(
         json!({"source": id, "dir": dir}),
     )
     .await
+}
+
+/// Fires the flow's API call trigger; the body's `value` (optional) is its `value` output.
+async fn run_flow(State(ctl): State<Ctl>, Path(id): Path<String>, req: Request) -> Response {
+    let ip = peer(req.extensions());
+    let body = match axum::body::to_bytes(req.into_body(), CLIENT_MSG_MAX).await {
+        Ok(b) => b,
+        Err(_) => return error(StatusCode::PAYLOAD_TOO_LARGE, "invalid", "Too large."),
+    };
+    let Some(v) = body_json(&body) else {
+        return not_an_object();
+    };
+    let mut args = json!({"flow": id});
+    if let Some(value) = v.get("value") {
+        args["value"] = value.clone();
+    }
+    run(&ctl, ip, "run_flow", args).await
 }
 
 // ---- WebSocket ---------------------------------------------------------------------------------

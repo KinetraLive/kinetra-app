@@ -851,7 +851,12 @@ pub fn check_config(kind: &NodeKind) -> Result<(), String> {
         | K::ScheduleItem { source_id, .. }
         | K::StepSource { source_id, .. }
         | K::PauseSource { source_id, .. } => need_id("source", source_id)?,
-        K::RunByFlow {} | K::TimeNow {} | K::Branch {} | K::Once {} | K::ClearAll {} => {}
+        K::RunByFlow {}
+        | K::Rest {}
+        | K::TimeNow {}
+        | K::Branch {}
+        | K::Once {}
+        | K::ClearAll {} => {}
         K::Constant { value } => match value {
             crate::core::model::Constant::Text(t) => need_text("value", t)?,
             crate::core::model::Constant::Number(n) if !n.is_finite() => {
@@ -1149,6 +1154,7 @@ fn graph_problems(
         return out;
     }
     let mut cue_seen = false;
+    let mut rest_seen = false;
     for n in nodes {
         if let Err(e) = check_config(&n.kind) {
             report!(
@@ -1183,6 +1189,16 @@ fn graph_problems(
                 );
             }
             cue_seen = true;
+        }
+        if matches!(n.kind, NodeKind::Rest {}) {
+            if rest_seen {
+                report!(
+                    out,
+                    all,
+                    Problem::on(&n.id, "A flow has at most one API call trigger".into())
+                );
+            }
+            rest_seen = true;
         }
     }
     let by_id: HashMap<&str, &FlowNode> = nodes.iter().map(|n| (n.id.as_str(), n)).collect();
