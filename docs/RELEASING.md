@@ -147,19 +147,19 @@ never print environment variables.
 
 The Windows job (`build.yml`) runs in the GitHub environment **`release`** (deployment branches:
 `main` and tags `v*`, so a dry run must be started from `main`) and signs in to Azure with OIDC:
-`azure/login` exchanges GitHub's token for one of the app registration `kinetra-ci` through a
+`azure/login` exchanges GitHub's token for one of the app registration `kinetra-github-signing` through a
 federated credential. There is no client secret. Environment variables (repo › Settings ›
 Environments › release › Environment variables; none of them is a secret):
 
 | Name | What |
 |---|---|
 | `AZURE_TENANT_ID` | Entra tenant (Directory) ID |
-| `AZURE_CLIENT_ID` | Application (client) ID of `kinetra-ci` |
+| `AZURE_CLIENT_ID` | Application (client) ID of `kinetra-github-signing` |
 | `AZURE_SIGNING_ENDPOINT` | the account's regional endpoint, `https://neu.codesigning.azure.net` |
 | `AZURE_SIGNING_ACCOUNT` | the Artifact Signing account, `kinetra-signing` |
 | `AZURE_SIGNING_PROFILE` | the Public Trust certificate profile |
 
-All five must be set, or the build is unsigned (with the warning above). In Entra ID, `kinetra-ci`
+All five must be set, or the build is unsigned (with the warning above). In Entra ID, `kinetra-github-signing`
 › Certificates & secrets › Federated credentials: scenario "GitHub Actions deploying Azure
 resources", organization `KinetraLive`, repository `kinetra-app`, entity type Environment,
 environment `release` (subject `repo:KinetraLive/kinetra-app:environment:release`, audience
