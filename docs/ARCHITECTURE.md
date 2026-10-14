@@ -11,6 +11,7 @@ A map of the code for contributors. For the template file format see
 └───────────────────────────────────┘                            ▼
                                                     ┌── Rust core (AppState) ──┐
 OBS / vMix / browser ──HTTP/WS──▶ axum server ─────▶│ project files, live state│
+Companion / scripts ──/api/*──▶ axum server ─────▶│                          │
 MIDI / OSC ─────────────────────▶ control actions ─▶│ sources, flows, outputs  │
                                                     └──────────────────────────┘
 ```
@@ -126,6 +127,12 @@ A project is a plain folder of JSON, HTML and CSS, portable and git-friendly:
 - **Automation off** stops every automatic trigger; cues and operator actions still run.
 - **MIDI and OSC** go through one entry point, `AppState::run_control`, the same commands the
   command palette uses.
+- **The Control API** (`core/control_api/`, `server/control.rs`; reference [CONTROL_API.md](CONTROL_API.md))
+  is a token-protected WebSocket and REST interface on the output server for Companion and
+  scripts. Its state is remote control's tree in a local flavor; one feed task builds it while a
+  client is connected and shares each diff with every client; commands use the same paths as
+  MIDI and OSC. `docs/control-api.fixture.json` is generated from the code for clients to test
+  against.
 
 ## Remote control
 

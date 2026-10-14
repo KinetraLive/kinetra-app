@@ -2126,8 +2126,8 @@ impl AppState {
         self.flow_engine().stop_all(self, Some("PANIC"));
     }
 
-    /// Runs a flow from its Cue trigger (a cue button, a hotkey; later REST). Works while
-    /// Automation is off; `invalid` when disarmed or without a Cue trigger.
+    /// Runs a flow from its Cue trigger (a cue button, a hotkey, the Control API's `run_cue`).
+    /// Works while Automation is off; `invalid` when disarmed or without a Cue trigger.
     pub fn run_flow(&self, id: &str, value: Option<String>) -> AppResult<()> {
         self.project_dir()?;
         let (key, flow, node) = {
