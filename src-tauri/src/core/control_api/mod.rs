@@ -198,8 +198,7 @@ impl AppState {
             .clone()
     }
 
-    /// Tests: a keychain of their own.
-    #[cfg(test)]
+    /// Another keychain (tests, the e2e fixture server: in memory, never the OS's).
     pub fn set_control_api_secrets(&self, store: Arc<dyn SecretStore>) {
         *self
             .capi()

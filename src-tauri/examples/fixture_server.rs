@@ -56,6 +56,11 @@
 //! - `clearall`: every on-air layer of every user screen out (animated)
 //! - `panic`: every screen (and `test`) off air at once: renderers get `cut`, auto-outs cancelled
 //!
+//! Control API (`/api/*` on the same port, as in the app; its token in memory, never the OS
+//! keychain):
+//! - `controlapi on|off`: the switch (off at start)
+//! - `controlapitoken` → `OK <token>` (made the first time)
+//!
 //! Templates with list / clock / timer fields, timers and auto-advance (the same code paths
 //! as the app's commands):
 //! - `addtemplatedoc <json>`: a project template from `{name, html, css, fields, variables?,
@@ -265,7 +270,6 @@ use std::time::Duration;
 use kinetra_lib::core::control_actions::ControlInput;
 use kinetra_lib::core::events::{names, EventSink};
 use kinetra_lib::core::live::{FieldDef, LiveError, TEST_LAYER_ID, TEST_SCREEN_ID};
-use kinetra_lib::core::live_hub::LiveHub;
 use kinetra_lib::core::midi::backend::TestBackend;
 use kinetra_lib::core::model::{
     AddFlowTemplate, ApplyStyleScope, AutoAdvance, BrandKit, ControlTarget, ControlsDoc, FlowEdge,
@@ -669,17 +673,20 @@ fn poll_mock_start(rt: &Runtime, state: &AppState, poll: &str) -> Result<String,
 fn start(
     rt: &Runtime,
     addr: SocketAddr,
-    hub: &Arc<LiveHub>,
+    state: &AppState,
     assets: &AssetDir,
     mocks: &Mocks,
 ) -> std::io::Result<(u16, Server)> {
     let listener = rt.block_on(TcpListener::bind(addr))?;
     let port = listener.local_addr()?.port();
     let (stop, rx) = oneshot::channel::<()>();
-    let hub = hub.clone();
+    let hub = state.live().clone();
     let assets = assets.clone();
     let mock = mock_router(mocks);
-    let extra: kinetra_lib::server::ExtraRoutes = Arc::new(move |_| mock.clone());
+    // The Control API, as the app mounts it (off until `controlapi on`).
+    let control = kinetra_lib::server::control::routes(state);
+    let extra: kinetra_lib::server::ExtraRoutes =
+        Arc::new(move |shutdown| mock.clone().merge(control(shutdown)));
     let task = rt.spawn(async move {
         let shutdown = async move {
             let _ = rx.await;
@@ -1165,6 +1172,12 @@ fn run(
             let saved = state.save_source(doc).map_err(text)?;
             value = Some(serde_json::to_string(&saved).map_err(text)?);
         }
+        "controlapi" => {
+            state
+                .control_api_set_enabled(arg.trim() == "on")
+                .map_err(text)?;
+        }
+        "controlapitoken" => value = Some(state.control_api_token().map_err(text)?),
         "clearscreen" => state.live_clear(arg.trim()).map(drop).map_err(text)?,
         "clearall" => state.live_clear_all().map(drop).map_err(text)?,
         "panic" => state.live_panic().map(drop).map_err(text)?,
@@ -1173,7 +1186,7 @@ fn run(
                 stop(rt, old);
             }
             let (_, new) =
-                start(rt, addr, hub, assets, mocks).map_err(|e| format!("rebind failed: {e}"))?;
+                start(rt, addr, state, assets, mocks).map_err(|e| format!("rebind failed: {e}"))?;
             *server = Some(new);
         }
         "addtemplatedoc" => {
@@ -1833,6 +1846,7 @@ fn main() {
     state
         .api()
         .set_secret_store(Arc::new(MemorySecrets::default()));
+    state.set_control_api_secrets(Arc::new(MemorySecrets::default()));
     let mut prefs = state.prefs();
     prefs.backup.enabled = false;
     state.set_prefs(prefs);
@@ -1855,7 +1869,7 @@ fn main() {
     let (port, first) = start(
         &rt,
         SocketAddr::from(([127, 0, 0, 1], port)),
-        &hub,
+        &state,
         &assets,
         &mocks,
     )
