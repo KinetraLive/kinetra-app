@@ -436,7 +436,7 @@ impl AppState {
                 StateChange::Live => st.midi_live_changed(),
                 StateChange::FlowRun { id, running } => st.midi_flow_state(id, running),
                 // LEDs follow on air in Program, not the out-animation.
-                StateChange::Visible => {}
+                StateChange::Visible | StateChange::Preview => {}
             },
         ));
     }

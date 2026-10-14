@@ -588,3 +588,25 @@ fn flows_with_an_api_call_trigger_are_listed_and_run() {
     assert_eq!(e.tree()["api_flows"][&flow]["armed"], false);
     assert_eq!(e.code("run_flow", json!({"flow": flow})), "disarmed");
 }
+
+#[test]
+fn a_preview_cue_from_elsewhere_reaches_clients() {
+    let e = env();
+    e.enable();
+    studio_on(&e.st);
+    let mut a = e.attach("A");
+    let snap = parse(&e.next(&mut a));
+    assert_eq!(snap["state"]["preview"][&e.screen], json!([]));
+    // Control's Take in Studio mode (not through the API): Preview only, Program unchanged.
+    press(&e.st, &format!("live.take:{}/l1", e.screen));
+    let d = parse(&e.next(&mut a));
+    let path = format!("/preview/{}", e.screen);
+    assert!(
+        d["ops"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|o| o["path"] == path && o["value"] == json!([e.key("l1")])),
+        "{d}"
+    );
+}

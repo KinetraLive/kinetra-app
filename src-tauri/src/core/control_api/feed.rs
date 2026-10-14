@@ -114,7 +114,8 @@ async fn run(
         return;
     };
     snapshot(&mut model, tree);
-    let mut last_sent = Instant::now();
+    // The gap spaces diffs; the snapshot isn't one, so the first change goes out at once.
+    let mut last_sent: Option<Instant> = None;
     loop {
         dirty.notified().await;
         // Stop once the last client has gone (the detach wakes us).
@@ -123,8 +124,10 @@ async fn run(
             _ => return,
         }
         // Pace: wakes meanwhile coalesce into this one build (a `Notify` keeps one permit).
-        let at = last_sent + DIFF_GAP;
-        if at > Instant::now() {
+        if let Some(at) = last_sent
+            .map(|t| t + DIFF_GAP)
+            .filter(|at| *at > Instant::now())
+        {
             tokio::time::sleep_until(at).await;
         }
         let Some(tree) = build(&weak).await else {
@@ -135,7 +138,7 @@ async fn run(
             continue;
         }
         let cause = weak.upgrade().and_then(|st| st.control_api_take_cause());
-        last_sent = Instant::now();
+        last_sent = Some(Instant::now());
         if ops.len() > DIFF_OPS_MAX {
             snapshot(&mut model, tree);
             let _ = frames.send(Arc::new(Frame::Snapshot));

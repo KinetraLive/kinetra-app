@@ -182,6 +182,9 @@ pub enum StateChange<'a> {
     /// time passed) without any other live operation: only exact visibility changed (remote
     /// control, `LiveHub::visible`).
     Visible,
+    /// The Studio Preview changed (cues or staged content) without a Program change: remote control
+    /// and the Control API show it.
+    Preview,
 }
 
 /// Called on the thread that made the change. For `Live` no state lock is held; `FlowRun` comes
@@ -601,6 +604,13 @@ impl AppState {
                     AppState { inner }.flow_media_ended(screen, layer);
                 }
             }));
+        // Preview changes (Studio) reach what shows Preview: remote control, the Control API.
+        let weak = Arc::downgrade(&inner);
+        inner.live.set_preview_hook(Arc::new(move || {
+            if let Some(inner) = weak.upgrade() {
+                AppState { inner }.notify_change(StateChange::Preview);
+            }
+        }));
         // The Studio Preview's cues are kept in ui-state.json (coalesced like every store write).
         let weak = Arc::downgrade(&inner);
         inner.live.set_cues_hook(Arc::new(move || {
