@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/svelte";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { tick } from "svelte";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Project, RecentProject, ServerStatus, UiState } from "$lib/types";
 
 const api = vi.hoisted(() => ({
@@ -446,6 +446,14 @@ describe("AppShell keyboard shortcuts", () => {
 describe("command palette", () => {
   const palette = () => screen.queryByRole("dialog", { name: "Command palette" });
   const options = () => screen.getAllByRole("option");
+
+  // The palette is a lazy chunk. Its first import compiles Palette.svelte and its modules in
+  // this worker (~250 ms idle, 1.3–2.7 s with the machine busy), longer than `open()`'s
+  // `waitFor` allows: load it once up front, as the editor tests do with their chunks. The
+  // shell still opens it through its own dynamic import.
+  beforeAll(async () => {
+    await import("$lib/commands/palette/Palette.svelte");
+  });
 
   async function open(init: KeyboardEventInit = { key: "k", code: "KeyK", ctrlKey: true }) {
     await fireEvent.keyDown(window, init);
