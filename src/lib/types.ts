@@ -224,6 +224,12 @@ export interface Prefs {
   zoom?: number;
   /** Display outputs on this machine (≤ 8). Absent = none. Validated and clamped server-side. */
   outputs?: OutputConfig[];
+  /** The local Control API on this machine. Absent = off. The token is in the keychain. */
+  controlApi?: ControlApiPrefs;
+}
+
+export interface ControlApiPrefs {
+  enabled: boolean;
 }
 
 // ---- Display outputs (per machine, prefs.json `outputs`) ----

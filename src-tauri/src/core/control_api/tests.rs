@@ -15,6 +15,9 @@ use crate::core::protocol::Fields;
 use crate::core::remote::state;
 use crate::core::state::AppState;
 
+/// The service: switch, token, feed, clients, commands (this file: the tree).
+mod service;
+
 #[derive(Default)]
 struct Rec(Mutex<Vec<(String, Value)>>);
 
@@ -28,9 +31,10 @@ impl EventSink for Rec {
 
 struct Env {
     _tmp: tempfile::TempDir,
-    _rt: tokio::runtime::Runtime,
+    rt: tokio::runtime::Runtime,
     st: AppState,
     screen: String,
+    rec: Arc<Rec>,
 }
 
 impl Env {
@@ -86,9 +90,10 @@ fn layer(id: &str, template_id: &str, bindings: &[&str]) -> ScreenLayer {
 /// (scoreboard), both off air.
 fn env() -> Env {
     let tmp = tempfile::tempdir().unwrap();
+    let rec = Arc::new(Rec::default());
     let st = AppState::load_with_debounce(
         tmp.path().join("config"),
-        Arc::new(Rec::default()),
+        rec.clone(),
         Duration::from_millis(20),
     )
     .unwrap();
@@ -132,9 +137,10 @@ fn env() -> Env {
     let screen = st.save_screen(doc).unwrap().doc.id;
     Env {
         _tmp: tmp,
-        _rt: rt,
+        rt,
         st,
         screen,
+        rec,
     }
 }
 
@@ -365,6 +371,22 @@ fn studio_preview_uses_local_keys() {
 #[test]
 fn media_layers_include_audio_with_playback() {
     let e = env();
+    add_audio_layer(&e);
+    let t = e.tree();
+    let m = &t["layers"][e.key("m1")];
+    assert_eq!(m["kind"], "media");
+    assert_eq!(m["media"]["type"], "audio");
+    assert_eq!(m["media"]["name"], "bed.mp3");
+    assert_eq!(m["opacity"], 80);
+    assert_eq!(m["media"]["playback"]["state"], "stopped");
+    assert_eq!(m["media"]["playback"]["in_ms"], 1500);
+    for k in ["template", "values", "bound"] {
+        assert!(m.get(k).is_none(), "{k}");
+    }
+}
+
+/// Media layer `m1` on the main screen playing `bed.mp3` (in point 1.5 s, opacity 80).
+fn add_audio_layer(e: &Env) {
     let mut doc = e.st.get_screen(&e.screen).unwrap().doc;
     doc.meta.layers.push(ScreenLayer {
         id: "m1".into(),
@@ -397,15 +419,4 @@ fn media_layers_include_audio_with_playback() {
     std::fs::create_dir_all(&root).unwrap();
     std::fs::write(root.join("bed.mp3"), mp3).unwrap();
     e.st.save_screen(doc).unwrap();
-    let t = e.tree();
-    let m = &t["layers"][e.key("m1")];
-    assert_eq!(m["kind"], "media");
-    assert_eq!(m["media"]["type"], "audio");
-    assert_eq!(m["media"]["name"], "bed.mp3");
-    assert_eq!(m["opacity"], 80);
-    assert_eq!(m["media"]["playback"]["state"], "stopped");
-    assert_eq!(m["media"]["playback"]["in_ms"], 1500);
-    for k in ["template", "values", "bound"] {
-        assert!(m.get(k).is_none(), "{k}");
-    }
 }

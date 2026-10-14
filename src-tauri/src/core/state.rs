@@ -167,6 +167,8 @@ struct Inner {
     cloud: crate::core::cloud::service::Cloud,
     /// Remote control through kinetra-cloud (see `core::remote`).
     remote: crate::core::remote::Remote,
+    /// The local Control API (see `core::control_api`).
+    control_api: crate::core::control_api::ControlApi,
 }
 
 /// A change feedback senders follow without polling ([`AppState::add_change_listener`]).
@@ -569,6 +571,7 @@ impl AppState {
             outputs: Default::default(),
             cloud: Default::default(),
             remote: Default::default(),
+            control_api: Default::default(),
         });
         // Auto-advance and the `layer` / `timerZero` flow triggers follow what is on air, whichever
         // path changed it.
@@ -617,6 +620,7 @@ impl AppState {
         st.midi_init();
         st.outputs_init();
         st.remote_init();
+        st.control_api_init();
         Ok(st)
     }
 
@@ -658,6 +662,10 @@ impl AppState {
     /// Remote control (see `core::remote`).
     pub(crate) fn remote(&self) -> &crate::core::remote::Remote {
         &self.inner.remote
+    }
+
+    pub(crate) fn control_api(&self) -> &crate::core::control_api::ControlApi {
+        &self.inner.control_api
     }
 
     /// The open project's remote control ID (`project.json` `id`), if it has one.
@@ -829,15 +837,16 @@ impl AppState {
     /// `prefs-changed` (cross-window) when anything changed.
     pub fn set_prefs(&self, prefs: Prefs) -> Prefs {
         let prefs = clamp_prefs(prefs);
-        let (any_changed, backup_changed, midi_changed, outputs_changed) = {
+        let (any_changed, backup_changed, midi_changed, outputs_changed, capi_changed) = {
             let mut g = write(&self.inner.prefs);
             let any = g.value != prefs;
             let changed = g.value.backup != prefs.backup;
             let midi = g.value.midi != prefs.midi;
             let outputs = g.value.outputs != prefs.outputs;
+            let capi = g.value.control_api != prefs.control_api;
             g.value = prefs.clone();
             g.dirty = true;
-            (any, changed, midi, outputs)
+            (any, changed, midi, outputs, capi)
         };
         self.inner.schedule();
         if any_changed {
@@ -856,6 +865,9 @@ impl AppState {
         if outputs_changed {
             // Windows follow at once (on the blocking pool: this may run on the main thread).
             self.outputs_request();
+        }
+        if capi_changed {
+            self.control_api_prefs_changed(prefs.control_api.enabled);
         }
         prefs
     }
@@ -1111,6 +1123,7 @@ impl AppState {
         // Automation off goes through the UI state (no separate command): tell the engine.
         if off_changed {
             self.engine_set_automation_off(ui.control.automation_off);
+            self.control_api_touch();
         }
         Ok(ui)
     }

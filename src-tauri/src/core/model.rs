@@ -544,6 +544,23 @@ pub struct Prefs {
         deserialize_with = "crate::core::outputs::lenient_outputs"
     )]
     pub outputs: Vec<OutputConfig>,
+    /// The local Control API on this machine (off by default). Omitted while off.
+    #[serde(skip_serializing_if = "ControlApiPrefs::is_default")]
+    pub control_api: ControlApiPrefs,
+}
+
+/// `Prefs.controlApi`: the local Control API (`core::control_api`). The token lives in the
+/// keychain, never here.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ControlApiPrefs {
+    pub enabled: bool,
+}
+
+impl ControlApiPrefs {
+    pub fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
 }
 
 // ---- Display outputs (per machine, prefs.json `outputs`) -----------------------------------

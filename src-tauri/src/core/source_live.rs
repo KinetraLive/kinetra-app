@@ -159,6 +159,7 @@ impl AppState {
         doc.meta.name = sources::validate_name(name)?;
         let saved = sources::save(&dir, doc, false)?;
         self.sources().put(saved.clone());
+        self.control_api_touch();
         Ok(self.source_summary(&saved))
     }
 
@@ -181,6 +182,7 @@ impl AppState {
             doc
         };
         self.api_reconcile();
+        self.control_api_touch();
         Ok(self.with_stored(doc))
     }
 
@@ -264,6 +266,7 @@ impl AppState {
 
     /// Re-applies every screen bound to source `id`. Caller holds the screen write lock.
     pub(crate) fn reapply_source(&self, dir: &Path, id: &str) {
+        self.control_api_touch();
         for doc in self.screens().source_users(id) {
             if let Err(e) = self.apply_screen_doc(dir, &doc) {
                 tracing::warn!("applying screen {} after source {id} changed: {e}", doc.id);
