@@ -56,7 +56,8 @@ mod tests {
     fn uuid_v7_has_the_version_variant_and_layout() {
         let a = uuid_v7();
         let b = uuid_v7();
-        assert!(is_uuid(&a), "{a}");
+        // No value in the message: assertion output is logged, and ids count as secrets to scanners.
+        assert!(is_uuid(&a), "not in the 8-4-4-4-12 hex layout");
         assert_ne!(a, b);
         assert_eq!(&a[14..15], "7");
         assert!(matches!(&a[19..20], "8" | "9" | "a" | "b"));

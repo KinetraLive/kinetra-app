@@ -67,7 +67,8 @@ mod tests {
         let b = generate().unwrap();
         assert_ne!(a, b);
         assert_eq!(a.len(), 46);
-        assert!(is_well_formed(&a), "{a}");
+        // Never print a token, even a test one: assertion output is logged.
+        assert!(is_well_formed(&a), "not kt_ + 43 base64url characters");
         assert!(!is_well_formed("kt_short"));
         assert!(!is_well_formed(&a.replace("kt_", "xx_")));
     }
