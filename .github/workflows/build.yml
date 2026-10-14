@@ -95,9 +95,15 @@ jobs:
     name: Windows x64
     runs-on: windows-latest
     timeout-minutes: 90
+    # Artifact Signing signs in with OIDC: a federated credential on the "release" environment
+    # (main and v* tags only), no client secret. docs/RELEASING.md.
+    environment: release
+    permissions:
+      contents: read
+      id-token: write
     env:
       HAS_UPDATER_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
-      HAS_AZURE: ${{ secrets.AZURE_TENANT_ID != '' && secrets.AZURE_CLIENT_ID != '' && secrets.AZURE_CLIENT_SECRET != '' && secrets.AZURE_SIGNING_ENDPOINT != '' && secrets.AZURE_SIGNING_ACCOUNT != '' && secrets.AZURE_SIGNING_PROFILE != '' }}
+      HAS_AZURE: ${{ vars.AZURE_TENANT_ID != '' && vars.AZURE_CLIENT_ID != '' && vars.AZURE_SIGNING_ENDPOINT != '' && vars.AZURE_SIGNING_ACCOUNT != '' && vars.AZURE_SIGNING_PROFILE != '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { persist-credentials: false }
@@ -114,10 +120,45 @@ jobs:
         shell: bash
         run: |
           if [ "$HAS_UPDATER_KEY" != "true" ]; then echo "::warning::Updater signing skipped: no TAURI_SIGNING_PRIVATE_KEY (no update manifest can be published)"; fi
-          if [ "$HAS_AZURE" != "true" ]; then echo "::warning::Windows code signing skipped: no Azure Trusted Signing secrets (the installer is unsigned; SmartScreen will warn)"; fi
-      - name: Install trusted-signing-cli
+          if [ "$HAS_AZURE" != "true" ]; then echo "::warning::Windows code signing skipped: no Artifact Signing variables in the release environment (the installer is unsigned; SmartScreen will warn)"; fi
+      - name: Artifact Signing client
         if: env.HAS_AZURE == 'true'
-        run: cargo install trusted-signing-cli --locked --quiet
+        shell: pwsh
+        env:
+          # Microsoft.ArtifactSigning.Client (the signtool dlib), pinned by version and SHA-256.
+          CLIENT_VERSION: "1.0.146"
+          CLIENT_SHA256: 7761e5d8f31e54b764da21d33cd8b0a2940e1b05526c7dfcb5e94b0431426f70
+          AZURE_SIGNING_ENDPOINT: ${{ vars.AZURE_SIGNING_ENDPOINT }}
+          AZURE_SIGNING_ACCOUNT: ${{ vars.AZURE_SIGNING_ACCOUNT }}
+          AZURE_SIGNING_PROFILE: ${{ vars.AZURE_SIGNING_PROFILE }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $zip = Join-Path $env:RUNNER_TEMP "artifact-signing.zip"
+          $dir = Join-Path $env:RUNNER_TEMP "artifact-signing"
+          Invoke-WebRequest "https://www.nuget.org/api/v2/package/Microsoft.ArtifactSigning.Client/$env:CLIENT_VERSION" -OutFile $zip
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($hash -ne $env:CLIENT_SHA256) { Write-Output "::error::Artifact Signing client hash mismatch: $hash"; exit 1 }
+          Expand-Archive $zip -DestinationPath $dir -Force
+          $dlib = Join-Path $dir "bin\x64\Azure.CodeSigning.Dlib.dll"
+          if (-not (Test-Path $dlib)) { Write-Output "::error::No x64 dlib in the Artifact Signing client"; exit 1 }
+          # The newest x64 signtool of the installed Windows SDKs.
+          $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\10.*\x64\signtool.exe" |
+            Sort-Object { [version]$_.Directory.Parent.Name } | Select-Object -Last 1
+          if (-not $signtool) { Write-Output "::error::signtool.exe not found"; exit 1 }
+          # Only the Azure CLI credential (from azure/login); nothing probes for a managed identity.
+          $metadata = Join-Path $env:RUNNER_TEMP "artifact-signing.json"
+          @{
+            Endpoint = $env:AZURE_SIGNING_ENDPOINT
+            CodeSigningAccountName = $env:AZURE_SIGNING_ACCOUNT
+            CertificateProfileName = $env:AZURE_SIGNING_PROFILE
+            ExcludeCredentials = @("EnvironmentCredential", "ManagedIdentityCredential", "WorkloadIdentityCredential",
+              "SharedTokenCacheCredential", "VisualStudioCredential", "VisualStudioCodeCredential",
+              "AzurePowerShellCredential", "AzureDeveloperCliCredential", "InteractiveBrowserCredential")
+          } | ConvertTo-Json | Set-Content $metadata -Encoding utf8
+          Write-Output "signtool $($signtool.Directory.Parent.Name), Artifact Signing client $env:CLIENT_VERSION"
+          "ARTIFACT_SIGNING_SIGNTOOL=$($signtool.FullName)" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "ARTIFACT_SIGNING_DLIB=$dlib" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "ARTIFACT_SIGNING_METADATA=$metadata" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
       - name: Build config
         shell: bash
         env:
@@ -126,6 +167,19 @@ jobs:
         run: >
           node .github/scripts/release.mjs config --channel "$CHANNEL" --version "$VERSION"
           --updater "$HAS_UPDATER_KEY" --sign-windows "$HAS_AZURE" --out "$RUNNER_TEMP/ci.conf.json"
+      - name: Azure sign-in (OIDC)
+        if: env.HAS_AZURE == 'true'
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          allow-no-subscriptions: true
+      - name: Artifact Signing token
+        # GitHub's OIDC assertion expires within minutes, the access token after 60–90; taking the
+        # code signing token now caches it in the Azure CLI for the signs at the end of the build.
+        if: env.HAS_AZURE == 'true'
+        shell: bash
+        run: az account get-access-token --resource https://codesigning.azure.net --output none
       - name: tauri build
         shell: bash
         env:
@@ -136,15 +190,9 @@ jobs:
           KINETRA_REMOTE: ${{ vars.KINETRA_REMOTE || '0' }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          AZURE_SIGNING_ENDPOINT: ${{ secrets.AZURE_SIGNING_ENDPOINT }}
-          AZURE_SIGNING_ACCOUNT: ${{ secrets.AZURE_SIGNING_ACCOUNT }}
-          AZURE_SIGNING_PROFILE: ${{ secrets.AZURE_SIGNING_PROFILE }}
         run: |
-          # Empty secrets are unset, so tools never see an empty key or identity.
-          for v in TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD AZURE_TENANT_ID AZURE_CLIENT_ID AZURE_CLIENT_SECRET AZURE_SIGNING_ENDPOINT AZURE_SIGNING_ACCOUNT AZURE_SIGNING_PROFILE; do
+          # Empty secrets are unset, so tools never see an empty key.
+          for v in TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD; do
             if [ -z "${!v}" ]; then unset "$v"; fi
           done
           # No local build paths in panic locations (scripts/release-rustflags.mjs).

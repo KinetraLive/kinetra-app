@@ -1,8 +1,8 @@
 // Tauri's Windows sign hook in CI (`bundle.windows.signCommand`, set by `release.mjs config` only
-// when the Azure Trusted Signing secrets exist): signs one file with trusted-signing-cli. The
-// endpoint, account and profile come from the environment, so they are never written into the
-// build config; the service principal (AZURE_TENANT_ID / _CLIENT_ID / _CLIENT_SECRET) is read
-// by trusted-signing-cli itself. Prints nothing of either.
+// when Artifact Signing is set up in the "release" environment): signs one file with signtool and
+// Microsoft's Artifact Signing dlib. The workflow prepares both (ARTIFACT_SIGNING_SIGNTOOL,
+// _DLIB, _METADATA: endpoint, account and profile, Azure CLI credential only) and signs in with
+// `azure/login` (OIDC, no client secret) before the build, so this script holds no credentials.
 
 import { spawnSync } from "node:child_process";
 
@@ -21,15 +21,17 @@ if (!file) {
 }
 
 const r = spawnSync(
-  "trusted-signing-cli",
+  env("ARTIFACT_SIGNING_SIGNTOOL"),
   [
-    "-e", env("AZURE_SIGNING_ENDPOINT"),
-    "-a", env("AZURE_SIGNING_ACCOUNT"),
-    "-c", env("AZURE_SIGNING_PROFILE"),
-    "-d", "Kinetra",
+    "sign", "/v",
+    "/fd", "SHA256",
+    "/tr", "http://timestamp.acs.microsoft.com", "/td", "SHA256",
+    "/dlib", env("ARTIFACT_SIGNING_DLIB"),
+    "/dmdf", env("ARTIFACT_SIGNING_METADATA"),
+    "/d", "Kinetra",
     file,
   ],
   { stdio: ["ignore", "inherit", "inherit"], shell: false },
 );
-if (r.error) console.log(`::error::trusted-signing-cli could not start: ${r.error.code ?? "error"}`);
+if (r.error) console.log(`::error::signtool could not start: ${r.error.code ?? "error"}`);
 process.exit(r.status ?? 1);

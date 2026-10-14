@@ -44,7 +44,7 @@ Logic lives in small Node scripts without dependencies, unit-tested by `pnpm tes
   overlay, minisign key ids, `SHA256SUMS`, manifest, `latest.json`, the upload plan, the rollback
   record check); `release.mjs` runs them (`version`, `validate`, `config`, `collect`, `notes`,
   `assemble`, `verify`, `rollback`); `sign-windows.mjs` is Tauri's Windows sign hook (Azure
-  Trusted Signing through `trusted-signing-cli`, its settings read from the environment).
+  Artifact Signing: signtool + Microsoft's signing dlib, prepared by the workflow; see below).
 - `scripts/version.mjs`: `pnpm run version:check` / `pnpm run version:set X.Y.Z` (tauri.conf.json,
   Cargo.toml + Cargo.lock, package.json).
 - `scripts/canary-icon.mjs` (`pnpm run icon:canary [source.png]`): draws the CANARY band on the
@@ -133,16 +133,43 @@ After uploading: fetch `updates/latest*.json` and the Windows installer from
 | `R2_ACCESS_KEY_ID` | yes (publish) | R2 API token, Object Read & Write on `kinetra-downloads` only |
 | `R2_SECRET_ACCESS_KEY` | yes (publish) | its secret |
 | `R2_ENDPOINT` | yes (publish) | `https://<account-id>.r2.cloudflarestorage.com` (R2 › Overview › S3 API; not the public bucket URL). `.github/scripts/r2-env.sh` trims stray whitespace or a line break from the three R2 secrets and drops a bucket path, and says what's wrong with the endpoint without showing it |
-| `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET` | optional | Windows code signing (Azure Trusted Signing service principal) |
-| `AZURE_SIGNING_ENDPOINT`, `AZURE_SIGNING_ACCOUNT`, `AZURE_SIGNING_PROFILE` | optional | the Trusted Signing endpoint (e.g. `https://weu.codesigning.azure.net`), account and certificate profile |
 | `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD` | optional | Developer ID Application certificate (.p12, base64) and its password |
 | `APPLE_SIGNING_IDENTITY` | optional | e.g. `Developer ID Application: Rørvik Medieteknikk (TEAMID)` |
 | `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID` | optional | notarization (app-specific password) |
 
-Without the optional ones the job logs `::warning::` "Windows code signing skipped: no Azure
-Trusted Signing secrets" (or the macOS equivalent) and builds unsigned installers. Secrets are
+Without the optional ones the job logs `::warning::` "Windows code signing skipped: no Artifact
+Signing variables in the release environment" (or the macOS equivalent) and builds unsigned
+installers. Secrets are
 only ever passed as environment variables to the steps that need them, never echoed; scripts
 never print environment variables.
+
+## Windows code signing (Azure Artifact Signing, OIDC)
+
+The Windows job (`build.yml`) runs in the GitHub environment **`release`** (deployment branches:
+`main` and tags `v*`, so a dry run must be started from `main`) and signs in to Azure with OIDC:
+`azure/login` exchanges GitHub's token for one of the app registration `kinetra-ci` through a
+federated credential. There is no client secret. Environment variables (repo › Settings ›
+Environments › release › Environment variables; none of them is a secret):
+
+| Name | What |
+|---|---|
+| `AZURE_TENANT_ID` | Entra tenant (Directory) ID |
+| `AZURE_CLIENT_ID` | Application (client) ID of `kinetra-ci` |
+| `AZURE_SIGNING_ENDPOINT` | the account's regional endpoint, `https://neu.codesigning.azure.net` |
+| `AZURE_SIGNING_ACCOUNT` | the Artifact Signing account, `kinetra-signing` |
+| `AZURE_SIGNING_PROFILE` | the Public Trust certificate profile |
+
+All five must be set, or the build is unsigned (with the warning above). In Entra ID, `kinetra-ci`
+› Certificates & secrets › Federated credentials: scenario "GitHub Actions deploying Azure
+resources", organization `KinetraLive`, repository `kinetra-app`, entity type Environment,
+environment `release` (subject `repo:KinetraLive/kinetra-app:environment:release`, audience
+`api://AzureADTokenExchange`). The app keeps the Artifact Signing Certificate Profile Signer
+role on the signing account.
+
+The job downloads `Microsoft.ArtifactSigning.Client` from NuGet (version and SHA-256 pinned in
+`build.yml`; bump both together), writes the dlib's metadata (Azure CLI credential only) and takes
+the code signing access token right after `azure/login`: GitHub's OIDC assertion expires within
+minutes, the access token after 60–90, and the signs happen at the end of `tauri build`.
 
 ## How to release
 
@@ -185,8 +212,8 @@ undo a rollback, run it again with the newer version. Nothing is ever deleted.
   switch `TAURI_SIGNING_PRIVATE_KEY` / `_PASSWORD` to the new key for every later release. Clients
   that skip that bridge release must reinstall. Keep the old private key offline until no
   supported client depends on it.
-- **Azure Trusted Signing:** rotate the service principal's client secret in Entra ID (App
-  registrations › Certificates & secrets), replace `AZURE_CLIENT_SECRET`, delete the old secret.
+- **Azure Artifact Signing:** nothing to rotate (OIDC, no client secret). Renaming the repository,
+  the organization or the environment needs a new federated credential with the new subject.
 - **Apple:** export the renewed Developer ID certificate as .p12 (base64), replace
   `APPLE_CERTIFICATE` / `APPLE_CERTIFICATE_PASSWORD`; app-specific passwords are revoked and
   replaced at appleid.apple.com (`APPLE_PASSWORD`).

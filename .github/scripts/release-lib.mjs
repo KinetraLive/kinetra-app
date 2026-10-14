@@ -123,7 +123,7 @@ export function mergePatch(target, patch) {
 /**
  * The config overlay CI passes to `tauri build --config`: the channel overlay (canary), the
  * build's version, updater artifacts when the signing key is there, and the Windows sign hook
- * when Azure Trusted Signing is set up (the hook reads its settings from the environment, so
+ * when Azure Artifact Signing is set up (the hook reads its settings from the environment, so
  * none of them is written into the file).
  */
 export function ciConfig({ channelOverlay, version, updater, signScript }) {

@@ -34,6 +34,8 @@ jobs:
   build:
     needs: version
     uses: ./.github/workflows/build.yml
+    # id-token: Windows code signing signs in to Azure with OIDC (build.yml's windows job).
+    permissions: { contents: read, id-token: write }
     with:
       channel: ${{ inputs.channel }}
       version: ${{ needs.version.outputs.version }}
