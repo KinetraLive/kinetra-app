@@ -260,4 +260,19 @@ impl Attached {
     pub fn tree(&self) -> Option<Arc<Value>> {
         self.snap.borrow().as_ref().map(|s| s.tree.clone())
     }
+
+    /// A handle on the current tree for another task (a session's command worker).
+    pub fn tree_view(&self) -> TreeView {
+        TreeView(self.snap.clone())
+    }
+}
+
+/// Reads the feed's current tree.
+#[derive(Clone)]
+pub struct TreeView(watch::Receiver<Option<Arc<Snap>>>);
+
+impl TreeView {
+    pub fn get(&self) -> Option<Arc<Value>> {
+        self.0.borrow().as_ref().map(|s| s.tree.clone())
+    }
 }

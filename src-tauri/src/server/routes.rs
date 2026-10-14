@@ -2,6 +2,7 @@
 //! and a shutdown future, so the `fixture_server` example runs it without the app.
 
 use std::future::Future;
+use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -55,30 +56,38 @@ pub async fn serve(
     serve_with(listener, hub, assets, None, shutdown).await
 }
 
-/// [`serve`] with extra routes merged in (the e2e fixture server's scriptable mock API under
-/// `/__mock/*`; the app never adds any).
+/// Extra routes merged into the output server, made per server start. The receiver turns `true`
+/// when that server shuts down, so long-lived connections (WebSockets) can close.
+pub type ExtraRoutes = Arc<dyn Fn(watch::Receiver<bool>) -> Router + Send + Sync>;
+
+/// [`serve`] with extra routes merged in: the Control API (`super::control`) in the app, the
+/// e2e fixture server's scriptable mock API under `/__mock/*`. Handlers can read the peer's
+/// address (`ConnectInfo<SocketAddr>`).
 pub async fn serve_with(
     listener: TcpListener,
     hub: Arc<LiveHub>,
     assets: AssetDir,
-    extra: Option<Router>,
+    extra: Option<ExtraRoutes>,
     shutdown: impl Future<Output = ()> + Send + 'static,
 ) -> std::io::Result<()> {
     let (tx, rx) = watch::channel(false);
     let mut app = router(Ctx {
         hub,
         assets,
-        shutdown: rx,
+        shutdown: rx.clone(),
     });
     if let Some(extra) = extra {
-        app = app.merge(extra);
+        app = app.merge(extra(rx));
     }
-    axum::serve(listener, app)
-        .with_graceful_shutdown(async move {
-            shutdown.await;
-            let _ = tx.send(true);
-        })
-        .await
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .with_graceful_shutdown(async move {
+        shutdown.await;
+        let _ = tx.send(true);
+    })
+    .await
 }
 
 fn router(ctx: Ctx) -> Router {
@@ -262,7 +271,7 @@ async fn ws_upgrade(
 const CLIENT_MSG_MAX: usize = 4096;
 
 /// Text message sharing the hub's serialized JSON (no copy per client).
-fn shared_text(json: &Arc<str>) -> Message {
+pub(super) fn shared_text(json: &Arc<str>) -> Message {
     struct Shared(Arc<str>);
     impl AsRef<[u8]> for Shared {
         fn as_ref(&self) -> &[u8] {

@@ -678,7 +678,8 @@ fn start(
     let (stop, rx) = oneshot::channel::<()>();
     let hub = hub.clone();
     let assets = assets.clone();
-    let extra = mock_router(mocks);
+    let mock = mock_router(mocks);
+    let extra: kinetra_lib::server::ExtraRoutes = Arc::new(move |_| mock.clone());
     let task = rt.spawn(async move {
         let shutdown = async move {
             let _ = rx.await;

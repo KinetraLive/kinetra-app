@@ -35,7 +35,7 @@ use serde_json::{json, Value};
 use tokio::sync::{watch, Notify};
 
 pub use commands::{Refused, FEATURES};
-pub use feed::{Attached, Out};
+pub use feed::{Attached, Out, TreeView};
 
 use self::feed::FeedHandle;
 use crate::core::events::{names, ProjectObserver};
