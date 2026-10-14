@@ -15,6 +15,8 @@ use crate::core::protocol::Fields;
 use crate::core::remote::state;
 use crate::core::state::AppState;
 
+/// docs/control-api.fixture.json.
+mod fixture;
 /// The service: switch, token, feed, clients, commands (this file: the tree).
 mod service;
 

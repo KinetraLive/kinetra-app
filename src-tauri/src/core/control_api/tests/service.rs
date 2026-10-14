@@ -4,7 +4,7 @@ use crate::core::events::names;
 use crate::core::secrets::{MemorySecrets, SecretStore};
 
 impl Env {
-    fn enable(&self) -> String {
+    pub(super) fn enable(&self) -> String {
         self.st.control_api_set_enabled(true).unwrap();
         self.st.control_api_token().unwrap()
     }
@@ -22,7 +22,7 @@ impl Env {
             .expect("the feed is running")
     }
 
-    fn cmd(&self, action: &str, args: Value) -> Result<(), Refused> {
+    pub(super) fn cmd(&self, action: &str, args: Value) -> Result<(), Refused> {
         self.st.control_api_command(None, None, action, &args)
     }
 

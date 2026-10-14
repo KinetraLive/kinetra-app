@@ -37,6 +37,51 @@ fn invalid(message: impl Into<String>) -> Refused {
 /// Optional commands this version has (`welcome.features`).
 pub const FEATURES: &[&str] = &["studio_take", "automation", "timer", "run_flow"];
 
+/// Every action [`run`] knows (`docs/CONTROL_API.md` "Commands"; the fixture lists an example of each).
+pub const ACTIONS: &[&str] = &[
+    "take",
+    "clear",
+    "toggle",
+    "update",
+    "set_fields",
+    "run_cue",
+    "go_next",
+    "clear_screen",
+    "clear_all",
+    "panic",
+    "source_step",
+    "media",
+    "set_level",
+    "studio_take",
+    "timer",
+    "automation",
+    "run_flow",
+];
+
+/// Every refusal code, with the HTTP status REST answers it with (WebSocket clients get the code
+/// in `result`). Besides these, the server's guard answers `origin` 403, `token` 401,
+/// `disabled` 503 and `rate_limited` 429 before any command runs.
+pub const REFUSALS: &[(&str, u16)] = &[
+    ("invalid", 400),
+    ("not_found", 404),
+    ("bound", 409),
+    ("read_only", 409),
+    ("not_studio", 409),
+    ("disarmed", 409),
+    ("rate_limited", 429),
+    ("busy", 503),
+    ("disabled", 503),
+    ("failed", 500),
+];
+
+/// The HTTP status for a refusal code (500 for an unknown one).
+pub fn http_status(code: &str) -> u16 {
+    REFUSALS
+        .iter()
+        .find(|(c, _)| *c == code)
+        .map_or(500, |(_, s)| *s)
+}
+
 fn str_arg<'a>(args: &'a Value, key: &str) -> Result<&'a str, Refused> {
     args.get(key)
         .and_then(Value::as_str)

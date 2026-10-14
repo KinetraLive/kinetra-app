@@ -37,6 +37,7 @@ use tokio::sync::{mpsc, watch};
 use tokio::time::{interval_at, Instant, MissedTickBehavior};
 
 use super::routes::{shared_text, ExtraRoutes, PING_INTERVAL};
+use crate::core::control_api::commands::http_status;
 use crate::core::control_api::{
     close, token, AttachError, Out, Refused, TreeView, CLIENTS_MAX, SUBPROTOCOL,
 };
@@ -184,14 +185,8 @@ fn error(status: StatusCode, code: &str, message: &str) -> Response {
 }
 
 fn refused(r: &Refused) -> Response {
-    let status = match r.code {
-        "invalid" => StatusCode::BAD_REQUEST,
-        "not_found" => StatusCode::NOT_FOUND,
-        "bound" | "read_only" | "not_studio" | "disarmed" => StatusCode::CONFLICT,
-        "rate_limited" => StatusCode::TOO_MANY_REQUESTS,
-        "busy" | "disabled" => StatusCode::SERVICE_UNAVAILABLE,
-        _ => StatusCode::INTERNAL_SERVER_ERROR,
-    };
+    let status =
+        StatusCode::from_u16(http_status(r.code)).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
     error(status, r.code, &r.message)
 }
 
