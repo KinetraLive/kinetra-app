@@ -8,6 +8,7 @@ pub mod automation;
 pub mod backup;
 pub mod cloud;
 pub mod control_actions;
+pub mod control_api;
 pub mod controls;
 pub mod copy;
 pub mod displays;

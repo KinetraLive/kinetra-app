@@ -15,8 +15,9 @@ use super::proto::{
     VALUE_MAX,
 };
 use crate::core::live::FieldDef;
-use crate::core::model::{NodeKind, ScreenLayerKind};
+use crate::core::model::{MediaReadiness, NodeKind, ScreenLayerKind, VariableKind};
 use crate::core::protocol::FieldType;
+use crate::core::sources;
 use crate::core::state::AppState;
 
 /// The one cue list (owner decision B): Control's cue flows in order.
@@ -33,6 +34,19 @@ pub struct RemoteAsset {
     pub kind: &'static str,
 }
 
+/// Which client the tree is for.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Flavor {
+    /// Cloud remote control (`docs/CONTROL_PROTOCOL.md` §6.1, exactly).
+    #[default]
+    Remote,
+    /// The local Control API (`docs/CONTROL_API.md`): layer keys `<screen>.<layer>`, logical
+    /// `on_air` (take → clear), no take lock or `remote_editable`, plus staged / readiness /
+    /// variant / opacity / playback per layer, variants and range variables per template,
+    /// running cues, sources and Automation off.
+    Local,
+}
+
 /// What the tree needs besides the app's state.
 #[derive(Debug, Clone, Default)]
 pub struct BuildInput {
@@ -40,7 +54,11 @@ pub struct BuildInput {
     /// The last cue run and its position in the order at that time (session state).
     pub last_cue: Option<(String, usize)>,
     pub assets: Vec<RemoteAsset>,
+    pub flavor: Flavor,
 }
+
+/// Local flavor: at most this many sources.
+pub const LOCAL_SOURCES_MAX: usize = 256;
 
 /// A cue: its id (the flow id) and the text on its button.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -118,6 +136,17 @@ fn layer_key(screen: &str, layer: &str, taken: &Map<String, Value>) -> String {
     }
 }
 
+/// A layer's key in the local tree: `<screen>.<layer>` (ids never contain `.`).
+pub fn local_key(screen: &str, layer: &str) -> String {
+    format!("{screen}.{layer}")
+}
+
+/// The screen and layer ids of a local tree key; `None` when it isn't one.
+pub fn split_local_key(key: &str) -> Option<(&str, &str)> {
+    let (s, l) = key.split_once('.')?;
+    (crate::core::templates::is_id(s) && crate::core::templates::is_id(l)).then_some((s, l))
+}
+
 /// The screen's own layer id for a tree key (see [`layer_key`]).
 pub fn local_layer_id<'a>(key: &'a str, screen: &str) -> &'a str {
     key.strip_prefix(screen)
@@ -164,11 +193,18 @@ fn field_json(d: &FieldDef) -> Value {
 /// Builds the whole tree (§6.1). Reads memory only; call from a thread that may block briefly
 /// (the screen store's lock, a template not loaded yet).
 pub fn build(st: &AppState, input: &BuildInput) -> Value {
+    let local = input.flavor == Flavor::Local;
     let hub = st.live();
-    hub.refresh_fades();
-    let visible = hub.visible_layers();
+    // Exact visibility (fades) is remote control's; the local tree uses the logical state.
+    let visible = if local {
+        Default::default()
+    } else {
+        hub.refresh_fades();
+        hub.visible_layers()
+    };
     let studio = hub.is_studio();
     let dir = st.project_dir().ok();
+    let screens_max = if local { usize::MAX } else { SCREENS_MAX };
 
     let mut screens = Map::new();
     let mut screen_order = Vec::new();
@@ -176,7 +212,7 @@ pub fn build(st: &AppState, input: &BuildInput) -> Value {
     let mut layers = Map::new();
     let mut preview = Map::new();
 
-    for view in hub.user_screen_views().into_iter().take(SCREENS_MAX) {
+    for view in hub.user_screen_views().into_iter().take(screens_max) {
         let sid = view.screen.id.clone();
         let doc = st.screens().doc(&sid);
         let loaded = match (&dir, &doc) {
@@ -196,7 +232,11 @@ pub fn build(st: &AppState, input: &BuildInput) -> Value {
             if layers.len() >= LAYERS_MAX {
                 break;
             }
-            let key = layer_key(&sid, &lv.id, &layers);
+            let key = if local {
+                local_key(&sid, &lv.id)
+            } else {
+                layer_key(&sid, &lv.id, &layers)
+            };
             let Some(dl) = doc
                 .as_ref()
                 .and_then(|d| d.meta.layers.iter().find(|l| l.id == lv.id))
@@ -213,6 +253,36 @@ pub fn build(st: &AppState, input: &BuildInput) -> Value {
                     bindings,
                     ..
                 } => (template_id, bindings),
+                ScreenLayerKind::Media { media, opacity } if local => {
+                    let (kind, name) = media_of(&media.asset).unwrap_or_else(|| {
+                        let file = media.asset.rsplit('/').next().unwrap_or(&media.asset);
+                        ("audio", name_of(file))
+                    });
+                    let mut m = json!({"type": kind, "name": name});
+                    if let Some(mv) = &lv.media {
+                        m["playback"] = json!({
+                            "state": mv.playback.state,
+                            "pos_ms": mv.playback.pos_ms,
+                            "at": mv.playback.at,
+                            "in_ms": media.in_ms,
+                            "out_ms": media.out_ms,
+                            "duration_ms": mv.duration_ms,
+                        });
+                    }
+                    let mut obj = json!({
+                        "kind": "media",
+                        "screen": sid,
+                        "name": name_of(&dl.name),
+                        "on_air": on_air,
+                        "media": m,
+                        "opacity": opacity.unwrap_or(100),
+                    });
+                    obj["ready"] = ready_json(lv.media.as_ref().map(|m| &m.readiness));
+                    layers.insert(key.clone(), obj);
+                    ids.push(key.clone());
+                    keys.push((lv.id.clone(), key));
+                    continue;
+                }
                 // Read-only, with its on-air state (§6.1 `kind: "media"`). Audio layers have
                 // nothing to show and no protocol type: left out.
                 ScreenLayerKind::Media { media, .. } => {
@@ -246,17 +316,37 @@ pub fn build(st: &AppState, input: &BuildInput) -> Value {
                 if templates.len() >= TEMPLATES_MAX {
                     continue;
                 }
-                let name = loaded
-                    .get(template_id.as_str())
+                let lt = loaded.get(template_id.as_str());
+                let name = lt
                     .map(|t| t.meta.name.clone())
                     .unwrap_or_else(|| template_id.clone());
-                templates.insert(
-                    template_id.clone(),
-                    json!({
-                        "name": name_of(&name),
-                        "fields": defs.iter().map(field_json).collect::<Vec<_>>(),
-                    }),
-                );
+                let mut t = json!({
+                    "name": name_of(&name),
+                    "fields": defs.iter().map(field_json).collect::<Vec<_>>(),
+                });
+                if local {
+                    let variants: Vec<Value> = lt
+                        .map(|t| t.variants.as_slice())
+                        .unwrap_or_default()
+                        .iter()
+                        .map(|v| json!({"id": v.id, "name": name_of(&v.name)}))
+                        .collect();
+                    let ranges: Vec<Value> = lt
+                        .map(|t| t.meta.variables.as_slice())
+                        .unwrap_or_default()
+                        .iter()
+                        .filter_map(|v| match &v.kind {
+                            VariableKind::Range { min, max, step, .. } => Some(json!({
+                                "key": v.key, "label": name_of(&v.label),
+                                "min": min, "max": max, "step": step,
+                            })),
+                            _ => None,
+                        })
+                        .collect();
+                    t["variants"] = Value::Array(variants);
+                    t["ranges"] = Value::Array(ranges);
+                }
+                templates.insert(template_id.clone(), t);
             }
             let mut editable = true;
             let mut values = Map::new();
@@ -283,19 +373,28 @@ pub fn build(st: &AppState, input: &BuildInput) -> Value {
                 .keys()
                 .filter(|k| defs.iter().any(|d| &d.key == *k))
                 .collect();
-            layers.insert(
-                key.clone(),
-                json!({
-                    "kind": "template",
-                    "screen": sid,
-                    "name": name_of(&dl.name),
-                    "template": template_id,
-                    "on_air": on_air,
-                    "values": values,
-                    "bound": bound,
-                    "remote_editable": editable,
-                }),
-            );
+            let mut obj = json!({
+                "kind": "template",
+                "screen": sid,
+                "name": name_of(&dl.name),
+                "template": template_id,
+                "on_air": on_air,
+                "values": values,
+                "bound": bound,
+            });
+            if local {
+                let opacity = match &dl.kind {
+                    ScreenLayerKind::Template { opacity, .. } => opacity.unwrap_or(100),
+                    ScreenLayerKind::Media { .. } => 100,
+                };
+                obj["pending"] = json!(shown.pending);
+                obj["variant"] = json!(shown.variant);
+                obj["opacity"] = json!(opacity);
+                obj["ready"] = ready_json(lv.readiness.as_ref());
+            } else {
+                obj["remote_editable"] = json!(editable);
+            }
+            layers.insert(key.clone(), obj);
             ids.push(key.clone());
             keys.push((lv.id.clone(), key));
         }
@@ -321,7 +420,13 @@ pub fn build(st: &AppState, input: &BuildInput) -> Value {
     let (current, next) = current_next(&order, input.last_cue.as_ref());
     let cue_map: Map<String, Value> = cue_list
         .iter()
-        .map(|c| (c.id.clone(), json!({"name": c.name, "note": ""})))
+        .map(|c| {
+            let mut cue = json!({"name": c.name, "note": ""});
+            if local {
+                cue["running"] = json!(st.flow_engine().is_running(&c.id));
+            }
+            (c.id.clone(), cue)
+        })
         .collect();
 
     let assets: Vec<Value> = input
@@ -331,8 +436,7 @@ pub fn build(st: &AppState, input: &BuildInput) -> Value {
         .map(|a| json!({"path": a.path, "name": a.name, "kind": a.kind}))
         .collect();
 
-    json!({
-        "remote": {"take_locked": input.take_locked},
+    let mut tree = json!({
         "screens": screens,
         "screen_order": screen_order,
         "templates": templates,
@@ -350,7 +454,61 @@ pub fn build(st: &AppState, input: &BuildInput) -> Value {
         "studio_mode": studio,
         "preview": preview,
         "assets": assets,
-    })
+    });
+    if local {
+        let (sources, order) = local_sources(st);
+        tree["sources"] = Value::Object(sources);
+        tree["source_order"] = json!(order);
+        tree["automation_off"] = json!(st.flow_engine().automation_off());
+    } else {
+        tree["remote"] = json!({"take_locked": input.take_locked});
+    }
+    tree
+}
+
+/// Local flavor: a layer's preload status, `{loaded, total}` (null when it has none).
+fn ready_json(r: Option<&MediaReadiness>) -> Value {
+    match r {
+        Some(r) => json!({"loaded": r.ready, "total": r.total}),
+        None => Value::Null,
+    }
+}
+
+/// Local flavor: the project's sources (name order) with their position and the first
+/// column of the current row as a label.
+fn local_sources(st: &AppState) -> (Map<String, Value>, Vec<String>) {
+    let now = st.sources().clock().now();
+    let mut docs = st.sources().docs();
+    docs.sort_by(|a, b| {
+        a.meta
+            .name
+            .to_lowercase()
+            .cmp(&b.meta.name.to_lowercase())
+            .then_with(|| a.id.cmp(&b.id))
+    });
+    let mut map = Map::new();
+    let mut order = Vec::new();
+    for doc in docs.iter().take(LOCAL_SOURCES_MAX) {
+        let (count, index) = sources::position(doc);
+        let row = sources::current_row(doc, &now);
+        let label: String = sources::columns_of(doc)
+            .first()
+            .and_then(|c| row.get(&c.key))
+            .map(|v| v.trim().chars().take(NAME_MAX).collect())
+            .unwrap_or_default();
+        map.insert(
+            doc.id.clone(),
+            json!({
+                "name": name_of(&doc.meta.name),
+                "kind": sources::kind_name(doc),
+                "index": index,
+                "count": count,
+                "label": label,
+            }),
+        );
+        order.push(doc.id.clone());
+    }
+    (map, order)
 }
 
 // ---- Diff ----------------------------------------------------------------------------------
@@ -492,7 +650,9 @@ pub fn check_refs(tree: &Value) -> Result<(), String> {
         }
     }
     for (lid, l) in layers {
-        if !id_ok(lid) || !screens.contains_key(l["screen"].as_str().unwrap_or("")) {
+        let screen = l["screen"].as_str().unwrap_or("");
+        let key_ok = id_ok(lid) || split_local_key(lid).is_some_and(|(s, _)| s == screen);
+        if !key_ok || !screens.contains_key(screen) {
             return Err(format!("layer {lid} screen"));
         }
         if l["kind"] == "media" {

@@ -502,6 +502,7 @@ impl AppState {
             take_locked,
             last_cue,
             assets: assets.as_ref().clone(),
+            flavor: state::Flavor::Remote,
         }
     }
 
