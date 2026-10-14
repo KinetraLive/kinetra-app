@@ -9,6 +9,10 @@ update panel: one paragraph per line, no Markdown.
 
 ## Unreleased
 
+Signed for Windows: the installer and the app now show Rørvik Medieteknikk as the publisher.
+
+The cue strip in Control marks the next cue: the one after the cue you ran last shows Next.
+
 Live polls: run audience polls from the new Polls page and show them on screen. Viewers vote on their phones with a QR code or a short link, and the results update live on air. The Poll graphic comes in all nine styles, with looks for Live, Starting soon, Voting closed and Results, and the winner marked when voting ends.
 
 Control fits smaller windows: when space runs out, the less-used toolbar options move into a ⋯ menu, so PANIC always stays in reach.
