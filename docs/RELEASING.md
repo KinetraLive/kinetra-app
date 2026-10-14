@@ -157,14 +157,16 @@ Environments › release › Environment variables; none of them is a secret):
 | `AZURE_CLIENT_ID` | Application (client) ID of `kinetra-github-signing` |
 | `AZURE_SIGNING_ENDPOINT` | the account's regional endpoint, `https://neu.codesigning.azure.net` |
 | `AZURE_SIGNING_ACCOUNT` | the Artifact Signing account, `kinetra-signing` |
-| `AZURE_SIGNING_PROFILE` | the Public Trust certificate profile |
+| `AZURE_SIGNING_PROFILE` | the Public Trust certificate profile, `kinetra-public` |
 
-All five must be set, or the build is unsigned (with the warning above). In Entra ID, `kinetra-github-signing`
-› Certificates & secrets › Federated credentials: scenario "GitHub Actions deploying Azure
-resources", organization `KinetraLive`, repository `kinetra-app`, entity type Environment,
-environment `release` (subject `repo:KinetraLive/kinetra-app:environment:release`, audience
-`api://AzureADTokenExchange`). The app keeps the Artifact Signing Certificate Profile Signer
-role on the signing account.
+All five must be set, or the build is unsigned (with the warning above). In Entra ID,
+`kinetra-github-signing` › Certificates & secrets › Federated credentials: scenario "Other
+issuer", issuer `https://token.actions.githubusercontent.com`, explicit subject
+`repo:KinetraLive@340193696/kinetra-app@1413349140:environment:release`, audience
+`api://AzureADTokenExchange`. The repository uses GitHub's immutable OIDC subjects (owner and
+repository IDs after `@`), so the portal's "GitHub Actions" scenario, which builds
+`repo:KinetraLive/kinetra-app:…`, doesn't match (AADSTS700213). The app has the Artifact Signing
+Certificate Profile Signer role on the signing account.
 
 The job downloads `Microsoft.ArtifactSigning.Client` from NuGet (version and SHA-256 pinned in
 `build.yml`; bump both together), writes the dlib's metadata (Azure CLI credential only) and takes
