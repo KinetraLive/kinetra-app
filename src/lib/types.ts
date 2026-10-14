@@ -232,6 +232,23 @@ export interface ControlApiPrefs {
   enabled: boolean;
 }
 
+/** A program connected to the Control API (Preferences lists them). */
+export interface ControlClientView {
+  id: number;
+  /** From its hello, e.g. "companion-module-kinetra-graphics/1.0.0". */
+  name: string;
+  /** The peer's IP address. */
+  addr: string;
+  /** Server epoch ms of the connection. */
+  since: number;
+}
+
+/** `control-api` event and `control_api_view`: the switch and the connected clients. */
+export interface ControlApiView {
+  enabled: boolean;
+  clients: ControlClientView[];
+}
+
 // ---- Display outputs (per machine, prefs.json `outputs`) ----
 
 /** A connected display as the OS reports it (`list_displays`, `displays-changed`). All numbers

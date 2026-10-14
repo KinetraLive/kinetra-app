@@ -10,6 +10,7 @@ pub mod assets;
 pub mod automation;
 pub mod backup;
 pub mod control;
+pub mod control_api;
 pub mod flows;
 pub mod license;
 pub mod live;

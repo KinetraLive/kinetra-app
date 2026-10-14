@@ -140,6 +140,7 @@ export interface EventPayloads {
   // Remote control (wrappers: $lib/api/remote).
   /** Remote control's state, crew, lock or round trip changed. */
   "remote-control": import("../types").RemoteView;
+  "control-api": import("../types").ControlApiView;
   /** A remote command was accepted (this run only). */
   "remote-activity": import("../types").RemoteActivity;
   /** Connection details, ≤ 2/s and only while a watch is open. */

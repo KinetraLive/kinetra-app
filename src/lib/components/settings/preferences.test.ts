@@ -15,6 +15,8 @@ const events = vi.hoisted(() => ({ handlers: new Map<string, Handler>() }));
 const api = vi.hoisted(() => ({
   remoteView: vi.fn(async () => ({ state: "off", on: false, takeLocked: false, crew: [], showId: null, crewUrl: null, controllerUrl: null, serverVersion: null, rttMs: null, licenseWarning: null, lastError: null, hasShowId: false, available: true, screensHidden: 0 })),
   cuePosition: vi.fn(async () => ({ current: null, next: null })),
+  controlApiView: vi.fn(async () => ({ enabled: false, clients: [] })),
+  onControlApi: vi.fn(() => () => {}),
   remoteDiagWatch: vi.fn(async () => null),
   licenseView: vi.fn(async () => null),
   appInfo: vi.fn(),
@@ -72,6 +74,7 @@ vi.mock("$lib/api/reset", () => api);
 vi.mock("$lib/api/flows", () => api);
 vi.mock("$lib/api/sources", () => api);
 vi.mock("$lib/api/midi", () => api);
+vi.mock("$lib/api/control-api", () => api);
 vi.mock("$lib/api/app", () => api);
 vi.mock("$lib/api/controls", () => api);
 vi.mock("$lib/api/screens", () => api);
@@ -386,6 +389,8 @@ describe("Network & API", () => {
     expect(container.querySelector("#server")).toBeTruthy();
     expect(container.querySelector("#midi")).toBeTruthy();
     expect(container.querySelector("#remote")).toBeTruthy();
+    expect(container.querySelector("#control-api")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Control API" })).toBeTruthy();
     expect(await screen.findByRole("heading", { name: "Remote control" })).toBeTruthy();
     await waitFor(() => expect(container.querySelector("#osc")).toBeTruthy());
     expect(screen.queryByText(/available in Advanced mode/)).toBeNull();
@@ -397,6 +402,8 @@ describe("Network & API", () => {
     expect(screen.getByRole("heading", { name: "Server" })).toBeTruthy();
     expect(screen.queryByRole("heading", { name: "MIDI & OSC" })).toBeNull();
     await tick();
+    // The Control API is for Companion users too: shown in Simple mode.
+    expect(container.querySelector("#control-api")).toBeTruthy();
     expect(container.querySelector("#osc")).toBeNull();
     expect(screen.getByText("MIDI and OSC: available in Advanced mode", { exact: false })).toBeTruthy();
     await fireEvent.click(screen.getByRole("button", { name: "Switch to Advanced" }));

@@ -1849,4 +1849,28 @@ for (const theme of ["dark", "light"] as const) {
       await shot(page, `${theme}-93-preferences-remote-details`);
     });
   });
+
+  // Preferences › Network & API › Control API: on, with Companion connected over the LAN.
+  test(`${theme}, preferences: control api`, async ({ page, context, server }) => {
+    await routeOutput(context, server, new Set());
+    await page.setViewportSize({ width: 980, height: 720 });
+    await open(page, "/preferences?section=control-api", {
+      theme,
+      screens: [],
+      lanAccess: true,
+      selectedScreenId: null,
+      prefsUiMode: "simple",
+      controlApi: {
+        enabled: true,
+        clients: [{ id: 1, name: "companion-module-kinetra-graphics/1.0.0", addr: "192.168.1.30", since: Date.now() - 300_000 }],
+      },
+    });
+    await expect(page.getByText("companion-module-kinetra-graphics/1.0.0")).toBeVisible();
+    await page.locator("#control-api").scrollIntoViewIfNeeded();
+    await page.mouse.move(2, 2);
+    await shot(page, `${theme}-94-preferences-control-api`);
+    await page.getByRole("button", { name: "New token…" }).click();
+    await expect(page.getByRole("dialog", { name: "Make a new token?" })).toBeVisible();
+    await shot(page, `${theme}-94-preferences-control-api-new-token`);
+  });
 }

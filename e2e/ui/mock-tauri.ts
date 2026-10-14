@@ -22,6 +22,7 @@ import type {
   AssetInfo,
   LiveLayerView,
   BrandKit,
+  ControlApiView,
   ControlsDoc,
   ControlViewState,
   DisplayInfo,
@@ -168,6 +169,9 @@ export interface MockScenario {
   remote?: Partial<RemoteView>;
   remoteActivity?: RemoteActivity[];
   cueNext?: string | null;
+  /** The Control API (Preferences › Network & API): the switch and connected programs; default off.
+   *  `control_api_set` switches it (emits `control-api`), `control_api_disconnect` drops one. */
+  controlApi?: ControlApiView;
 }
 
 export function installMockTauri(s: MockScenario): void {
@@ -1124,6 +1128,7 @@ export function installMockTauri(s: MockScenario): void {
   };
   const timers = new Map<string, ReturnType<typeof setTimeout>>();
   let remoteState: Partial<RemoteView> = s.remote ?? {};
+  let controlApi: ControlApiView = s.controlApi ?? { enabled: false, clients: [] };
   const remoteNow = (): RemoteView =>
     ({
       state: "off", on: false, takeLocked: false, crew: [], showId: null, crewUrl: null, controllerUrl: null,
@@ -1773,6 +1778,24 @@ export function installMockTauri(s: MockScenario): void {
       channel: "stable",
       commit: "fa23a08",
     }),
+    // ---- Control API ----
+    control_api_view: () => controlApi,
+    control_api_set: (a) => {
+      controlApi = { enabled: Boolean(a.on), clients: a.on ? controlApi.clients : [] };
+      emit("control-api", controlApi);
+      return controlApi;
+    },
+    control_api_token: () => "kt_mockmockmockmockmockmockmockmockmockmockmo",
+    control_api_regenerate_token: () => {
+      controlApi = { ...controlApi, clients: [] };
+      emit("control-api", controlApi);
+      return "kt_newnewnewnewnewnewnewnewnewnewnewnewnewne";
+    },
+    control_api_disconnect: (a) => {
+      controlApi = { ...controlApi, clients: controlApi.clients.filter((c) => c.id !== a.id) };
+      emit("control-api", controlApi);
+      return null;
+    },
     // ---- Remote control ----
     remote_view: () => remoteNow(),
     remote_set: (a) => {
