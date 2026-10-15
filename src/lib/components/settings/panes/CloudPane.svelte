@@ -20,7 +20,7 @@
   import SettingsSection from "$lib/components/SettingsSection.svelte";
   import Switch from "$lib/components/Switch.svelte";
   import { cloud } from "$lib/components/cloud/state.svelte";
-  import { gb, questionWords, retentionWords, stateWords } from "$lib/components/cloud/words";
+  import { questionWords, retentionWords, size, stateWords } from "$lib/components/cloud/words";
   import ProLock from "$lib/components/license/ProLock.svelte";
   import { license } from "$lib/components/license/state.svelte";
   import { cloudLinks } from "$lib/api/license";
@@ -104,14 +104,14 @@
           <ProgressBar
             value={Math.min(q.percent, 100)}
             label="Cloud storage used"
-            valueText="{gb(q.usedBytes)} of {gb(q.limitBytes)}"
+            valueText="{size(q.usedBytes)} of {size(q.limitBytes)}"
             tone={view.state === "full" || view.state === "warning" ? "warning" : "accent"}
           />
-          <span class="mono">{gb(q.usedBytes)} of {gb(q.limitBytes)}</span>
+          <span class="mono">{size(q.usedBytes)} of {size(q.limitBytes)}</span>
         </div>
       </SettingsRow>
       <SettingsRow label="Uploaded today">
-        <span class="mono">{gb(q.uploadTodayUsed)} of {gb(q.uploadTodayLimit)}</span>
+        <span class="mono">{size(q.uploadTodayUsed)} of {size(q.uploadTodayLimit)}</span>
       </SettingsRow>
       <SettingsRow label="Version history" description={retention ?? undefined}>
         <span class="tnum">{q.retentionDays} days</span>

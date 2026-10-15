@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CloudView } from "$lib/types";
-import { gb, questionWords, retentionWords, stateWords } from "./words";
+import { size, questionWords, retentionWords, stateWords } from "./words";
 
 const quota = {
   plan: "pro_monthly",
@@ -34,11 +34,16 @@ const view = (patch: Partial<CloudView>): CloudView => ({
 });
 
 describe("cloud words", () => {
-  it("formats sizes in GB", () => {
-    expect(gb(7_340_032_000)).toBe("7.34 GB");
-    expect(gb(20e9)).toBe("20 GB");
-    expect(gb(12.5e9)).toBe("12.5 GB");
-    expect(gb(0)).toBe("0 GB");
+  it("formats sizes in decimal units", () => {
+    expect(size(7_340_032_000)).toBe("7.34 GB");
+    expect(size(20e9)).toBe("20 GB");
+    expect(size(12.5e9)).toBe("12.5 GB");
+    expect(size(0)).toBe("0 MB");
+    // Small amounts stay readable (a dev account has 200 MB).
+    expect(size(200e6)).toBe("200 MB");
+    expect(size(13_100_000 + 20_000)).toBe("13.1 MB");
+    expect(size(20_000)).toBe("20 KB");
+    expect(size(120)).toBe("1 KB");
   });
 
   it("says the contract's quiet texts, and nothing when all is well", () => {

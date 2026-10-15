@@ -2,11 +2,13 @@
 
 import type { CloudAnswer, CloudQuestion, CloudView } from "$lib/types";
 
-/** Bytes as GB (10⁹), e.g. "7.34 GB", "0.2 GB", "20 GB". */
-export function gb(bytes: number): string {
-  const v = bytes / 1e9;
+/** A size in decimal units (10³, CLOUD_PROJECTS.md §3.2): "7.34 GB", "13.1 MB", "20 KB", "0 MB". */
+export function size(bytes: number): string {
+  if (bytes <= 0) return "0 MB";
+  const [div, unit] = bytes >= 1e9 ? [1e9, "GB"] : bytes >= 1e6 ? [1e6, "MB"] : [1e3, "KB"];
+  const v = bytes / div;
   const digits = v >= 100 || Number.isInteger(v) ? 0 : v >= 10 ? 1 : 2;
-  return `${Number(v.toFixed(digits))} GB`;
+  return `${Math.max(Number(v.toFixed(digits)), unit === "KB" ? 1 : 0)} ${unit}`;
 }
 
 /** "Dec 30, 2026" from an RFC 3339 time. */
