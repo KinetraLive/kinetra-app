@@ -2,14 +2,15 @@
 //! a throwaway project "Claude live test" backs up through the real API and storage.
 //!
 //! ```text
-//! KINETRA_DEV_PROFILE=dev KINETRA_API_BASE=https://vps-b17d613f.tail33aa62.ts.net:8445 \
-//!   cargo run --example cloud_live
+//! KINETRA_TRUSTED_KEYS=src-tauri/license/dev-trusted-keys.json KINETRA_DEV_PROFILE=dev \
+//!   KINETRA_API_BASE=https://vps-b17d613f.tail33aa62.ts.net:8445 cargo run --example cloud_live
 //! ```
+//! Build with `KINETRA_CHANNEL=canary` when the dev app is a canary build (the keychain service
+//! follows the channel).
 //!
 //! Signs in as the dev profile does: its session is read from that profile's keychain (`Kinetra
 //! [Canary ]dev-<profile>`), one license sync activates and stores the license token there (as
-//! the app would), its `license.json` is copied into
-//! a temporary config folder. Checks: a first backup (a 20 MB file in parts, a decomposed name in
+//! the app would), and its `license.json` is copied into a temporary config folder. Checks: a first backup (a 20 MB file in parts, a decomposed name in
 //! NFC), a second with no changes sends nothing, a changed file sends only itself, a multipart
 //! upload stopped halfway resumes, nothing goes up while a Program renderer is connected, and no
 //! URL, signature or hash reaches the log. Then the test project goes to the trash (it counts
