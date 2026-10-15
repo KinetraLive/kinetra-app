@@ -225,6 +225,9 @@ impl AppState {
     /// Sends `cloud-changed` when the view differs from the last one sent.
     pub(crate) fn emit_cloud(&self) {
         let view = self.cloud_view();
+        // Transfers follow the on-air setting at once (also mid-backup).
+        self.cloud_gate()
+            .set_policy(view.settings.on_air, view.settings.limit_kbps);
         {
             let mut s = lock(&self.cloud_projects().inner);
             if s.sent.as_ref() == Some(&view) {

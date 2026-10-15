@@ -766,3 +766,74 @@ fn backup_needs_the_project_switch_on() {
     assert!(e.st.cloud_backup_now().is_err());
     assert!(!e.st.cloud_backup_running());
 }
+
+fn set_on_air_policy(st: &AppState, on_air: crate::core::model::CloudOnAir, kbps: u32) {
+    let mut p = st.prefs();
+    p.cloud.on_air = Some(on_air);
+    p.cloud.limit_kbps = Some(kbps);
+    st.set_prefs(p);
+}
+
+#[test]
+fn limit_mode_keeps_sending_on_air_at_the_set_speed() {
+    let e = env();
+    // 400 kbit/s = 50 000 B/s: 60 000 B take at least 1.2 s while on air.
+    set_on_air_policy(&e.st, crate::core::model::CloudOnAir::Limit, 400);
+    e.write("clip.bin", &bytes(60_000, 5));
+    let obs = e.st.live().renderer_attach("main", true);
+    let t = Instant::now();
+    e.st.cloud_backup_now().unwrap();
+    wait_until("limited", || {
+        e.view()
+            .project
+            .and_then(|p| p.run)
+            .is_some_and(|r| r.limited && !r.paused)
+    });
+    e.wait_done();
+    let took = t.elapsed();
+    assert!(took >= Duration::from_millis(1100), "{took:?}");
+    assert_eq!(e.view().project.unwrap().error, None);
+    assert_eq!(e.fake.lock().unwrap().versions.len(), 1);
+    drop(obs);
+    // Off air: the same amount goes at full speed.
+    e.write("clip2.bin", &bytes(60_000, 6));
+    let t = Instant::now();
+    e.backup();
+    assert!(
+        t.elapsed() < Duration::from_millis(1000),
+        "{:?}",
+        t.elapsed()
+    );
+}
+
+#[test]
+fn switching_to_pause_mid_backup_pauses_at_once() {
+    let e = env();
+    set_on_air_policy(&e.st, crate::core::model::CloudOnAir::Limit, 64);
+    e.write("clip.bin", &bytes(60_000, 7)); // ~7.5 s at 64 kbit/s
+    let obs = e.st.live().renderer_attach("main", true);
+    e.st.cloud_backup_now().unwrap();
+    wait_until("limited", || {
+        e.view()
+            .project
+            .and_then(|p| p.run)
+            .is_some_and(|r| r.limited)
+    });
+    let t = Instant::now();
+    set_on_air_policy(&e.st, crate::core::model::CloudOnAir::Pause, 64);
+    wait_until("paused", || {
+        e.view()
+            .project
+            .and_then(|p| p.run)
+            .is_some_and(|r| r.paused)
+    });
+    assert!(t.elapsed() < Duration::from_secs(1), "{:?}", t.elapsed());
+    assert_eq!(
+        e.puts(),
+        0,
+        "the paced request was dropped before it finished"
+    );
+    drop(obs);
+    e.wait_done();
+    assert_eq!(e.view().project.unwrap().error, None);
+}

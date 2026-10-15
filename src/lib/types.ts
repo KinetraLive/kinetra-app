@@ -330,6 +330,8 @@ export interface CloudRunView {
   totalBytes: number;
   /** Waiting because something is on air. */
   paused: boolean;
+  /** Sending slowly because something is on air ("Limit speed"). */
+  limited: boolean;
 }
 
 export interface CloudSkipped {

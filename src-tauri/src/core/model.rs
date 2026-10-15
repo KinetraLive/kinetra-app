@@ -705,6 +705,8 @@ pub struct CloudRunView {
     pub total_bytes: u64,
     /// Waiting because something is on air.
     pub paused: bool,
+    /// Sending slowly because something is on air (`limit`).
+    pub limited: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

@@ -31,7 +31,7 @@ use md5::{Digest, Md5};
 use tokio::sync::watch;
 
 use super::api::BLOBS_PER_CALL;
-use super::gate::{goes_on_air, off_air};
+use super::gate::{may_send, must_pause, Mode, Pacer};
 use super::local::MultipartRecord;
 use super::r2::{R2Error, R2};
 use super::scan::{self, BackgroundPriority, Found, HashCache, Hashed, Skipped};
@@ -48,8 +48,8 @@ use crate::core::remote::ids::uuid_v7;
 use crate::core::state::AppState;
 use crate::error::{AppError, AppResult};
 
-/// Bytes per chunk of a streamed body.
-const CHUNK: usize = 256 * 1024;
+/// Bytes per chunk of a streamed body (small enough to pace smoothly under `limit`).
+const CHUNK: usize = 64 * 1024;
 /// Progress events at most this often.
 const PROGRESS_EVERY: Duration = Duration::from_millis(100);
 /// Tries per file / part before the backup gives up for now (expired URLs, changed files).
@@ -129,7 +129,7 @@ struct Run {
     api: Api,
     session: String,
     r2: R2,
-    on_air: watch::Receiver<bool>,
+    on_air: watch::Receiver<Mode>,
     cancel: Arc<AtomicBool>,
     dir: PathBuf,
     cloud_id: String,
@@ -161,6 +161,7 @@ impl AppState {
                 done_bytes: 0,
                 total_bytes: total,
                 paused: false,
+                limited: false,
             });
         });
         self.emit_cloud();
@@ -172,6 +173,9 @@ impl AppState {
         self.cloud_backup_state(dir, |b| {
             if let Some(r) = b.run.as_mut() {
                 r.done_bytes = done.min(r.total_bytes);
+                let limited = matches!(self.cloud_gate().mode(), Mode::Limit(_));
+                send |= r.limited != limited;
+                r.limited = limited;
                 if let Some(p) = paused {
                     send |= r.paused != p;
                     r.paused = p;
@@ -220,6 +224,7 @@ impl AppState {
                     done_bytes: 0,
                     total_bytes: 0,
                     paused: false,
+                    limited: false,
                 });
             }
         }
@@ -466,7 +471,7 @@ impl AppState {
         tokio::task::spawn_blocking(move || {
             let gate = &st.cloud_projects().gate;
             let wait = || {
-                if gate.is_on_air() {
+                if gate.mode() == Mode::Pause {
                     st.cloud_progress(&dir, done.load(Ordering::Relaxed), Some(true));
                     let go = gate.wait_blocking(&cancel);
                     st.cloud_progress(&dir, done.load(Ordering::Relaxed), Some(false));
@@ -660,7 +665,7 @@ impl AppState {
                         )))),
                     };
                 }
-                _ = goes_on_air(&mut rx) => {
+                _ = must_pause(&mut rx) => {
                     // Dropped mid-transfer: sent again once nothing is on air.
                     run.done.store(base, Ordering::Relaxed);
                 }
@@ -748,7 +753,7 @@ impl AppState {
                         Err(R2Error::Status(s)) => return Err(Step::Fail(Fail::Message(format!(
                             "Cloud storage refused a part ({s}). Kinetra will try again.")))),
                     },
-                    _ = goes_on_air(&mut rx) => {
+                    _ = must_pause(&mut rx) => {
                         run.done.store(before, Ordering::Relaxed);
                         tries -= 1; // on air isn't a failure
                         continue;
@@ -833,15 +838,15 @@ impl AppState {
         });
     }
 
-    /// Waits until nothing is on air (shown as paused), or fails when canceled.
+    /// Waits while transfers must pause (shown as paused), or fails when canceled.
     async fn cloud_wait_off_air(&self, run: &Run) -> Result<(), Step> {
         if run.cancel.load(Ordering::Relaxed) {
             return Err(Step::Fail(Fail::Canceled));
         }
         let mut rx = run.on_air.clone();
-        if *rx.borrow() {
+        if *rx.borrow() == Mode::Pause {
             self.cloud_progress(&run.dir, run.done.load(Ordering::Relaxed), Some(true));
-            off_air(&mut rx).await;
+            may_send(&mut rx).await;
             self.cloud_progress(&run.dir, run.done.load(Ordering::Relaxed), Some(false));
         }
         if run.cancel.load(Ordering::Relaxed) {
@@ -885,18 +890,25 @@ impl AppState {
         let dir = run.dir.clone();
         let done = run.done.clone();
         let sent = Arc::new(AtomicU64::new(0));
-        let stream = futures_util::stream::unfold(rx, move |mut rx| {
-            let (st, dir, done, sent) = (st.clone(), dir.clone(), done.clone(), sent.clone());
-            async move {
-                let item = rx.recv().await?;
-                if let Ok(b) = &item {
-                    let s = sent.fetch_add(b.len() as u64, Ordering::Relaxed) + b.len() as u64;
-                    done.store(base + s, Ordering::Relaxed);
-                    st.cloud_progress(&dir, base + s, None);
+        // Paced to the limit while on air in `limit` mode (the state carries the pacer).
+        let stream =
+            futures_util::stream::unfold((rx, Pacer::default()), move |(mut rx, mut pacer)| {
+                let (st, dir, done, sent) = (st.clone(), dir.clone(), done.clone(), sent.clone());
+                async move {
+                    let item = rx.recv().await?;
+                    if let Ok(b) = &item {
+                        let mode = st.cloud_gate().mode();
+                        let wait = pacer.delay(mode, b.len() as u64, Instant::now());
+                        if !wait.is_zero() {
+                            tokio::time::sleep(wait).await;
+                        }
+                        let s = sent.fetch_add(b.len() as u64, Ordering::Relaxed) + b.len() as u64;
+                        done.store(base + s, Ordering::Relaxed);
+                        st.cloud_progress(&dir, base + s, None);
+                    }
+                    Some((item, (rx, pacer)))
                 }
-                Some((item, rx))
-            }
-        });
+            });
         reqwest::Body::wrap_stream(stream)
     }
 

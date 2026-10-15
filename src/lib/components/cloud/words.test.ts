@@ -85,10 +85,13 @@ describe("cloud questions", () => {
 
 describe("backup words", () => {
   it("names each phase, the pause and the last backup", () => {
-    expect(runWords({ phase: "scanning", doneBytes: 0, totalBytes: 0, paused: false })).toBe("Looking for changes…");
-    expect(runWords({ phase: "hashing", doneBytes: 1, totalBytes: 3, paused: false })).toBe("Checking files… 33%");
-    expect(runWords({ phase: "uploading", doneBytes: 3, totalBytes: 3, paused: true })).toBe("Paused while on air");
-    expect(runWords({ phase: "committing", doneBytes: 0, totalBytes: 0, paused: false })).toBe("Saving the version…");
+    expect(runWords({ phase: "scanning", doneBytes: 0, totalBytes: 0, paused: false, limited: false })).toBe("Looking for changes…");
+    expect(runWords({ phase: "hashing", doneBytes: 1, totalBytes: 3, paused: false, limited: false })).toBe("Checking files… 33%");
+    expect(runWords({ phase: "uploading", doneBytes: 3, totalBytes: 3, paused: true, limited: false })).toBe("Paused while on air");
+    expect(runWords({ phase: "uploading", doneBytes: 1, totalBytes: 4, paused: false, limited: true })).toBe(
+      "Backing up slowly while on air… 25%",
+    );
+    expect(runWords({ phase: "committing", doneBytes: 0, totalBytes: 0, paused: false, limited: false })).toBe("Saving the version…");
     expect(lastWords(null)).toBeNull();
     expect(lastWords("2026-10-15T12:02:00Z")).toMatch(/^Last backup Oct 15, /);
     expect(conflictWords({ machine: null, at: null })).toBe(

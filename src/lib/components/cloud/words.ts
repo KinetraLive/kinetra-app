@@ -110,7 +110,7 @@ export function runWords(run: CloudRunView): string {
     case "hashing":
       return `Checking files…${pct}`;
     case "uploading":
-      return `Backing up…${pct}`;
+      return run.limited ? `Backing up slowly while on air…${pct}` : `Backing up…${pct}`;
     case "committing":
       return "Saving the version…";
   }

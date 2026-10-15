@@ -118,7 +118,7 @@ describe("Cloud backup pane: backing up", () => {
     expect(await screen.findByText("Not backed up yet")).toBeTruthy();
     api.cloudBackupNow.mockResolvedValue({
       ...base,
-      project: { ...project, run: { phase: "uploading", doneBytes: 45, totalBytes: 100, paused: false } },
+      project: { ...project, run: { phase: "uploading", doneBytes: 45, totalBytes: 100, paused: false, limited: false } },
     });
     await fireEvent.click(screen.getByRole("button", { name: "Back up now" }));
     await waitFor(() => expect(api.cloudBackupNow).toHaveBeenCalled());
@@ -126,7 +126,7 @@ describe("Cloud backup pane: backing up", () => {
     expect((screen.getByRole("button", { name: "Back up now" }) as HTMLButtonElement).disabled).toBe(true);
     events.handlers.get("cloud-changed")?.({
       ...base,
-      project: { ...project, run: { phase: "uploading", doneBytes: 45, totalBytes: 100, paused: true } },
+      project: { ...project, run: { phase: "uploading", doneBytes: 45, totalBytes: 100, paused: true, limited: false } },
     });
     expect(await screen.findByText("Paused while on air")).toBeTruthy();
     events.handlers.get("cloud-changed")?.({
