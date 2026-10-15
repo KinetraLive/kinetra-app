@@ -308,6 +308,33 @@ export interface CloudProjectView {
   question: CloudQuestion | null;
   /** Why this project can't back up now, in plain words. */
   issue: string | null;
+  /** A backup running now. */
+  run: CloudRunView | null;
+  /** RFC 3339 of the last backup that finished here. */
+  lastBackupAt: string | null;
+  /** Files the last backup left out (at most 100). */
+  report: CloudSkipped[];
+  /** How many files it left out in all. */
+  skipped: number;
+  /** Why the last backup didn't finish, in plain words. */
+  error: string | null;
+  /** Another computer backed this project up in between; both are kept. */
+  conflict: { machine: string | null; at: string | null } | null;
+}
+
+export type CloudPhase = "scanning" | "hashing" | "uploading" | "committing";
+
+export interface CloudRunView {
+  phase: CloudPhase;
+  doneBytes: number;
+  totalBytes: number;
+  /** Waiting because something is on air. */
+  paused: boolean;
+}
+
+export interface CloudSkipped {
+  path: string;
+  reason: string;
 }
 
 export type CloudQuestion =

@@ -704,6 +704,30 @@ impl AppState {
             .map(|p| (p.dir.clone(), p.file.value.cloud_id.clone()))
     }
 
+    /// The open project's cloud backup ID, set to `new` first if it has none (atomic: two callers
+    /// never give one project two IDs). Writes `project.json` (coalesced) when it was set.
+    pub(crate) fn ensure_project_cloud_id(
+        &self,
+        dir: &Path,
+        new: String,
+    ) -> AppResult<(String, bool)> {
+        let made = {
+            let mut g = write(&self.inner.project);
+            let op = g.as_mut().ok_or(AppError::NoProject)?;
+            if op.dir != dir {
+                return Err(AppError::NoProject);
+            }
+            if let Some(id) = &op.file.value.cloud_id {
+                return Ok((id.clone(), false));
+            }
+            op.file.value.cloud_id = Some(new.clone());
+            op.file.dirty = true;
+            new
+        };
+        self.inner.schedule();
+        Ok((made, true))
+    }
+
     /// Sets the open project's cloud backup ID and writes `project.json` (coalesced). Only if
     /// `dir` is still the open project.
     pub(crate) fn set_project_cloud_id(&self, dir: &Path, id: String) -> AppResult<()> {

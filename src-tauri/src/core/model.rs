@@ -678,6 +678,53 @@ pub struct CloudProjectView {
     pub question: Option<CloudQuestion>,
     /// Why this project can't back up now (e.g. the plan's project limit), in plain words.
     pub issue: Option<String>,
+    /// A backup running now.
+    pub run: Option<CloudRunView>,
+    /// RFC 3339 of the last backup that finished (this computer).
+    pub last_backup_at: Option<String>,
+    /// Files the last backup left out, and why (at most [`CLOUD_REPORT_MAX`]).
+    pub report: Vec<CloudSkipped>,
+    /// How many files the last backup left out in all.
+    pub skipped: u32,
+    /// Why the last backup didn't finish, in plain words ("Cloud backup: offline, will retry.").
+    pub error: Option<String>,
+    /// The last backup found another computer's newer backup (both kept, §9).
+    pub conflict: Option<CloudConflictView>,
+}
+
+/// Files listed in a backup report at most.
+pub const CLOUD_REPORT_MAX: usize = 100;
+
+/// A backup in progress.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloudRunView {
+    pub phase: CloudPhase,
+    /// Bytes read (hashing) or sent (uploading) so far, of `total_bytes`.
+    pub done_bytes: u64,
+    pub total_bytes: u64,
+    /// Waiting because something is on air.
+    pub paused: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum CloudPhase {
+    Scanning,
+    Hashing,
+    Uploading,
+    Committing,
+}
+
+/// A file a backup left out.
+pub use crate::core::cloud::projects::scan::Skipped as CloudSkipped;
+
+/// Another computer backed this project up in between (CLOUD_PROJECTS.md §9).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloudConflictView {
+    pub machine: Option<String>,
+    pub at: Option<String>,
 }
 
 /// A choice cloud backup needs from the user (CLOUD_PROJECTS.md §5, the app plan's decision 1).

@@ -11,7 +11,7 @@
 
 <script lang="ts">
   import { toAppError } from "$lib/api";
-  import { cloudAnswer, cloudRefresh, cloudSetBackup } from "$lib/api/cloud";
+  import { cloudAnswer, cloudBackupNow, cloudRefresh, cloudSetBackup } from "$lib/api/cloud";
   import Button from "$lib/components/Button.svelte";
   import NumberInput from "$lib/components/NumberInput.svelte";
   import ProgressBar from "$lib/components/ProgressBar.svelte";
@@ -20,7 +20,7 @@
   import SettingsSection from "$lib/components/SettingsSection.svelte";
   import Switch from "$lib/components/Switch.svelte";
   import { cloud } from "$lib/components/cloud/state.svelte";
-  import { questionWords, retentionWords, size, stateWords } from "$lib/components/cloud/words";
+  import { conflictWords, lastWords, questionWords, retentionWords, runWords, size, stateWords } from "$lib/components/cloud/words";
   import ProLock from "$lib/components/license/ProLock.svelte";
   import { license } from "$lib/components/license/state.svelte";
   import { cloudLinks } from "$lib/api/license";
@@ -63,6 +63,10 @@
   }
   const answer = (a: CloudAnswer) => act(async () => (cloud.view = await cloudAnswer(a)));
   const setBackup = (on: boolean) => act(async () => (cloud.view = await cloudSetBackup(on)));
+  const backUpNow = () => act(async () => (cloud.view = await cloudBackupNow()));
+  const canBackUp = $derived(
+    !!project?.backup && !project.question && !project.run && (view?.state === "ok" || view?.state === "warning" || view?.state === "full"),
+  );
 
   const DEFAULTS: CloudPrefs = { newProjects: true };
   async function save(patch: Partial<CloudPrefs>) {
@@ -146,6 +150,37 @@
           <p class="status"><span class="warning">{project.issue}</span></p>
         </SettingsRow>
       {/if}
+      {#if project.backup && !question}
+        <SettingsRow label="Last backup">
+          <p class="status" role="status" aria-live="polite">
+            {#if project.run}
+              <span class="tnum" class:warning={project.run.paused}>{runWords(project.run)}</span>
+            {:else if project.error}
+              <span class="warning">{project.error}</span>
+            {:else}
+              <span>{lastWords(project.lastBackupAt) ?? "Not backed up yet"}</span>
+            {/if}
+            <Button size="sm" disabled={busy || !canBackUp} onclick={backUpNow}>Back up now</Button>
+          </p>
+        </SettingsRow>
+        {#if project.conflict}
+          <SettingsRow label="Another computer">
+            <p class="status">{conflictWords(project.conflict)}</p>
+          </SettingsRow>
+        {/if}
+        {#if project.skipped > 0}
+          <SettingsRow label="Not backed up" stacked>
+            <details class="report">
+              <summary>{project.skipped === 1 ? "1 file isn't backed up" : `${project.skipped} files aren't backed up`}</summary>
+              <ul>
+                {#each project.report as s (s.path)}
+                  <li><span class="mono">{s.path}</span> <span class="why">{s.reason}</span></li>
+                {/each}
+              </ul>
+            </details>
+          </SettingsRow>
+        {/if}
+      {/if}
     {/if}
     <SettingsRow label="Back up new projects" for="pref-cloud-new">
       <Switch
@@ -209,6 +244,30 @@
   }
   .question p {
     margin: 0 0 var(--s-2);
+  }
+  .report summary {
+    cursor: pointer;
+  }
+  .report ul {
+    margin: var(--s-2) 0 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    gap: var(--s-1);
+    max-height: 240px;
+    overflow: auto;
+  }
+  .report li {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s-2);
+    min-width: 0;
+  }
+  .report .mono {
+    overflow-wrap: anywhere;
+  }
+  .why {
+    color: var(--text-muted);
   }
   .choices {
     display: flex;

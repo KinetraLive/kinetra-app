@@ -10,6 +10,7 @@ const api = vi.hoisted(() => ({
   cloudRefresh: vi.fn(),
   cloudSetBackup: vi.fn(),
   cloudAnswer: vi.fn(),
+  cloudBackupNow: vi.fn(),
 }));
 const license = vi.hoisted(() => ({ signIn: vi.fn(), start: vi.fn(), view: null }));
 vi.mock("$lib/api/cloud", () => api);
@@ -51,7 +52,7 @@ const base: CloudView = {
     retentionFrom: null,
   },
   settings: { onAir: "pause", limitKbps: 2000, intervalS: 300, newProjects: true },
-  project: { backup: true, registered: true, noticeSeen: true, question: null, issue: null },
+  project: { backup: true, registered: true, noticeSeen: true, question: null, issue: null, run: null, lastBackupAt: null, report: [], skipped: 0, error: null, conflict: null },
 };
 
 async function show(v: CloudView) {
@@ -106,5 +107,55 @@ describe("Cloud backup pane", () => {
     api.cloudRefresh.mockResolvedValue(base);
     await fireEvent.click(await screen.findByRole("button", { name: "Check for backups" }));
     await waitFor(() => expect(api.cloudRefresh).toHaveBeenCalledWith(true));
+  });
+});
+
+describe("Cloud backup pane: backing up", () => {
+  const project = base.project!;
+
+  it("backs up on request and shows progress, the on-air pause and the result", async () => {
+    await show({ ...base, project: { ...project, lastBackupAt: null } });
+    expect(await screen.findByText("Not backed up yet")).toBeTruthy();
+    api.cloudBackupNow.mockResolvedValue({
+      ...base,
+      project: { ...project, run: { phase: "uploading", doneBytes: 45, totalBytes: 100, paused: false } },
+    });
+    await fireEvent.click(screen.getByRole("button", { name: "Back up now" }));
+    await waitFor(() => expect(api.cloudBackupNow).toHaveBeenCalled());
+    expect(await screen.findByText("Backing up… 45%")).toBeTruthy();
+    expect((screen.getByRole("button", { name: "Back up now" }) as HTMLButtonElement).disabled).toBe(true);
+    events.handlers.get("cloud-changed")?.({
+      ...base,
+      project: { ...project, run: { phase: "uploading", doneBytes: 45, totalBytes: 100, paused: true } },
+    });
+    expect(await screen.findByText("Paused while on air")).toBeTruthy();
+    events.handlers.get("cloud-changed")?.({
+      ...base,
+      project: {
+        ...project,
+        lastBackupAt: "2026-10-15T12:02:00Z",
+        skipped: 2,
+        report: [
+          { path: "assets/CON.txt", reason: "The name is reserved on Windows." },
+          { path: "assets/link", reason: "It's a link; the file it points to isn't backed up." },
+        ],
+      },
+    });
+    expect(await screen.findByText(/^Last backup Oct 15/)).toBeTruthy();
+    expect(screen.getByText("2 files aren't backed up")).toBeTruthy();
+    expect(screen.getByText("assets/CON.txt")).toBeTruthy();
+  });
+
+  it("says why a backup stopped and names another computer's backup", async () => {
+    await show({
+      ...base,
+      project: {
+        ...project,
+        error: "Cloud backup: offline, will retry.",
+        conflict: { machine: "STUDIO-PC", at: null },
+      },
+    });
+    expect(await screen.findByText("Cloud backup: offline, will retry.")).toBeTruthy();
+    expect(screen.getByText("This project was also backed up from STUDIO-PC. Both versions are kept.")).toBeTruthy();
   });
 });

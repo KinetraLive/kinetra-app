@@ -13,3 +13,5 @@ export const cloudSetBackup = (on: boolean) => call<CloudView>("cloud_set_backup
 export const cloudNoticeSeen = () => call<void>("cloud_notice_seen");
 /** Answers the open project's question (in the trash / another computer's backup). */
 export const cloudAnswer = (answer: CloudAnswer) => call<CloudView>("cloud_answer", { answer });
+/** "Back up now": starts a backup of the open project; progress follows on `cloud-changed`. */
+export const cloudBackupNow = () => call<CloudView>("cloud_backup_now");

@@ -29,6 +29,17 @@ pub enum CallError {
 }
 
 impl CallError {
+    /// An API error with `code` (for refusals the app decides itself, e.g. from the quota).
+    pub fn api(status: u16, code: &str) -> Self {
+        CallError::Api {
+            status,
+            code: code.to_string(),
+            message: String::new(),
+            details: None,
+            retry_after: None,
+        }
+    }
+
     pub fn code(&self) -> Option<&str> {
         match self {
             CallError::Api { code, .. } => Some(code),

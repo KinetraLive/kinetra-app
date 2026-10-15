@@ -58,6 +58,8 @@ pub(super) struct Svc {
 #[derive(Default)]
 pub struct CloudProjects {
     pub(super) inner: Mutex<Svc>,
+    /// On air for transfers (see `gate`).
+    pub(super) gate: super::gate::Gate,
     /// `cloud.json` writes, one at a time.
     save: Mutex<()>,
     /// Tests: the wait before a retry instead of the backoff.
@@ -205,6 +207,11 @@ impl AppState {
             },
             project,
         }
+    }
+
+    /// The last quota answer.
+    pub(super) fn cloud_quota(&self) -> Option<Quota> {
+        lock(&self.cloud_projects().inner).quota.clone()
     }
 
     /// The last quota answer's state.
@@ -361,6 +368,7 @@ impl AppState {
 
     /// Stops background work (exit).
     pub fn cloud_projects_stop(&self) {
+        self.cloud_backup_cancel();
         if let Some(t) = lock(&self.cloud_projects().inner).retry.take() {
             t.abort();
         }

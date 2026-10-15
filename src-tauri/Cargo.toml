@@ -38,7 +38,11 @@ rust-embed = "8.12"
 notify = { version = "8.2.0", default-features = false }
 # API sources: HTTP client on Tauri's tokio runtime; Windows TLS (schannel) via native-tls,
 # gzip responses. No http2, no system proxy, no rustls.
-reqwest = { version = "0.13.5", default-features = false, features = ["native-tls", "gzip"] }
+reqwest = { version = "0.13.5", default-features = false, features = ["native-tls", "gzip", "stream"] }
+# Cloud backup: SHA-256 of every file (already compiled through kinetra-license) and the MD5 of
+# each multipart part (R2 checks parts with MD5; owner OK 2026-10-15).
+sha2 = { version = "0.10", default-features = false }
+md-5 = { version = "0.10", default-features = false }
 # Secrets in the OS keychain: Windows Credential Manager here, the macOS Keychain below.
 keyring = { version = "3.6.3", default-features = false, features = ["windows-native"] }
 # Licensing (verification only: no "sign" feature); tags are license-vX.Y.Z.
@@ -66,7 +70,7 @@ futures-util = { version = "0.3", default-features = false, features = ["sink", 
 # (GDI display enumeration, the monitor EDID in the registry, a hidden window for display
 # broadcasts). Only features Tauri already compiles (tao uses Registry too).
 [target.'cfg(windows)'.dependencies]
-windows = { version = "0.62", default-features = false, features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_UI_WindowsAndMessaging", "Win32_System_LibraryLoader", "Win32_System_Registry", "Win32_System_Com"] }
+windows = { version = "0.62", default-features = false, features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_UI_WindowsAndMessaging", "Win32_System_LibraryLoader", "Win32_System_Registry", "Win32_System_Com", "Win32_System_Threading"] }
 # WebView2 COM APIs of the output windows (the version wry already compiles; no features): the
 # stored microphone permission state that lets pages see audio output devices (`setSinkId`), and
 # `ProcessFailed` for output window crash recovery. `Win32_System_Com` above is compiled by it.

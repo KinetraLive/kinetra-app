@@ -167,6 +167,8 @@ struct HubShared {
     notifier: Weak<Notifier>,
     fades: Arc<Mutex<fades::FadeBook>>,
     visible_hook: Arc<HookSlot>,
+    /// Run (no hub lock held) when a counted Program renderer connects or goes.
+    renderers_hook: Arc<HookSlot>,
 }
 
 impl Drop for RendererReg {
@@ -175,19 +177,26 @@ impl Drop for RendererReg {
         let (Some(state), Some(notifier)) = (h.state.upgrade(), h.notifier.upgrade()) else {
             return;
         };
-        let faded = {
+        let (faded, counted) = {
             let mut s = write_lock(&state);
-            let screen = lock(&h.book).conns.remove(&self.id).map(|c| c.screen);
-            if let Some(screen) = screen {
+            let conn = lock(&h.book)
+                .conns
+                .remove(&self.id)
+                .map(|c| (c.screen, c.counted));
+            let counted = conn.as_ref().is_some_and(|(_, c)| *c);
+            if let Some((screen, _)) = conn {
                 if refresh_readiness(&h.book, &mut s, &screen) {
                     notifier.note(&s, &screen);
                 }
             }
-            fades::forget_renderer(&h.fades, self.id)
+            (fades::forget_renderer(&h.fades, self.id), counted)
         };
         notifier.flush();
         if faded {
             call_hook(&h.visible_hook);
+        }
+        if counted {
+            call_hook(&h.renderers_hook);
         }
     }
 }
@@ -694,6 +703,7 @@ impl LiveHub {
             notifier: Arc::downgrade(&notifier),
             fades: Arc::default(),
             visible_hook: Arc::new(RwLock::new(None)),
+            renderers_hook: Arc::new(RwLock::new(None)),
         });
         Self {
             state,
@@ -1128,10 +1138,33 @@ impl LiveHub {
             id
         };
         self.notifier.flush();
+        if counted {
+            call_hook(&self.shared.renderers_hook);
+        }
         RendererReg {
             hub: Arc::downgrade(&self.shared),
             id,
         }
+    }
+
+    /// Connected Program renderers of user screens that aren't app previews (OBS, vMix, output
+    /// windows, a browser): cloud backup counts them as on air (owner decision 2026-10-15).
+    pub fn program_renderers(&self) -> usize {
+        lock(&self.shared.book)
+            .conns
+            .values()
+            .filter(|c| c.counted && !is_reserved_screen(&c.screen))
+            .count()
+    }
+
+    /// Installs the callback run (no hub lock held) when a counted Program renderer connects or
+    /// disconnects.
+    pub fn set_renderers_hook(&self, hook: LiveHook) {
+        *self
+            .shared
+            .renderers_hook
+            .write()
+            .unwrap_or_else(PoisonError::into_inner) = Some(hook);
     }
 
     /// A renderer's `ready` report for one of its screen's layers (kept for the layer's current

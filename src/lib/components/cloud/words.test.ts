@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CloudView } from "$lib/types";
-import { size, questionWords, retentionWords, stateWords } from "./words";
+import { conflictWords, lastWords, questionWords, retentionWords, runWords, size, stateWords } from "./words";
 
 const quota = {
   plan: "pro_monthly",
@@ -79,6 +79,20 @@ describe("cloud questions", () => {
     expect(w.choices.map((c) => c.label)).toEqual(["Continue that backup here", "Back up as a separate project", "Don't back up here"]);
     expect(questionWords({ kind: "otherComputer", machine: null, at: null }).text).toBe(
       "This project is already backed up from another computer.",
+    );
+  });
+});
+
+describe("backup words", () => {
+  it("names each phase, the pause and the last backup", () => {
+    expect(runWords({ phase: "scanning", doneBytes: 0, totalBytes: 0, paused: false })).toBe("Looking for changes…");
+    expect(runWords({ phase: "hashing", doneBytes: 1, totalBytes: 3, paused: false })).toBe("Checking files… 33%");
+    expect(runWords({ phase: "uploading", doneBytes: 3, totalBytes: 3, paused: true })).toBe("Paused while on air");
+    expect(runWords({ phase: "committing", doneBytes: 0, totalBytes: 0, paused: false })).toBe("Saving the version…");
+    expect(lastWords(null)).toBeNull();
+    expect(lastWords("2026-10-15T12:02:00Z")).toMatch(/^Last backup Oct 15, /);
+    expect(conflictWords({ machine: null, at: null })).toBe(
+      "This project was also backed up from another computer. Both versions are kept.",
     );
   });
 });

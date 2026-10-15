@@ -50,6 +50,22 @@ pub struct ProjectRecord {
     pub backup: Option<bool>,
     /// The one-time "Backing up to the cloud" notice was shown.
     pub notice_seen: bool,
+    /// RFC 3339 of the last backup that finished here.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_at: Option<String>,
+    /// Multipart uploads in progress, by blob SHA-256, so a restart resumes them.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub uploads: BTreeMap<String, MultipartRecord>,
+}
+
+/// A multipart upload in progress (CLOUD_PROJECTS.md §6): the parts storage already has.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct MultipartRecord {
+    pub upload_id: String,
+    pub part_size: u64,
+    pub part_count: u32,
+    pub parts: Vec<super::wire::PartDone>,
 }
 
 /// How an opened folder relates to the folder recorded for its cloudId.

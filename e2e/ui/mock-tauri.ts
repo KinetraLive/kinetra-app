@@ -1157,7 +1157,7 @@ export function installMockTauri(s: MockScenario): void {
       retentionFrom: null,
     },
     settings: { onAir: "pause", limitKbps: 2000, intervalS: 300, newProjects: true },
-    project: { backup: true, registered: true, noticeSeen: true, question: null, issue: null },
+    project: { backup: true, registered: true, noticeSeen: true, question: null, issue: null, lastBackupAt: "2026-10-15T12:02:00Z", run: null, report: [], skipped: 0, error: null, conflict: null },
   };
   const remoteNow = (): RemoteView =>
     ({
@@ -1811,6 +1811,7 @@ export function installMockTauri(s: MockScenario): void {
     // ---- Cloud backup ----
     cloud_view: () => cloudNow,
     cloud_refresh: () => cloudNow,
+    cloud_backup_now: () => cloudNow,
     // ---- Control API ----
     control_api_view: () => controlApi,
     control_api_set: (a) => {

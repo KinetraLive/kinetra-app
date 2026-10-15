@@ -575,6 +575,8 @@ impl AppState {
                 st.emit_license();
             }
         }));
+        // Cloud backup pauses while anything is on air.
+        self.cloud_gate_init();
     }
 
     /// Starts the background loop (keys, revocations, beta, refresh). No-op without a runtime.
@@ -690,6 +692,11 @@ impl AppState {
         if changed {
             self.save_license_file();
         }
+    }
+
+    /// This computer's activation id (the keychain copy), if it is activated.
+    pub(crate) fn cloud_activation(&self) -> Option<String> {
+        self.cloud().secrets().get(S_ACTIVATION).ok().flatten()
     }
 
     /// Unix seconds (the test clock in tests).

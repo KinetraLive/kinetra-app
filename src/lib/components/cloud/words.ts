@@ -1,6 +1,6 @@
 // What cloud backup's state reads as (CLOUD_PROJECTS.md §2.5): quiet text, never an alarm. Pure.
 
-import type { CloudAnswer, CloudQuestion, CloudView } from "$lib/types";
+import type { CloudAnswer, CloudQuestion, CloudRunView, CloudView } from "$lib/types";
 
 /** A size in decimal units (10³, CLOUD_PROJECTS.md §3.2): "7.34 GB", "13.1 MB", "20 KB", "0 MB". */
 export function size(bytes: number): string {
@@ -98,4 +98,34 @@ export function questionWords(q: CloudQuestion): { text: string; choices: Choice
       { answer: "turnOff", label: "Don't back up here" },
     ],
   };
+}
+
+/** What a running backup is doing. */
+export function runWords(run: CloudRunView): string {
+  if (run.paused) return "Paused while on air";
+  const pct = run.totalBytes > 0 ? ` ${Math.floor((100 * run.doneBytes) / run.totalBytes)}%` : "";
+  switch (run.phase) {
+    case "scanning":
+      return "Looking for changes…";
+    case "hashing":
+      return `Checking files…${pct}`;
+    case "uploading":
+      return `Backing up…${pct}`;
+    case "committing":
+      return "Saving the version…";
+  }
+}
+
+/** "Last backup Oct 15, 2:02 PM", or null before the first. */
+export function lastWords(at: string | null): string | null {
+  const w = when(at);
+  return w ? `Last backup ${w}` : null;
+}
+
+/** §9: "This project was also backed up from OTHER-PC at 2:02 PM. Both versions are kept." */
+export function conflictWords(c: { machine: string | null; at: string | null }): string {
+  const t = c.at ? new Date(c.at) : null;
+  const time =
+    t && !Number.isNaN(t.getTime()) ? ` at ${t.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}` : "";
+  return `This project was also backed up from ${c.machine ?? "another computer"}${time}. Both versions are kept.`;
 }

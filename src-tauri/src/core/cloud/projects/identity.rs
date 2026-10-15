@@ -41,6 +41,8 @@ pub(super) struct OpenProject {
     pub issue: Option<String>,
     /// A registration is running.
     pub registering: bool,
+    /// The backup running now, and how the last one ended (see `backup`).
+    pub backup: super::backup::BackupState,
 }
 
 /// A project name as the server takes it: no control characters, 1–200 characters.
@@ -97,8 +99,9 @@ impl AppState {
         self.cloud_maybe_register();
     }
 
-    /// The project closed.
+    /// The project closed: its backup stops (uploaded blobs stay; the next one carries on).
     pub(crate) fn cloud_project_closed(&self) {
+        self.cloud_backup_cancel();
         self.cloud_open().project = None;
         self.emit_cloud();
     }
@@ -133,14 +136,12 @@ impl AppState {
 
     /// The open project's cloudId, made (and written) when it has none.
     fn cloud_ensure_id(&self) -> AppResult<(PathBuf, String)> {
-        let (dir, cid) = self.project_cloud_id().ok_or(AppError::NoProject)?;
-        match cid {
-            Some(id) => Ok((dir, id)),
-            None => {
-                let id = self.cloud_new_id(&dir)?;
-                Ok((dir, id))
-            }
+        let (dir, _) = self.project_cloud_id().ok_or(AppError::NoProject)?;
+        let (id, made) = self.ensure_project_cloud_id(&dir, uuid_v7())?;
+        if made {
+            self.cloud_record_folder(&id, &dir);
         }
+        Ok((dir, id))
     }
 
     // ---- Records ----
@@ -178,7 +179,7 @@ impl AppState {
     }
 
     /// Backup is on for the open project: its own switch, else "Back up new projects".
-    fn cloud_backup_on(&self) -> bool {
+    pub(super) fn cloud_backup_on(&self) -> bool {
         self.cloud_record()
             .and_then(|r| r.backup)
             .unwrap_or(self.prefs().cloud.new_projects)
@@ -189,10 +190,10 @@ impl AppState {
         if access == CloudAccess::SignedOut {
             return None;
         }
-        let (question, issue) = {
+        let (question, issue, b) = {
             let s = self.cloud_open();
             let p = s.project.as_ref()?;
-            (p.question.clone(), p.issue.clone())
+            (p.question.clone(), p.issue.clone(), p.backup.clone())
         };
         let record = self.cloud_record();
         Some(CloudProjectView {
@@ -201,6 +202,12 @@ impl AppState {
             notice_seen: record.as_ref().is_some_and(|r| r.notice_seen),
             question,
             issue,
+            run: b.run,
+            last_backup_at: record.as_ref().and_then(|r| r.last_at.clone()),
+            report: b.report,
+            skipped: b.skipped,
+            error: b.error,
+            conflict: b.conflict,
         })
     }
 
@@ -362,6 +369,29 @@ impl AppState {
         if let Some(p) = self.cloud_open().project.as_mut().filter(|p| p.dir == dir) {
             p.issue = Some(issue.to_string());
         }
+    }
+
+    /// The next commit's base (the head this computer knows) and `restored_from` (restore, later).
+    pub(super) fn cloud_commit_base(&self) -> (Option<String>, Option<String>) {
+        (self.cloud_record().and_then(|r| r.head), None)
+    }
+
+    /// A commit went through: its version is the head this computer knows.
+    pub(super) fn cloud_record_committed(&self, cloud_id: &str, head: &str, at: &str) {
+        let Some(account) = self.cloud_account() else {
+            return;
+        };
+        self.cloud_file_update(|f| {
+            let r = f
+                .accounts
+                .entry(account)
+                .or_default()
+                .projects
+                .entry(cloud_id.to_string())
+                .or_default();
+            r.head = Some(head.to_string());
+            r.last_at = Some(at.to_string());
+        });
     }
 
     // ---- Commands ----

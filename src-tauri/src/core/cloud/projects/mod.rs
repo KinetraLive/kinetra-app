@@ -14,14 +14,20 @@
 
 pub mod api;
 pub mod backoff;
+pub mod backup;
+pub mod gate;
 pub mod identity;
 pub mod local;
+pub mod paths;
 pub mod r2;
+pub mod scan;
 pub mod service;
 pub mod wire;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_backup;
 #[cfg(test)]
 mod tests_identity;
 #[cfg(test)]

@@ -49,3 +49,14 @@ pub async fn cloud_answer(state: State<'_, AppState>, answer: CloudAnswer) -> Ap
     state.cloud_answer(answer).await?;
     Ok(state.cloud_view())
 }
+
+/// "Back up now": starts a backup of the open project (returns at once; `cloud-changed` follows).
+#[tauri::command]
+pub async fn cloud_backup_now(state: State<'_, AppState>) -> AppResult<CloudView> {
+    let state = state.inner().clone();
+    blocking(move || {
+        state.cloud_backup_now()?;
+        Ok(state.cloud_view())
+    })
+    .await
+}
