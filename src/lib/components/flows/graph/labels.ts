@@ -13,6 +13,7 @@ export const NODE_LABELS: Record<NodeType, string> = {
   "trigger.slideshowWrap": "Slideshow wrap",
   "trigger.sourceRow": "Source row changed",
   "trigger.runByFlow": "Run by flow",
+  "trigger.rest": "API call",
   "trigger.apiChanged": "API value changed",
   "trigger.midi": "MIDI in",
   "trigger.osc": "OSC in",

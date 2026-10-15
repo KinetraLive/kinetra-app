@@ -14,6 +14,7 @@
 //! bindFailed }`; every change is emitted as `server-status`.
 
 mod assets;
+pub mod control;
 pub mod osc;
 mod routes;
 
@@ -32,7 +33,7 @@ use crate::core::model::{Project, ServerErrorCode, ServerStatus};
 
 pub use assets::AssetDir;
 pub use osc::OscManager;
-pub use routes::{serve, serve_with, PING_INTERVAL};
+pub use routes::{serve, serve_with, ExtraRoutes, PING_INTERVAL};
 
 /// Longest wait for a graceful stop before the server task is aborted.
 pub const STOP_TIMEOUT: Duration = Duration::from_secs(1);
@@ -84,6 +85,8 @@ struct Shared {
     assets: AssetDir,
     /// Told about every status change (display outputs follow the port).
     listeners: Mutex<Vec<StatusListener>>,
+    /// Routes merged into every server started (the Control API).
+    extra: Mutex<Option<ExtraRoutes>>,
 }
 
 /// Called with the new status after each change, on the supervisor task. Must not block.
@@ -120,6 +123,7 @@ impl ServerManager {
             hub,
             assets: AssetDir::default(),
             listeners: Mutex::new(Vec::new()),
+            extra: Mutex::new(None),
         });
         let (tx, rx) = watch::channel(None);
         let (done_tx, done_rx) = mpsc::channel();
@@ -131,6 +135,11 @@ impl ServerManager {
                 done: Mutex::new(Some(done_rx)),
             }),
         }
+    }
+
+    /// Routes merged into every server started from now on (the app adds the Control API).
+    pub fn set_extra_routes(&self, extra: ExtraRoutes) {
+        *lock(&self.inner.shared.extra) = Some(extra);
     }
 
     /// Current status (what the `server-status` event last reported).
@@ -272,11 +281,12 @@ async fn start(shared: &Shared, target: BindTarget) -> Option<Running> {
     let (stop, stop_rx) = oneshot::channel::<()>();
     let hub = shared.hub.clone();
     let assets = shared.assets.clone();
+    let extra = lock(&shared.extra).clone();
     let task = tokio::spawn(async move {
         let shutdown = async move {
             let _ = stop_rx.await;
         };
-        if let Err(e) = serve(listener, hub, assets, shutdown).await {
+        if let Err(e) = serve_with(listener, hub, assets, extra, shutdown).await {
             tracing::error!("output server failed: {e}");
         }
     });

@@ -158,6 +158,8 @@ pub fn run() {
                 .set_runtime(tauri::async_runtime::handle().inner().clone());
             // The output server follows the open project (none is open yet: it stays stopped).
             let server = ServerManager::new(sink, state.live().clone());
+            // The Control API rides on it (/api/*; off until switched on in Preferences).
+            server.set_extra_routes(server::control::routes(&state));
             state.add_project_observer(Arc::new(server.clone()));
             // Display outputs: reconciles on Tauri's blocking pool; windows follow the server
             // port. No window and no displays thread until an output is on.
@@ -357,6 +359,11 @@ pub fn run() {
             commands::outputs::output_test_pattern,
             commands::outputs::identify_displays,
             commands::outputs::all_outputs_off,
+            commands::control_api::control_api_view,
+            commands::control_api::control_api_set,
+            commands::control_api::control_api_token,
+            commands::control_api::control_api_regenerate_token,
+            commands::control_api::control_api_disconnect,
             commands::remote::remote_view,
             commands::remote::remote_set,
             commands::remote::remote_start_again,

@@ -1666,3 +1666,32 @@ fn layer_ids_shared_by_two_screens_get_distinct_keys() {
     assert!(e.st.live().layer_view(&second, "l1").unwrap().on_air);
     assert!(!e.on_air("l1"));
 }
+
+#[test]
+fn a_local_preview_cue_reaches_remote_browsers() {
+    let e = env();
+    e.st.set_studio(
+        StudioSettings {
+            enabled: true,
+            preview_after_take: PreviewAfterTake::Keep,
+            transition: TakeTransition {
+                kind: TakeTransitionKind::Cut,
+                ms: 300,
+            },
+        },
+        None,
+    )
+    .unwrap();
+    e.live();
+    // Cued from Control (not a remote command): the Preview diff alone must wake the connection.
+    e.st.run_control(
+        &crate::core::model::ControlTarget::Command {
+            command_id: format!("live.take:{}/l1", e.screen),
+        },
+        crate::core::control_actions::ControlInput::Press,
+    )
+    .unwrap();
+    wait_until("preview diff", || {
+        e.tree()["preview"][&e.screen] == json!(["l1"])
+    });
+}

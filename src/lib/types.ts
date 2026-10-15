@@ -224,6 +224,29 @@ export interface Prefs {
   zoom?: number;
   /** Display outputs on this machine (≤ 8). Absent = none. Validated and clamped server-side. */
   outputs?: OutputConfig[];
+  /** The local Control API on this machine. Absent = off. The token is in the keychain. */
+  controlApi?: ControlApiPrefs;
+}
+
+export interface ControlApiPrefs {
+  enabled: boolean;
+}
+
+/** A program connected to the Control API (Preferences lists them). */
+export interface ControlClientView {
+  id: number;
+  /** From its hello, e.g. "companion-module-kinetra-graphics/1.0.0". */
+  name: string;
+  /** The peer's IP address. */
+  addr: string;
+  /** Server epoch ms of the connection. */
+  since: number;
+}
+
+/** `control-api` event and `control_api_view`: the switch and the connected clients. */
+export interface ControlApiView {
+  enabled: boolean;
+  clients: ControlClientView[];
 }
 
 // ---- Display outputs (per machine, prefs.json `outputs`) ----
@@ -1921,6 +1944,9 @@ export type NodeKind =
   | { type: "trigger.slideshowWrap"; config: { sourceId: string } }
   | { type: "trigger.sourceRow"; config: { sourceId: string } }
   | { type: "trigger.runByFlow"; config: Record<string, never> }
+  /** Fired by the Control API (`POST /api/flows/{id}/run`): runs while Automation is off, like a
+   * cue; at most one per flow (● value: text). */
+  | { type: "trigger.rest"; config: Record<string, never> }
   /** An API source's data changed: with `column`, that column of the current row (● value: text);
    * without, any row (● row). */
   | { type: "trigger.apiChanged"; config: { sourceId: string; column?: string | null } }

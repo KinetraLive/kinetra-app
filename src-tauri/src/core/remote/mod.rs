@@ -243,19 +243,22 @@ impl AppState {
     }
 
     /// Registers the change listener, the project observer and the flow hook. Called once by
-    /// `AppState::load`; costs nothing while remote control is off.
+    /// `AppState::load`; costs nothing while remote control is off. The listener and the flow
+    /// hook also wake the local Control API's feed (`core::control_api`, same rule).
     pub(crate) fn remote_init(&self) {
         self.add_change_listener(Arc::new(|st: &AppState, change: StateChange<'_>| {
             if let StateChange::FlowRun { id, running: true } = change {
                 st.remote_cue_ran(id);
             }
             st.remote_touch();
+            st.control_api_touch();
         }));
         let weak = self.downgrade();
         self.flows().set_changed_hook(Arc::new(move || {
             if let Some(st) = weak.upgrade() {
                 st.remote_touch();
                 st.remote_announce_cues();
+                st.control_api_touch();
             }
         }));
         self.add_project_observer(Arc::new(Observer(self.downgrade())));
@@ -272,6 +275,7 @@ impl AppState {
     pub(crate) fn remote_assets_changed(&self) {
         lock(&self.remote().inner).assets = None;
         self.remote_touch();
+        self.control_api_touch();
     }
 
     /// A flow started: a cue flow becomes the list's `current` (from any path: GO, hotkeys,
@@ -502,6 +506,7 @@ impl AppState {
             take_locked,
             last_cue,
             assets: assets.as_ref().clone(),
+            flavor: state::Flavor::Remote,
         }
     }
 

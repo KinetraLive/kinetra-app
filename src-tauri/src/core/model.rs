@@ -544,6 +544,23 @@ pub struct Prefs {
         deserialize_with = "crate::core::outputs::lenient_outputs"
     )]
     pub outputs: Vec<OutputConfig>,
+    /// The local Control API on this machine (off by default). Omitted while off.
+    #[serde(skip_serializing_if = "ControlApiPrefs::is_default")]
+    pub control_api: ControlApiPrefs,
+}
+
+/// `Prefs.controlApi`: the local Control API (`core::control_api`). The token lives in the
+/// keychain, never here.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ControlApiPrefs {
+    pub enabled: bool,
+}
+
+impl ControlApiPrefs {
+    pub fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
 }
 
 // ---- Display outputs (per machine, prefs.json `outputs`) -----------------------------------
@@ -3250,6 +3267,11 @@ pub enum NodeKind {
     /// Fired by another flow's `action.runFlow`. Out: `value` (text).
     #[serde(rename = "trigger.runByFlow")]
     RunByFlow {},
+    /// Fired by the Control API (`POST /api/flows/{id}/run`, the `run_flow` command): an
+    /// outside operator action, so it runs while Automation is off (like a Cue); at most one per
+    /// flow. Out: `value` (text, the request's `value` or empty).
+    #[serde(rename = "trigger.rest")]
+    Rest {},
     /// An API source's data changed: with `column`, that column of the current row
     /// (out `value`: text); without, any row (out `row`: the current row).
     #[serde(rename = "trigger.apiChanged")]

@@ -4,13 +4,17 @@
   Before next item: minutes and schedule. Time of day: HH:MM and days (none = every day). Timer
   reaches zero: screen, layer, timer field. Layer on/off air: screen, layer, on or off. Slideshow
   wrap / Source row changed: the source. API value changed: an API source and optionally one column
-  of its current row (none: any row change). Run by flow: nothing to set. MIDI in: device, channel,
+  of its current row (none: any row change). Run by flow: nothing to set. API call: the request
+  Companion or a script sends (mono, Copy). MIDI in: device, channel,
   Note or CC, number, Learn (MidiTriggerFields). OSC in: the address (mono; * matches one part).
   Media ended: screen, layer.
 
   Props: FormProps (../load.ts).
 -->
 <script lang="ts">
+  import Copy from "lucide-svelte/icons/copy";
+  import IconButton from "$lib/components/IconButton.svelte";
+  import { toasts } from "$lib/stores/toasts.svelte";
   import NumberInput from "$lib/components/NumberInput.svelte";
   import Select from "$lib/components/Select.svelte";
   import MidiTriggerFields from "$lib/components/midi/MidiTriggerFields.svelte";
@@ -35,6 +39,16 @@
 
   let { ed, node }: FormProps = $props();
   const ro = $derived(ed.readOnly);
+  const restPath = $derived(`POST /api/flows/${ed.id}/run`);
+
+  async function copy(text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      toasts.push({ kind: "info", message: `Copied ${text}` });
+    } catch {
+      toasts.push({ kind: "error", message: "Couldn't copy to the clipboard." });
+    }
+  }
 </script>
 
 {#if node.type === "trigger.cue"}
@@ -205,12 +219,30 @@
   <p class="help">* matches one part, like /show/*/go. ● value is the first argument.</p>
 {:else if node.type === "trigger.runByFlow"}
   <p class="help">Started by another flow's Run flow. Its input comes out of ● value.</p>
+{:else if node.type === "trigger.rest"}
+  <div class="request">
+    <code class="mono">{restPath}</code>
+    <IconButton size="sm" label="Copy {restPath}" tooltip="left" onclick={() => void copy(restPath)}>
+      <Copy size={12} />
+    </IconButton>
+  </div>
+  <p class="help">Companion or a script sends this with the Control API token. Its "value" comes out of ● value.</p>
 {:else if node.type === "trigger.mediaEnded"}
   <LayerPick {ed} value={node.config} disabled={ro} onchange={(next) => commit(ed, node, next)} />
   <p class="help">Fires at the out point when the layer holds or clears (not when it loops).</p>
 {/if}
 
 <style>
+  .request {
+    display: flex;
+    align-items: center;
+    gap: var(--s-1);
+    min-width: 0;
+  }
+  .request code {
+    overflow-wrap: anywhere;
+    font-size: var(--fs-xs);
+  }
   .help {
     margin: 0;
     color: var(--text-muted);

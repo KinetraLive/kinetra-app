@@ -156,6 +156,8 @@ export function triggerText(t: TriggerConf, k: Lookups): string {
       return `the row of ${n.src(t.config.sourceId)} changes`;
     case "trigger.runByFlow":
       return "run by another flow";
+    case "trigger.rest":
+      return "an API call arrives";
     case "trigger.midi": {
       const c = t.config;
       return `MIDI ${c.kind === "cc" ? "CC" : "note"} ${c.number}${c.channel === null ? "" : ` on Ch ${c.channel}`}${c.device ? ` from ${c.device}` : ""}`;

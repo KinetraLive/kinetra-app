@@ -355,6 +355,23 @@
     },
     {
       "columnOutputs": false,
+      "config": {},
+      "inputs": [],
+      "outputs": [
+        {
+          "kind": "event",
+          "port": "fired"
+        },
+        {
+          "dataType": "text",
+          "kind": "data",
+          "port": "value"
+        }
+      ],
+      "type": "trigger.rest"
+    },
+    {
+      "columnOutputs": false,
       "config": {
         "column": "home",
         "sourceId": "scores"

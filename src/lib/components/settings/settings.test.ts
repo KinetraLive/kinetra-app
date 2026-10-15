@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/svelte";
 import { tick } from "svelte";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BackupInfo, ImportPreview, MoveProgress, Prefs, Project, UiState } from "$lib/types";
 
 // ---- Mocks --------------------------------------------------------------------------------------
@@ -64,6 +64,22 @@ vi.mock("@tauri-apps/plugin-dialog", () => dialog);
 const nav = vi.hoisted(() => ({ goto: vi.fn(async (_url: string) => {}), afterNavigate: vi.fn() }));
 vi.mock("$app/navigation", () => nav);
 vi.mock("$app/state", () => ({ page: { url: new URL("http://localhost/settings") } }));
+
+// The About test checks opening and closing the dialog, not the notices: two entries instead of
+// the generated 400 (the real data is checked in $lib/licenses/licenses.test.ts). Searching the
+// whole list's DOM every 50 ms starved a busy machine for 20 s.
+vi.mock("$lib/licenses", async (actual) => ({
+  ...(await actual<typeof import("$lib/licenses")>()),
+  loadLicenses: async () => ({
+    schemaVersion: 1,
+    depsHash: "test",
+    groups: [
+      { id: "npm", label: "App", items: [{ name: "@xyflow/svelte", version: "1.7.0", license: "MIT", files: [{ name: "LICENSE", text: 0 }] }] },
+      { id: "rust", label: "Core", items: [{ name: "axum", version: "0.8.9", license: "MIT", files: [{ name: "LICENSE", text: 0 }] }] },
+    ],
+    texts: ["MIT License"],
+  }),
+}));
 
 // IntersectionObserver stub: tests fire intersections by hand.
 const io = vi.hoisted(() => ({
@@ -185,6 +201,18 @@ function expectDigits(input: HTMLInputElement, digits: number) {
 
 /** Visible text of an element with whitespace collapsed (values are split into mono spans). */
 const text = (el: Element | null) => (el?.textContent ?? "").replace(/\s+/g, " ").trim();
+
+// The sections load these as lazy chunks. A chunk's first import compiles it in this worker, which
+// takes seconds when the machine is busy: longer than the tests wait. Load them once up front; the
+// sections still open them through their own dynamic imports.
+beforeAll(async () => {
+  await Promise.all([
+    import("./LicensesDialog.svelte"),
+    import("./BackupList.svelte"),
+    import("./MoveProject.svelte"),
+    import("./ImportPreview.svelte"),
+  ]);
+});
 
 // ---- General ------------------------------------------------------------------------------------
 

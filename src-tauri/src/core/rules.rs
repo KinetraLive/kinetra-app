@@ -462,6 +462,7 @@ impl AppState {
                 Ok(v) => self.events().emit(names::SCHEDULE_CHANGED, v),
                 Err(e) => tracing::warn!("schedule-changed payload: {e}"),
             }
+            self.control_api_touch();
         }
         if ids_changed || emit_source {
             self.emit_source_changed(id);

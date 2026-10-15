@@ -140,7 +140,7 @@ describe("catalogue and palette", () => {
   const k: Lookups = { screens: new Map(), sources: new Map(), flows: new Map() };
 
   it("every node type has a label, description and a new-node config with ports", () => {
-    expect(NODES).toHaveLength(49);
+    expect(NODES).toHaveLength(50);
     for (const info of NODES) {
       const n = newNode(info.type, d, { x: 10, y: 20 });
       expect(n.type).toBe(info.type);

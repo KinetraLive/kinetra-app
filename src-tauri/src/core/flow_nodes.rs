@@ -73,6 +73,7 @@ pub fn type_name(kind: &NodeKind) -> &'static str {
         K::Midi { .. } => "trigger.midi",
         K::MediaEnded { .. } => "trigger.mediaEnded",
         K::RunByFlow {} => "trigger.runByFlow",
+        K::Rest {} => "trigger.rest",
         K::SourceRow { .. } => "data.sourceRow",
         K::ScheduleItem { .. } => "data.scheduleItem",
         K::FieldValue { .. } => "data.fieldValue",
@@ -201,7 +202,7 @@ pub fn ports(kind: &NodeKind) -> Ports {
     }
     match kind {
         // Triggers.
-        K::Cue { .. } | K::RunByFlow {} => p.outputs.push(d("value", T::Text)),
+        K::Cue { .. } | K::RunByFlow {} | K::Rest {} => p.outputs.push(d("value", T::Text)),
         K::ItemStatus { .. } | K::BeforeNext { .. } => p.outputs.push(d("item", T::Row)),
         K::TimeOfDay { .. } => p.outputs.push(d("at", T::Time)),
         K::SourceRowChanged { .. } => {
@@ -382,6 +383,7 @@ mod tests {
         let kinds = [
             NodeKind::Cue { label: None },
             NodeKind::RunByFlow {},
+            NodeKind::Rest {},
             NodeKind::Once {},
             NodeKind::PauseSource {
                 source_id: "s".into(),
@@ -513,6 +515,7 @@ mod tests {
                 source_id: s("guests"),
             },
             NodeKind::RunByFlow {},
+            NodeKind::Rest {},
             NodeKind::ApiChanged {
                 source_id: s("scores"),
                 column: Some(s("home")),
@@ -658,7 +661,7 @@ mod tests {
     }
 
     /// Distinct node types (the `NodeKind` variants).
-    const NODE_TYPES: usize = 49;
+    const NODE_TYPES: usize = 50;
 
     fn port_json(kind: &NodeKind, p: &Port, input: bool) -> serde_json::Value {
         let mut v = serde_json::json!({

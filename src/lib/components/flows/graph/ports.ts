@@ -63,6 +63,7 @@ export function portsOf(node: NodeKind): Ports {
   switch (node.type) {
     case "trigger.cue":
     case "trigger.runByFlow":
+    case "trigger.rest":
       p.outputs.push(d("value", "text"));
       break;
     case "trigger.itemStatus":

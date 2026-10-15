@@ -506,6 +506,8 @@
           <p class="help" id="{uid}-label-help">Empty shows the name. Set the hotkey in Control.</p>
         {:else if t.type === "trigger.runByFlow"}
           <p class="help">Started by another flow's Run flow step.</p>
+        {:else if t.type === "trigger.rest"}
+          <p class="help">Companion or a script runs it through the Control API.</p>
         {/if}
         {@render issueLine(triggerIssue(t, lookups))}
       </div>

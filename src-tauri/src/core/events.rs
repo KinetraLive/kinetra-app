@@ -91,6 +91,8 @@ pub mod names {
     pub const OUTPUTS_CHANGED: &str = "outputs-changed";
     /// Payload: `RemoteView` when remote control's state, crew, lock or round trip changed
     /// (`core::remote`); never while it is off and unchanged.
+    /// `ControlApiView`: the Control API switch and connected clients (on change).
+    pub const CONTROL_API: &str = "control-api";
     pub const REMOTE_CONTROL: &str = "remote-control";
     /// Payload: `Activity`: an accepted remote command ("Kari N. took Lower third 2").
     pub const REMOTE_ACTIVITY: &str = "remote-activity";

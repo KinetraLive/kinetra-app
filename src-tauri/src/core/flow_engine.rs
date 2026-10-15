@@ -262,6 +262,7 @@ enum Op {
         layer: S,
     },
     RunByFlow,
+    Rest,
     SourceRow {
         source: S,
         row: RowPick,
@@ -436,6 +437,7 @@ impl Op {
                 | Op::Midi { .. }
                 | Op::MediaEnded { .. }
                 | Op::RunByFlow
+                | Op::Rest
         )
     }
 
@@ -513,6 +515,8 @@ pub(crate) struct Compiled {
     extra: Box<[Extra]>,
     cue: Option<u16>,
     run_by: Option<u16>,
+    /// The `trigger.rest` node (the Control API's `run_flow`).
+    rest: Option<u16>,
 }
 
 struct Interner {
@@ -582,6 +586,7 @@ pub(crate) fn compile(flow: &Flow) -> Compiled {
     let mut ends = Vec::with_capacity(n);
     let mut cue = None;
     let mut run_by = None;
+    let mut rest = None;
     for (k, node) in nodes_in.iter().enumerate() {
         ids.push_str(&node.id);
         ends.push(ids.len().min(u16::MAX as usize) as u16);
@@ -673,6 +678,10 @@ pub(crate) fn compile(flow: &Flow) -> Compiled {
             NodeKind::RunByFlow {} => {
                 run_by.get_or_insert(k as u16);
                 Op::RunByFlow
+            }
+            NodeKind::Rest {} => {
+                rest.get_or_insert(k as u16);
+                Op::Rest
             }
             NodeKind::SourceRow { source_id, row } => Op::SourceRow {
                 source: i.s(source_id),
@@ -906,6 +915,7 @@ pub(crate) fn compile(flow: &Flow) -> Compiled {
         extra: extra.into(),
         cue,
         run_by,
+        rest,
     }
 }
 
@@ -1027,6 +1037,7 @@ pub(crate) enum TriggerKey {
     /// `trigger.mediaEnded` by screen and layer.
     MediaEnded(String, String),
     RunByFlow(String),
+    Rest(String),
 }
 
 /// A trigger node of an armed deployed flow.
@@ -1183,6 +1194,7 @@ impl Index {
                         TriggerKey::Midi(kind, number)
                     }
                     Op::RunByFlow => TriggerKey::RunByFlow(id.to_string()),
+                    Op::Rest => TriggerKey::Rest(id.to_string()),
                     Op::MediaEnded { screen, layer } => {
                         TriggerKey::MediaEnded(c.s(screen).into(), c.s(layer).into())
                     }
@@ -1544,6 +1556,18 @@ impl FlowEngine {
 }
 
 // ---- Firing ------------------------------------------------------------------------------------
+
+/// Why the Control API couldn't run a flow ([`AppState::run_flow_rest`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RestRunRefusal {
+    /// No such flow, or it has no API call trigger.
+    NotFound,
+    Disarmed,
+    /// Over the per-flow firing limit.
+    TooOften,
+    /// No runtime (the app is starting or closing).
+    Unavailable,
+}
 
 /// Why a firing did not start an instance.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -2102,8 +2126,8 @@ impl AppState {
         self.flow_engine().stop_all(self, Some("PANIC"));
     }
 
-    /// Runs a flow from its Cue trigger (a cue button, a hotkey; later REST). Works while
-    /// Automation is off; `invalid` when disarmed or without a Cue trigger.
+    /// Runs a flow from its Cue trigger (a cue button, a hotkey, the Control API's `run_cue`).
+    /// Works while Automation is off; `invalid` when disarmed or without a Cue trigger.
     pub fn run_flow(&self, id: &str, value: Option<String>) -> AppResult<()> {
         self.project_dir()?;
         let (key, flow, node) = {
@@ -2138,6 +2162,37 @@ impl AppState {
             Fired::NoRuntime => Err(AppError::Internal(
                 "Flows can't run right now. Restart Kinetra.".into(),
             )),
+            _ => Ok(()),
+        }
+    }
+
+    /// Runs a flow from its API call trigger (`trigger.rest`, the Control API's `run_flow`): an
+    /// outside operator action, so it runs while Automation is off, like a cue. `value` is the
+    /// trigger's `value` output (empty when absent).
+    pub fn run_flow_rest(&self, id: &str, value: Option<String>) -> Result<(), RestRunRefusal> {
+        self.project_dir().map_err(|_| RestRunRefusal::NotFound)?;
+        let (key, flow, node) = {
+            let e = lock(&self.flow_engine().inner);
+            let (key, entry) = e.flows.get_key_value(id).ok_or(RestRunRefusal::NotFound)?;
+            let node = entry.c.rest.ok_or(RestRunRefusal::NotFound)?;
+            if !entry.armed {
+                return Err(RestRunRefusal::Disarmed);
+            }
+            (key.clone(), entry.c.clone(), node)
+        };
+        match self.flow_fire(Firing {
+            id: key,
+            flow: Some(flow),
+            node,
+            data: vec![("value", Val::Text(value.unwrap_or_default()))],
+            operator: true,
+            depth: 0,
+            waiter: None,
+        }) {
+            Fired::Dropped => Err(RestRunRefusal::TooOften),
+            Fired::Disarmed => Err(RestRunRefusal::Disarmed),
+            Fired::Missing => Err(RestRunRefusal::NotFound),
+            Fired::NoRuntime => Err(RestRunRefusal::Unavailable),
             _ => Ok(()),
         }
     }

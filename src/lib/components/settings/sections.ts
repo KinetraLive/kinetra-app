@@ -40,6 +40,7 @@ export const PREFERENCE_ALIASES: Readonly<Record<string, PreferenceSectionId>> =
   midi: "network",
   osc: "network",
   remote: "network",
+  "control-api": "network",
   shortcuts: "shortcuts",
   location: "advanced",
   backups: "advanced",

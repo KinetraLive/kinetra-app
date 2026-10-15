@@ -365,6 +365,9 @@ struct Notifier {
     /// The persisted cues changed: the cues hook runs on the next flush.
     cues_dirty: AtomicBool,
     cues_hook: RwLock<Option<LiveHook>>,
+    /// Run after a flush that emitted a Preview view (remote control and the Control API show
+    /// Preview; its changes don't go through the live hook, which follows Program).
+    preview_hook: RwLock<Option<LiveHook>>,
 }
 
 impl Notifier {
@@ -380,6 +383,7 @@ impl Notifier {
             cues: Mutex::new(HashMap::new()),
             cues_dirty: AtomicBool::new(false),
             cues_hook: RwLock::new(None),
+            preview_hook: RwLock::new(None),
         }
     }
 
@@ -519,6 +523,7 @@ impl Notifier {
             .read()
             .unwrap_or_else(PoisonError::into_inner)
             .clone();
+        let mut preview = false;
         if let Some(sink) = sink {
             let _gate = lock(&self.gate);
             loop {
@@ -529,7 +534,10 @@ impl Notifier {
                 for note in batch {
                     let (name, v) = match note {
                         Note::Live(v) => (names::LIVE_CHANGED, serde_json::to_value(&v)),
-                        Note::Preview(v) => (names::PREVIEW_CHANGED, serde_json::to_value(&v)),
+                        Note::Preview(v) => {
+                            preview = true;
+                            (names::PREVIEW_CHANGED, serde_json::to_value(&v))
+                        }
                     };
                     match v {
                         Ok(v) => sink.emit(name, v),
@@ -541,6 +549,16 @@ impl Notifier {
         if self.cues_dirty.swap(false, AtomicOrdering::SeqCst) {
             let hook = self
                 .cues_hook
+                .read()
+                .unwrap_or_else(PoisonError::into_inner)
+                .clone();
+            if let Some(h) = hook {
+                h();
+            }
+        }
+        if preview {
+            let hook = self
+                .preview_hook
                 .read()
                 .unwrap_or_else(PoisonError::into_inner)
                 .clone();
@@ -692,6 +710,16 @@ impl LiveHub {
             tbar: Arc::new(Mutex::new(HashMap::new())),
             studio_ops: AtomicU64::new(0),
         }
+    }
+
+    /// Installs the callback run (with no hub lock held) after a Studio Preview view changed (cues
+    /// or staged content) without going through the live hook.
+    pub fn set_preview_hook(&self, hook: LiveHook) {
+        *self
+            .notifier
+            .preview_hook
+            .write()
+            .unwrap_or_else(PoisonError::into_inner) = Some(hook);
     }
 
     /// Installs the callback run (with no hub lock held) when the persisted Studio cues changed

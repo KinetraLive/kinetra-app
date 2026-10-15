@@ -2857,3 +2857,63 @@ fn media_action_and_media_ended_trigger() {
     wait_until("the clear at the out point", || !e.on_air(&s, "m1"));
     wait_until("Media ends", || e.ran(&ended) == ["after"]);
 }
+
+#[test]
+fn an_api_call_runs_its_flow_with_the_value_even_with_automation_off() {
+    let e = env();
+    let tpl = e.template();
+    let s = e.screen(&tpl.id, None);
+    let set = node(
+        "set",
+        NodeKind::SetFields {
+            screen_id: s.id.clone(),
+            layer_id: "l2".into(),
+            fields: fields(&[("title", "")]),
+        },
+    );
+    let id = e.create(
+        "From Companion",
+        vec![node("rest", NodeKind::Rest {}), set],
+        vec![
+            ev("rest", "fired", "set", "in"),
+            data("rest", "value", "set", "title"),
+        ],
+    );
+    e.automation_off(true);
+    e.st.run_flow_rest(&id, Some("Ingrid Vale".into())).unwrap();
+    wait_until("the run's end", || !e.ends(&id).is_empty());
+    assert_eq!(e.field(&s.id, "l2", "title"), "Ingrid Vale");
+
+    // Not a Cue: run_flow (cue buttons) refuses it, and the API refuses flows without one.
+    assert!(e.st.run_flow(&id, None).is_err());
+    let cue = e.create("Cue only", vec![cue_node()], vec![]);
+    assert_eq!(
+        e.st.run_flow_rest(&cue, None),
+        Err(RestRunRefusal::NotFound)
+    );
+    assert_eq!(
+        e.st.run_flow_rest("nope", None),
+        Err(RestRunRefusal::NotFound)
+    );
+    e.st.set_flow_armed(&id, false).unwrap();
+    assert_eq!(e.st.run_flow_rest(&id, None), Err(RestRunRefusal::Disarmed));
+}
+
+#[test]
+fn a_flow_has_at_most_one_api_call_trigger() {
+    let e = env();
+    let err =
+        e.st.create_flow(NewFlow {
+            name: "Two".into(),
+            armed: true,
+            retrigger: Retrigger::Restart,
+            origin: None,
+            nodes: vec![node("a", NodeKind::Rest {}), node("b", NodeKind::Rest {})],
+            edges: vec![],
+        })
+        .unwrap_err();
+    assert!(
+        err.to_string().contains("at most one API call trigger"),
+        "{err}"
+    );
+}

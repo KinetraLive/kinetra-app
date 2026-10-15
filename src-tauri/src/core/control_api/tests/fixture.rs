@@ -1,0 +1,231 @@
+//! `docs/control-api.fixture.json`: the protocol's constants and one real example of every message
+//! and command, generated from this code. Clients (the Companion module) test against it, so a
+//! protocol change shows up as a diff of that file. Regenerate with
+//! `UPDATE_CONTROL_FIXTURE=1 cargo test control_api_fixture`.
+
+use super::*;
+use crate::core::control_api::commands::{ACTIONS, FEATURES, REFUSALS};
+use crate::core::control_api::{close, CLIENTS_MAX, PROTOCOL, SUBPROTOCOL};
+use crate::server::control as srv;
+
+/// Every action with example arguments (screen / layer / flow ids are this test's; they are
+/// replaced by readable placeholders in the file).
+fn examples(
+    e: &Env,
+    timer: &str,
+    cue: &str,
+    source: &str,
+    flow: &str,
+) -> Vec<(&'static str, Value)> {
+    let l1 = e.key("l1");
+    let l2 = e.key("l2");
+    let m1 = e.key("m1");
+    vec![
+        ("take", json!({"layer": l1})),
+        ("clear", json!({"layer": l1})),
+        ("toggle", json!({"layer": l1})),
+        ("update", json!({"layer": l1})),
+        (
+            "set_fields",
+            json!({"layer": l1, "values": {"name": "Ingrid Vale"}, "take": true}),
+        ),
+        ("run_cue", json!({"cue": cue})),
+        ("go_next", json!({})),
+        ("clear_screen", json!({"screen": e.screen})),
+        ("clear_all", json!({})),
+        ("panic", json!({})),
+        ("source_step", json!({"source": source, "dir": "next"})),
+        ("media", json!({"layer": m1, "op": "seek", "sec": 0.0})),
+        (
+            "set_level",
+            json!({"layer": l1, "target": "opacity", "value": 0.5}),
+        ),
+        (
+            "studio_take",
+            json!({"screen": e.screen, "transition": "cut"}),
+        ),
+        ("timer", json!({"layer": l2, "field": timer, "op": "start"})),
+        ("automation", json!({"off": "toggle"})),
+        ("run_flow", json!({"flow": flow, "value": "Home 2–1"})),
+    ]
+}
+
+#[test]
+fn control_api_fixture() {
+    let e = env();
+    e.enable();
+    add_audio_layer(&e);
+    let tree0 = e.tree();
+    let l2 = e.key("l2");
+    let tid = tree0["layers"][&l2]["template"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let timer = tree0["templates"][&tid]["fields"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|f| f["type"] == "timer")
+        .unwrap()["key"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let n = |id: &str, kind| FlowNode {
+        id: id.into(),
+        position: NodePos::default(),
+        kind,
+    };
+    let flow = |name: &str, kind| {
+        e.st.create_flow(NewFlow {
+            name: name.into(),
+            armed: true,
+            retrigger: Retrigger::Restart,
+            origin: None,
+            nodes: vec![n("t", kind)],
+            edges: vec![],
+        })
+        .unwrap()
+        .flow
+        .id
+    };
+    let cue = flow("Open", NodeKind::Cue { label: None });
+    let close = flow("Close", NodeKind::Cue { label: None });
+    let api_flow = flow("Goal", NodeKind::Rest {});
+    let mut doc = e.st.create_source("Guests").unwrap();
+    *doc.meta.kind.table_mut().unwrap().rows = ["Ingrid Vale", "Kari Nordmann"]
+        .iter()
+        .map(|v| Fields::from([("text".to_string(), v.to_string())]))
+        .collect();
+    let source = e.st.save_source(doc).unwrap().id;
+
+    // Every example runs (Studio take needs Studio mode: refused with its own code here).
+    let ex = examples(&e, &timer, &cue, &source, &api_flow);
+    let actions: Vec<&str> = ex.iter().map(|(a, _)| *a).collect();
+    assert_eq!(actions, ACTIONS, "one example per action, in ACTIONS order");
+    for (action, args) in &ex {
+        match e.cmd(action, args.clone()) {
+            Ok(()) => {}
+            Err(r) if *action == "studio_take" && r.code == "not_studio" => {}
+            Err(r) => panic!("{action} {args}: {r:?}"),
+        }
+    }
+    // Back to a calm state for the snapshot: nothing on air, automation on.
+    e.cmd("clear_all", json!({})).unwrap();
+    e.cmd("timer", json!({"layer": l2, "field": timer, "op": "reset"}))
+        .unwrap();
+    e.cmd("automation", json!({"off": false})).unwrap();
+    std::thread::sleep(Duration::from_millis(50));
+
+    let before = e.tree();
+    e.st.live().show(&e.screen, "l1").unwrap();
+    let after = e.tree();
+    let ops = state::diff(&before, &after);
+
+    let mut welcome = e.st.control_api_welcome();
+    welcome["now"] = json!(1_792_000_000_000u64);
+    welcome["version"] = json!("1.0.0");
+    let commands: Vec<Value> = ex
+        .iter()
+        .enumerate()
+        .map(|(i, (a, args))| {
+            json!({"t": "command", "corr": format!("c{}", i + 1), "action": a, "args": args})
+        })
+        .collect();
+    let refusals: serde_json::Map<String, Value> = REFUSALS
+        .iter()
+        .map(|(c, s)| (c.to_string(), json!(s)))
+        .collect();
+    let fixture = json!({
+        "about": "Generated by `cargo test control_api_fixture` (src-tauri/src/core/control_api/tests/fixture.rs) from the Control API's code; regenerate with UPDATE_CONTROL_FIXTURE=1. The contract for clients such as the Companion module: protocol constants, limits, close codes, refusal codes with their REST status, and real messages (ids replaced by readable placeholders: screen s1main01ab, layers <screen>.l1 lower third, .l2 scoreboard, .m1 audio; source guests0001; cue cue0000001; API call flow goal000001). docs/CONTROL_API.md describes them.",
+        "protocol": PROTOCOL,
+        "subprotocol": SUBPROTOCOL,
+        "features": FEATURES,
+        "actions": ACTIONS,
+        "limits": {
+            "clients": CLIENTS_MAX,
+            "helloWaitMs": srv::HELLO_WAIT.as_millis() as u64,
+            "commandsWaiting": srv::QUEUE_MAX,
+            "commandsPerSecond": srv::COMMANDS_PER_SEC,
+            "clientMessageBytes": srv::CLIENT_MSG_MAX,
+            "authFailuresPerMinute": srv::AUTH_FAILURES_MAX,
+            "diffGapMs": crate::core::control_api::feed::DIFF_GAP.as_millis() as u64,
+            "keepaliveSeconds": crate::server::PING_INTERVAL.as_secs(),
+        },
+        "closeCodes": {
+            "goingAway": close::GOING_AWAY,
+            "badMessage": close::BAD_MESSAGE,
+            "tokenChanged": close::TOKEN_CHANGED,
+            "disconnected": close::DISCONNECTED,
+            "clientLimit": close::CLIENT_LIMIT,
+            "turnedOff": close::TURNED_OFF,
+        },
+        "refusals": refusals,
+        "guard": {"origin": 403, "token": 401, "disabled": 503, "rate_limited": 429, "busy": 503},
+        "messages": {
+            "hello": {"t": "hello", "protocol": PROTOCOL, "client": "companion-module-kinetra-graphics/1.0.0"},
+            "welcome": welcome,
+            "snapshot": {"t": "snapshot", "seq": 0, "state": before},
+            "diff": {"t": "diff", "seq": 1, "cause": "c1", "ops": ops},
+            "commands": commands,
+            "resultOk": {"t": "result", "corr": "c1", "ok": true},
+            "resultRefused": {"t": "result", "corr": "c2", "ok": false, "code": "not_found", "message": "That graphic doesn't exist."},
+            "resync": {"t": "resync"},
+        },
+    });
+
+    // Readable, stable placeholders for the random ids, then keys sorted again (maps were
+    // ordered by the random ids) and times pinned.
+    let mut text = serde_json::to_string(&fixture).unwrap();
+    let lt = tree0["layers"][e.key("l1")]["template"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    for (from, to) in [
+        (e.screen.as_str(), "s1main01ab"),
+        (source.as_str(), "guests0001"),
+        (cue.as_str(), "cue0000001"),
+        (close.as_str(), "cue0000002"),
+        (api_flow.as_str(), "goal000001"),
+        (tid.as_str(), "scoreboard"),
+        (lt.as_str(), "lowerthird"),
+    ] {
+        text = text.replace(from, to);
+    }
+    let mut v: Value = serde_json::from_str(&text).unwrap();
+    stabilize(&mut v, None);
+    let mut text = serde_json::to_string_pretty(&v).unwrap();
+    text.push('\n');
+
+    let path =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../docs/control-api.fixture.json");
+    if std::env::var("UPDATE_CONTROL_FIXTURE").is_ok_and(|v| v == "1") {
+        std::fs::write(&path, &text).unwrap();
+    }
+    let have = std::fs::read_to_string(&path)
+        .unwrap_or_default()
+        .replace("\r\n", "\n");
+    assert!(
+        have == text,
+        "docs/control-api.fixture.json is out of date: UPDATE_CONTROL_FIXTURE=1 cargo test control_api_fixture"
+    );
+}
+
+/// Sorts every object's keys and pins media playback times (`playback.at`), so the file doesn't
+/// change between runs.
+fn stabilize(v: &mut Value, key: Option<&str>) {
+    match v {
+        Value::Object(m) => {
+            let mut entries: Vec<(String, Value)> = std::mem::take(m).into_iter().collect();
+            entries.sort_by(|a, b| a.0.cmp(&b.0));
+            for (k, mut x) in entries {
+                if key == Some("playback") && k == "at" {
+                    x = json!(1_792_000_000_000u64);
+                }
+                stabilize(&mut x, Some(&k));
+                m.insert(k, x);
+            }
+        }
+        Value::Array(a) => a.iter_mut().for_each(|x| stabilize(x, key)),
+        _ => {}
+    }
+}

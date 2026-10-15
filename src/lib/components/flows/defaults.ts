@@ -53,6 +53,7 @@ export function triggerOfType(type: TriggerType, d: Defaults, from?: LinearTrigg
     case "trigger.sourceRow":
       return make({ type, config: { sourceId: t.sourceId } });
     case "trigger.runByFlow":
+    case "trigger.rest":
       return make({ type, config: {} });
     case "trigger.midi":
       return make({ type, config: { device: null, channel: null, kind: "note", number: 36 } });

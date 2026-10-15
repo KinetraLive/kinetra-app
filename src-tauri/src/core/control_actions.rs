@@ -1,4 +1,4 @@
-//! THE entry point for external controls: MIDI, OSC, later REST and anything else
+//! THE entry point for external controls: MIDI, OSC, the Control API and anything else
 //! ([`AppState::run_control`]). It parses the registry command ids the UI binds (the same ids as
 //! the command palette and key bindings) and calls the same `AppState` methods Control and Flows
 //! use, so every live rule (Studio mode, Live edit, PANIC) applies exactly as for the operator.

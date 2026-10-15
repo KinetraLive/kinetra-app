@@ -682,6 +682,7 @@ impl AppState {
     }
 
     pub(crate) fn emit_source_changed(&self, id: &str) {
+        self.control_api_touch();
         let Some(doc) = self.sources().doc(id) else {
             return;
         };
