@@ -66,9 +66,9 @@ use crate::core::live_hub::LiveHub;
 use crate::core::model::{
     BackupInfo, BackupPrefs, BackupReason, ControlsDoc, MidiPrefs, OscSettings, Prefs, Project,
     ProjectFile, ProjectSettings, RecentProject, UiState, BACKUP_INTERVAL_RANGE,
-    BACKUP_RETENTION_RANGE, COMMAND_ID_MAX, KEYBINDINGS_CAP, KEYS_PER_COMMAND, MIDI_DEVICES_CAP,
-    MIDI_NAME_MAX, OSC_ALLOW_CAP, OSC_HOST_MAX, PALETTE_RECENT_CAP, SCREEN_CROP_OVERLAYS,
-    SCREEN_GRID_SIZE_RANGE, ZOOM_RANGE, ZOOM_STEP,
+    BACKUP_RETENTION_RANGE, CLOUD_LIMIT_KBPS, COMMAND_ID_MAX, KEYBINDINGS_CAP, KEYS_PER_COMMAND,
+    MIDI_DEVICES_CAP, MIDI_NAME_MAX, OSC_ALLOW_CAP, OSC_HOST_MAX, PALETTE_RECENT_CAP,
+    SCREEN_CROP_OVERLAYS, SCREEN_GRID_SIZE_RANGE, ZOOM_RANGE, ZOOM_STEP,
 };
 use crate::core::persist::{self, RecentsFile, Store};
 use crate::core::recipes;
@@ -165,6 +165,8 @@ struct Inner {
     outputs: crate::core::outputs::Outputs,
     /// Sign-in and licensing (see `core::cloud::service`).
     cloud: crate::core::cloud::service::Cloud,
+    /// Cloud backup of projects (see `core::cloud::projects`).
+    cloud_projects: crate::core::cloud::projects::service::CloudProjects,
     /// Remote control through kinetra-cloud (see `core::remote`).
     remote: crate::core::remote::Remote,
     /// The local Control API (see `core::control_api`).
@@ -323,6 +325,10 @@ pub fn is_command_id(id: &str) -> bool {
 /// command is unbound on purpose).
 pub fn clamp_prefs(mut p: Prefs) -> Prefs {
     p.zoom = p.zoom.and_then(clamp_zoom);
+    p.cloud.limit_kbps = p
+        .cloud
+        .limit_kbps
+        .map(|k| k.clamp(*CLOUD_LIMIT_KBPS.start(), *CLOUD_LIMIT_KBPS.end()));
     p.outputs = crate::core::outputs::clamp_outputs(std::mem::take(&mut p.outputs));
     p.midi = clamp_midi_prefs(std::mem::take(&mut p.midi));
     p.keybindings = std::mem::take(&mut p.keybindings)
@@ -573,6 +579,7 @@ impl AppState {
             displays: Default::default(),
             outputs: Default::default(),
             cloud: Default::default(),
+            cloud_projects: Default::default(),
             remote: Default::default(),
             control_api: Default::default(),
         });
@@ -657,6 +664,11 @@ impl AppState {
     /// Sign-in and licensing (see `core::cloud::service`).
     pub fn cloud_service(&self) -> &crate::core::cloud::service::Cloud {
         &self.inner.cloud
+    }
+
+    /// Cloud backup of projects (see `core::cloud::projects`).
+    pub(crate) fn cloud_projects(&self) -> &crate::core::cloud::projects::service::CloudProjects {
+        &self.inner.cloud_projects
     }
 
     /// API source polling and secrets (see `core::api_poll`).
@@ -875,6 +887,10 @@ impl AppState {
         if outputs_changed {
             // Windows follow at once (on the blocking pool: this may run on the main thread).
             self.outputs_request();
+        }
+        if any_changed {
+            // The cloud backup settings in the view follow prefs.
+            self.emit_cloud();
         }
         if capi_changed {
             self.control_api_prefs_changed(prefs.control_api.enabled);

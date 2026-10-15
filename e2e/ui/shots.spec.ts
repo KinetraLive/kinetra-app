@@ -1759,7 +1759,7 @@ for (const theme of ["dark", "light"] as const) {
           polls: [],
           pollQuota: null,
           pollSources: [],
-          license: { plan: "free", access: "free", entitlements: ["core.app"], features: { ai: false, polls: false, control: false } },
+          license: { plan: "free", access: "free", entitlements: ["core.app"], features: { ai: false, polls: false, control: false, cloud: false } },
         }),
       );
       await page.getByRole("button", { name: "New poll: needs Kinetra Pro" }).first().click();

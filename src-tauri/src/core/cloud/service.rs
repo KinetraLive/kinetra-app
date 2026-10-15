@@ -69,6 +69,10 @@ fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 pub struct AccountInfo {
     pub email: String,
     pub name: Option<String>,
+    /// The account's id (`/v1/me`): what this computer's cloud backup records are kept
+    /// under. Absent for sign-ins from before cloud backup (fetched once when needed).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -161,6 +165,8 @@ pub struct Features {
     pub polls: bool,
     /// Remote control (`pro.control`).
     pub control: bool,
+    /// Cloud backup of projects (`pro.cloud_sync`).
+    pub cloud: bool,
 }
 
 impl Features {
@@ -170,6 +176,7 @@ impl Features {
             ai: has(kinetra_license::entitlements::PRO_AI),
             polls: has(kinetra_license::entitlements::PRO_POLLS),
             control: has(kinetra_license::entitlements::PRO_CONTROL),
+            cloud: has(kinetra_license::entitlements::PRO_CLOUD_SYNC),
         }
     }
 }
@@ -650,6 +657,46 @@ impl AppState {
         Ok((c.api()?, session, machine))
     }
 
+    /// Whether a session is stored (signed in).
+    pub(crate) fn cloud_signed_in(&self) -> bool {
+        self.cloud()
+            .secrets()
+            .get(S_SESSION)
+            .ok()
+            .flatten()
+            .is_some()
+    }
+
+    /// The signed-in account's id, when known (cloud backup keeps its records under it).
+    pub(crate) fn cloud_account_id(&self) -> Option<String> {
+        lock(&self.cloud().st)
+            .as_ref()
+            .and_then(|s| s.file.account.as_ref())
+            .and_then(|a| a.id.clone())
+    }
+
+    /// Remembers the signed-in account's id (from `/v1/me`, for sign-ins that predate it).
+    pub(crate) fn cloud_set_account_id(&self, id: &str) {
+        let changed = match lock(&self.cloud().st).as_mut() {
+            Some(s) => match s.file.account.as_mut() {
+                Some(a) if a.id.as_deref() != Some(id) => {
+                    a.id = Some(id.to_string());
+                    true
+                }
+                _ => false,
+            },
+            None => false,
+        };
+        if changed {
+            self.save_license_file();
+        }
+    }
+
+    /// Unix seconds (the test clock in tests).
+    pub(crate) fn cloud_now(&self) -> i64 {
+        self.cloud().now()
+    }
+
     /// Remote control's handshake (`core::remote`): the API base, the session, the current
     /// license token (empty when there is none: the server answers `entitlement_required`) and
     /// this machine's fingerprint. Secrets: never logged.
@@ -898,6 +945,8 @@ impl AppState {
         self.save_license_file();
         self.license_reevaluate(false);
         self.emit_license();
+        // Cloud backup asks for its quota once the license is current.
+        self.cloud_projects_after_sync(ok);
         ok
     }
 
@@ -1161,6 +1210,7 @@ impl AppState {
                                 s.file.account = Some(AccountInfo {
                                     email: tok.user.email.clone(),
                                     name: (!name.trim().is_empty()).then_some(name),
+                                    id: Some(tok.user.id.clone()),
                                 });
                                 s.file.welcome_done = true;
                                 s.signin = SigninView::Idle;
@@ -1238,6 +1288,7 @@ impl AppState {
         }
         self.save_license_file();
         self.emit_license();
+        self.cloud_projects_signed_out();
         Ok(())
     }
 

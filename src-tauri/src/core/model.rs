@@ -547,6 +547,114 @@ pub struct Prefs {
     /// The local Control API on this machine (off by default). Omitted while off.
     #[serde(skip_serializing_if = "ControlApiPrefs::is_default")]
     pub control_api: ControlApiPrefs,
+    /// Cloud backup on this machine. Omitted while default.
+    #[serde(skip_serializing_if = "CloudPrefs::is_default")]
+    pub cloud: CloudPrefs,
+}
+
+/// `Prefs.cloud`: cloud backup settings of this machine (`core::cloud::projects`). The server's
+/// `client` defaults apply where these are `None`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct CloudPrefs {
+    /// Projects back up unless turned off one by one (owner decision 2026-10-15: on).
+    pub new_projects: bool,
+    /// While anything is on air: pause or limit transfers. `None` = the server's default.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub on_air: Option<CloudOnAir>,
+    /// The limit for `limit`, in kbit/s ([`CLOUD_LIMIT_KBPS`]). `None` = the server's default.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit_kbps: Option<u32>,
+}
+
+impl Default for CloudPrefs {
+    fn default() -> Self {
+        Self {
+            new_projects: true,
+            on_air: None,
+            limit_kbps: None,
+        }
+    }
+}
+
+impl CloudPrefs {
+    pub fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
+}
+
+/// `CloudPrefs.limitKbps` range.
+pub const CLOUD_LIMIT_KBPS: std::ops::RangeInclusive<u32> = 64..=1_000_000;
+
+pub use crate::core::cloud::projects::wire::OnAir as CloudOnAir;
+
+// ---- Cloud backup (core::cloud::projects) -----------------------------------------------------
+
+/// The account's cloud state from the last quota answer (CLOUD_PROJECTS.md §2.5, §4).
+pub use crate::core::cloud::projects::wire::QuotaState as CloudState;
+
+/// What the app may do with cloud backup on this computer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum CloudAccess {
+    /// Not signed in: nothing is asked.
+    SignedOut,
+    /// No `pro.cloud_sync` and no backups known on this computer: no request is made (the UI
+    /// offers Pro, and "Check for backups" asks once).
+    Free,
+    /// The server is asked; `state` says what it allows.
+    Available,
+}
+
+/// The quota as the UI shows it. Sizes in bytes (GB = 10⁹ for display), times RFC 3339.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloudQuotaView {
+    pub plan: Option<String>,
+    pub used_bytes: u64,
+    pub pending_bytes: u64,
+    pub limit_bytes: u64,
+    pub percent: u64,
+    pub warn_percent: u64,
+    pub projects_used: u64,
+    pub projects_limit: u64,
+    pub max_file_bytes: u64,
+    pub retention_days: u64,
+    pub kept_per_project: u64,
+    pub upload_today_used: u64,
+    pub upload_today_limit: u64,
+    pub upload_today_resets_at: Option<String>,
+    /// Lapsed: when everything is deleted.
+    pub purge_at: Option<String>,
+    /// After a downgrade: the shorter history (days) applies from `retention_from`.
+    pub retention_days_next: Option<u64>,
+    pub retention_from: Option<String>,
+}
+
+/// The cloud backup settings that apply (this machine's, else the server's defaults).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloudSettingsView {
+    pub on_air: CloudOnAir,
+    pub limit_kbps: u32,
+    /// Seconds after the last change.
+    pub interval_s: u64,
+    pub new_projects: bool,
+}
+
+/// Cloud backup as the UI sees it (`cloud_view`, `cloud-changed`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloudView {
+    pub access: CloudAccess,
+    /// The last answer's state; `None` before the first one.
+    pub state: Option<CloudState>,
+    /// The last request didn't reach the server ("Cloud backup: offline, will retry.").
+    pub offline: bool,
+    /// Unix seconds of the last answer.
+    pub checked_at: Option<i64>,
+    pub quota: Option<CloudQuotaView>,
+    pub settings: CloudSettingsView,
 }
 
 /// `Prefs.controlApi`: the local Control API (`core::control_api`). The token lives in the

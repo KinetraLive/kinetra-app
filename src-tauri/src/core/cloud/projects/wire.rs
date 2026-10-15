@@ -8,8 +8,9 @@ use serde::{Deserialize, Serialize};
 
 // ---- Quota (§4) ---------------------------------------------------------------------------
 
+/// The server sends snake_case (`not_in_plan`); the UI gets camelCase (`notInPlan`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize)]
-#[serde(rename_all = "snake_case")]
+#[serde(rename_all(serialize = "camelCase", deserialize = "snake_case"))]
 pub enum QuotaState {
     #[default]
     Ok,

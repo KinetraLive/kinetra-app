@@ -226,6 +226,73 @@ export interface Prefs {
   outputs?: OutputConfig[];
   /** The local Control API on this machine. Absent = off. The token is in the keychain. */
   controlApi?: ControlApiPrefs;
+  /** Cloud backup on this machine. Absent = defaults (new projects back up, the server's on-air policy). */
+  cloud?: CloudPrefs;
+}
+
+/** `Prefs.cloud`. `onAir` / `limitKbps` absent = the server's defaults. */
+export interface CloudPrefs {
+  newProjects: boolean;
+  onAir?: CloudOnAir;
+  /** 64–1,000,000 kbit/s. */
+  limitKbps?: number;
+}
+
+export const CLOUD_LIMIT_KBPS = { min: 64, max: 1_000_000 } as const;
+
+/** While anything is on air: pause transfers, or limit them. */
+export type CloudOnAir = "pause" | "limit";
+
+// ---- Cloud backup (src-tauri/src/core/cloud/projects) ----
+
+/** The account's cloud state from the last quota answer. */
+export type CloudState = "ok" | "warning" | "full" | "lapsed" | "notInPlan";
+
+/** signedOut: nothing is asked. free: no Pro and no backups known here (no request; "Check for
+ * backups" asks once). available: the server is asked. */
+export type CloudAccess = "signedOut" | "free" | "available";
+
+/** Sizes in bytes (GB = 10⁹ for display), times RFC 3339. */
+export interface CloudQuotaView {
+  plan: string | null;
+  usedBytes: number;
+  pendingBytes: number;
+  limitBytes: number;
+  percent: number;
+  warnPercent: number;
+  projectsUsed: number;
+  projectsLimit: number;
+  maxFileBytes: number;
+  retentionDays: number;
+  keptPerProject: number;
+  uploadTodayUsed: number;
+  uploadTodayLimit: number;
+  uploadTodayResetsAt: string | null;
+  /** Lapsed: when everything is deleted. */
+  purgeAt: string | null;
+  /** After a downgrade: the shorter history applies from `retentionFrom`. */
+  retentionDaysNext: number | null;
+  retentionFrom: string | null;
+}
+
+export interface CloudSettingsView {
+  onAir: CloudOnAir;
+  limitKbps: number;
+  /** Seconds after the last change. */
+  intervalS: number;
+  newProjects: boolean;
+}
+
+/** Cloud backup as the UI sees it (`cloud_view`, `cloud-changed`). */
+export interface CloudView {
+  access: CloudAccess;
+  state: CloudState | null;
+  /** The last request didn't reach the server. */
+  offline: boolean;
+  /** Unix seconds of the last answer. */
+  checkedAt: number | null;
+  quota: CloudQuotaView | null;
+  settings: CloudSettingsView;
 }
 
 export interface ControlApiPrefs {
@@ -565,6 +632,7 @@ export type PreferenceSectionId =
   | "outputs"
   | "network"
   | "license"
+  | "cloud"
   | "shortcuts"
   | "advanced"
   | "about";
@@ -743,7 +811,7 @@ export type LicenseStatus =
  * show ends (a loss waiting for nothing to be on air). */
 export interface LicenseView {
   signedIn: boolean;
-  account: { email: string; name: string | null } | null;
+  account: { email: string; name: string | null; id?: string } | null;
   status: LicenseStatus;
   access: "full" | "reduced" | "free";
   plan: string | null;
@@ -751,7 +819,7 @@ export interface LicenseView {
   planName: string | null;
   entitlements: string[];
   /** The app's Pro features, unlocked or not (decided in the core). */
-  features: { ai: boolean; polls: boolean; control: boolean };
+  features: { ai: boolean; polls: boolean; control: boolean; cloud: boolean };
   pending: string[] | null;
   endsAt: number | null;
   updatesUntil: number | null;

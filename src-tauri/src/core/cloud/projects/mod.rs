@@ -14,8 +14,12 @@
 
 pub mod api;
 pub mod backoff;
+pub mod local;
 pub mod r2;
+pub mod service;
 pub mod wire;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_service;

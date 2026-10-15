@@ -71,6 +71,7 @@ pub(crate) fn shutdown_services(handle: &AppHandle) {
         // Output windows closed, the displays thread stopped.
         state.outputs_shutdown();
         state.cloud_stop();
+        state.cloud_projects_stop();
     }
     // Closes renderer sockets and releases the port; bounded to about a second.
     if let Some(server) = handle.try_state::<ServerManager>() {
@@ -300,6 +301,8 @@ pub fn run() {
             commands::sources::retry_api_source,
             commands::sources::set_api_paused,
             commands::sources::watch_api_source,
+            commands::cloud::cloud_view,
+            commands::cloud::cloud_refresh,
             commands::polls::polls_quota,
             commands::polls::list_polls,
             commands::polls::create_poll,

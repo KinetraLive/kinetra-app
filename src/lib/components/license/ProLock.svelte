@@ -2,7 +2,7 @@
   A Pro feature: unlocked → its children; locked → a lock + "Pro" button that explains what Pro
   unlocks (a popover with Upgrade to Pro, or Sign in when signed out). Display only: the core
   refuses Pro commands on its own (`proRequired`).
-  Props: feature ("ai" | "polls" | "control"), label (what the feature is called), children.
+  Props: feature ("ai" | "polls" | "control" | "cloud"), label (what the feature is called), children.
 -->
 <script lang="ts">
   import type { Snippet } from "svelte";
@@ -12,7 +12,7 @@
   import { openInBrowser } from "./open";
   import { license } from "./state.svelte";
 
-  let { feature, label, children }: { feature: "ai" | "polls" | "control"; label: string; children: Snippet } = $props();
+  let { feature, label, children }: { feature: "ai" | "polls" | "control" | "cloud"; label: string; children: Snippet } = $props();
 
   license.start();
   const id = $props.id();
@@ -22,6 +22,7 @@
     ai: "Describe a graphic and Kinetra designs the template for you, or tweak an existing one in plain words.",
     polls: "Run live polls: your audience votes on their phones and the results show on screen as they come in.",
     control: "Let your crew run graphics from a browser: take, clear, run cues and edit text from anywhere.",
+    cloud: "Your projects back up to the cloud while you work, with a version history you can restore from any computer.",
   };
 </script>
 

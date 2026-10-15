@@ -67,6 +67,9 @@ pub mod names {
     /// Payload: `AiJobView` when an AI job starts, ends (succeeded with the imported template id,
     /// failed with the API's code) or is canceled. Never while it is just pending.
     pub const AI_JOB: &str = "ai-job";
+    /// Payload: `CloudView` when cloud backup's state, quota or settings changed (on change only;
+    /// to every app window).
+    pub const CLOUD_CHANGED: &str = "cloud-changed";
     /// Payload: `Prefs` after prefs changed (set_prefs, set_zoom, reset, import). Cross-window.
     pub const PREFS_CHANGED: &str = "prefs-changed";
     /// Payload: `UiState` after the open project's UI state changed (set_ui_state, Studio
