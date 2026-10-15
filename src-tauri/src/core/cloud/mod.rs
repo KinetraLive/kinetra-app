@@ -6,4 +6,5 @@ pub mod api;
 pub mod config;
 pub mod license;
 pub mod machine;
+pub mod projects;
 pub mod service;

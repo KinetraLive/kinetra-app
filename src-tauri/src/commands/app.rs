@@ -5,6 +5,7 @@ use std::time::Duration;
 use serde_json::json;
 use tauri::{AppHandle, Emitter, Manager, Runtime, State, WebviewUrl, WebviewWindow};
 
+use crate::core::devprofile;
 use crate::core::events::{names, with_origin};
 use crate::core::model::{AppInfo, BuildChannel, Prefs};
 use crate::core::state::AppState;
@@ -35,8 +36,12 @@ pub fn app_info(app: AppHandle) -> AppResult<AppInfo> {
         version: app.package_info().version.to_string(),
         tauri_version: tauri::VERSION.to_string(),
         webview_version: tauri::webview_version().unwrap_or_else(|_| "unknown".into()),
-        config_dir: path.app_config_dir()?.display().to_string(),
-        log_dir: path.app_log_dir()?.display().to_string(),
+        config_dir: devprofile::dir(path.app_config_dir()?, devprofile::active())
+            .display()
+            .to_string(),
+        log_dir: devprofile::dir(path.app_log_dir()?, devprofile::active())
+            .display()
+            .to_string(),
         channel,
         commit: commit.to_string(),
     })

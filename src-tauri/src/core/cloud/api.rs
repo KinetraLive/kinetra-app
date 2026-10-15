@@ -36,14 +36,16 @@ impl CallError {
         }
     }
 
-    /// `503 service_unavailable` / `license_service_unavailable` count as offline: keep the
-    /// current state, retry later.
+    /// `503 service_unavailable` / `license_service_unavailable` / `cloud_unavailable` count as
+    /// offline: keep the current state, retry later.
     pub fn is_offline(&self) -> bool {
         match self {
             CallError::Offline => true,
             CallError::Api { status, code, .. } => {
                 *status == 503
-                    && (code == "service_unavailable" || code == "license_service_unavailable")
+                    && (code == "service_unavailable"
+                        || code == "license_service_unavailable"
+                        || code == "cloud_unavailable")
             }
         }
     }
@@ -256,7 +258,7 @@ pub struct Api {
 impl Api {
     pub fn new(base: String) -> Result<Self, String> {
         let http = reqwest::Client::builder()
-            .user_agent(concat!("Kinetra/", env!("CARGO_PKG_VERSION")))
+            .user_agent(super::config::user_agent())
             .connect_timeout(CONNECT_TIMEOUT)
             .timeout(TIMEOUT)
             .build()
@@ -268,15 +270,37 @@ impl Api {
         &self.base
     }
 
-    async fn send<T: DeserializeOwned>(
+    pub(super) async fn send<T: DeserializeOwned>(
         &self,
         method: reqwest::Method,
         path: &str,
         session: Option<&str>,
         body: Option<Value>,
     ) -> Result<Option<T>, CallError> {
+        self.send_with(method, path, session, body, &[], None)
+            .await
+            .map(|(_, t)| t)
+    }
+
+    /// [`Self::send`] with extra request headers (e.g. `Idempotency-Key`) and another timeout
+    /// (large bodies), returning the status of a success too.
+    pub(super) async fn send_with<T: DeserializeOwned>(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        session: Option<&str>,
+        body: Option<Value>,
+        headers: &[(&str, String)],
+        timeout: Option<Duration>,
+    ) -> Result<(u16, Option<T>), CallError> {
         let url = format!("{}{}", self.base, path);
         let mut req = self.http.request(method.clone(), &url);
+        if let Some(t) = timeout {
+            req = req.timeout(t);
+        }
+        for (k, v) in headers {
+            req = req.header(*k, v);
+        }
         if let Some(t) = session {
             req = req.bearer_auth(t);
         }
@@ -310,19 +334,21 @@ impl Api {
         let bytes = resp.bytes().await.map_err(|_| CallError::Offline)?;
         if (200..300).contains(&status) {
             if status == 204 || bytes.is_empty() {
-                return Ok(None);
+                return Ok((status, None));
             }
-            return serde_json::from_slice(&bytes).map(Some).map_err(|_| {
-                tracing::debug!(
-                    "cloud {method} {path}: the answer didn't parse (x-request-id {rid})"
-                );
-                CallError::Offline
-            });
+            return serde_json::from_slice(&bytes)
+                .map(|t| (status, Some(t)))
+                .map_err(|_| {
+                    tracing::debug!(
+                        "cloud {method} {path}: the answer didn't parse (x-request-id {rid})"
+                    );
+                    CallError::Offline
+                });
         }
         Err(error_body(status, retry_after, &bytes))
     }
 
-    async fn post<T: DeserializeOwned>(
+    pub(super) async fn post<T: DeserializeOwned>(
         &self,
         path: &str,
         session: Option<&str>,
@@ -333,7 +359,7 @@ impl Api {
             .ok_or(CallError::Offline)
     }
 
-    async fn get<T: DeserializeOwned>(
+    pub(super) async fn get<T: DeserializeOwned>(
         &self,
         path: &str,
         session: Option<&str>,

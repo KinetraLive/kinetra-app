@@ -40,6 +40,12 @@ pub trait SecretStore: Send + Sync {
     fn delete(&self, id: &str) -> Result<(), SecretError>;
 }
 
+/// The keychain service this process uses: [`SERVICE`], or its dev profile's
+/// (`core::devprofile`, debug builds only).
+pub fn service() -> String {
+    crate::core::devprofile::keychain_service(SERVICE, crate::core::devprofile::active())
+}
+
 fn account(id: &str) -> String {
     format!("secret:{id}")
 }
@@ -50,7 +56,7 @@ pub struct KeyringSecrets;
 
 impl KeyringSecrets {
     fn entry(id: &str) -> Result<keyring::Entry, SecretError> {
-        keyring::Entry::new(SERVICE, &account(id)).map_err(|e| SecretError(describe(&e)))
+        keyring::Entry::new(&service(), &account(id)).map_err(|e| SecretError(describe(&e)))
     }
 }
 

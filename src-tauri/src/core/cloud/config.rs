@@ -32,6 +32,16 @@ pub fn beta_program() -> Option<&'static str> {
     Some(env!("KINETRA_BETA_PROGRAM")).filter(|s| !s.is_empty())
 }
 
+/// `Kinetra/<version> (<os>)`, the User-Agent of every API request (CLOUD_PROJECTS.md §3.1).
+pub fn user_agent() -> String {
+    let os = match std::env::consts::OS {
+        "windows" => "Windows",
+        "macos" => "macOS",
+        other => other,
+    };
+    format!("Kinetra/{} ({os})", env!("CARGO_PKG_VERSION"))
+}
+
 /// The API base for this process: [`API_BASE`], or `KINETRA_API_BASE` in debug builds (the
 /// e2e mock server). Release builds can't be pointed elsewhere.
 pub fn api_base() -> String {

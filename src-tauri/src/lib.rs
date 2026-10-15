@@ -147,9 +147,13 @@ pub fn run() {
             _ => {}
         })
         .setup(|app| {
-            init_logging(&app.path().app_log_dir()?);
-            let config_dir = app.path().app_config_dir()?;
-            core::fsx::migrate_legacy_config(&config_dir);
+            // A debug dev profile (`core::devprofile`) keeps its own folders.
+            let profile = core::devprofile::active();
+            init_logging(&core::devprofile::dir(app.path().app_log_dir()?, profile));
+            let config_dir = core::devprofile::dir(app.path().app_config_dir()?, profile);
+            if profile.is_none() {
+                core::fsx::migrate_legacy_config(&config_dir);
+            }
             let sink: Arc<dyn EventSink> = Arc::new(TauriSink(app.handle().clone()));
             let state = AppState::load(config_dir, sink.clone())?;
             // Auto-out timers run on Tauri's runtime (live commands may be sync, off-runtime).
