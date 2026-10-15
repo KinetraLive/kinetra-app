@@ -468,7 +468,7 @@ impl Cloud {
         {
             return k;
         }
-        config::TRUSTED_KEYS.to_string()
+        config::trusted_keys()
     }
 
     /// The beta program of this build.

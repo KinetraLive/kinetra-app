@@ -3,7 +3,7 @@
 //! This example calls every override that must never ship: the entitlement override the e2e
 //! fixture uses to grant Pro (`Cloud::set_test_entitlements`), the template sandbox bypass
 //! (`preview::load_unchecked_for_tests`) and the "act as another computer" profile
-//! (`devprofile::dev_profile`). It compiles in debug builds (`cargo clippy
+//! (`devprofile::dev_profile`) and the extra trusted keys (`config::extra_trusted_keys`). It compiles in debug builds (`cargo clippy
 //! --all-targets` builds it) and must FAIL to compile with `--release`, with exactly one
 //! "no method / function" error per override. `scripts/check-release-overrides.mjs` runs
 //! `cargo check --release --example release_guard` and fails CI otherwise: if an override were
@@ -29,6 +29,7 @@ fn main() {
     st.cloud_service()
         .set_test_entitlements(&["core.app", "pro.control"], true);
     let _ = devprofile::dev_profile();
+    let _ = kinetra_lib::core::cloud::config::extra_trusted_keys();
     let hub = LiveHub::with_test_screen();
     let _ = hub.update_layer::<kinetra_lib::core::live::LiveError>(
         TEST_SCREEN_ID,
