@@ -5,7 +5,7 @@
 use tauri::State;
 
 use super::project::blocking;
-use crate::core::model::CloudView;
+use crate::core::model::{CloudAnswer, CloudView};
 use crate::core::state::AppState;
 use crate::error::AppResult;
 
@@ -22,4 +22,30 @@ pub async fn cloud_view(state: State<'_, AppState>) -> AppResult<CloudView> {
 pub async fn cloud_refresh(state: State<'_, AppState>, on_demand: bool) -> AppResult<CloudView> {
     let state = state.inner().clone();
     state.cloud_refresh(on_demand).await
+}
+
+/// Backup on or off for the open project.
+#[tauri::command]
+pub async fn cloud_set_backup(state: State<'_, AppState>, on: bool) -> AppResult<CloudView> {
+    let state = state.inner().clone();
+    blocking(move || {
+        state.cloud_set_backup(on)?;
+        Ok(state.cloud_view())
+    })
+    .await
+}
+
+/// The one-time "Backing up to the cloud" notice was shown for the open project.
+#[tauri::command]
+pub async fn cloud_notice_seen(state: State<'_, AppState>) -> AppResult<()> {
+    let state = state.inner().clone();
+    blocking(move || state.cloud_notice_seen()).await
+}
+
+/// The user's answer to the open project's question (in the trash / another computer's).
+#[tauri::command]
+pub async fn cloud_answer(state: State<'_, AppState>, answer: CloudAnswer) -> AppResult<CloudView> {
+    let state = state.inner().clone();
+    state.cloud_answer(answer).await?;
+    Ok(state.cloud_view())
 }

@@ -1,6 +1,6 @@
 // What cloud backup's state reads as (CLOUD_PROJECTS.md §2.5): quiet text, never an alarm. Pure.
 
-import type { CloudView } from "$lib/types";
+import type { CloudAnswer, CloudQuestion, CloudView } from "$lib/types";
 
 /** Bytes as GB (10⁹), e.g. "7.34 GB", "0.2 GB", "20 GB". */
 export function gb(bytes: number): string {
@@ -54,4 +54,46 @@ export function retentionWords(view: CloudView | null): string | null {
   const q = view?.quota;
   if (!q?.retentionDaysNext || !q.retentionFrom) return null;
   return `Versions older than ${q.retentionDaysNext} days are deleted from ${day(q.retentionFrom)}.`;
+}
+
+export interface Choice {
+  answer: CloudAnswer;
+  label: string;
+  primary?: boolean;
+}
+
+/** "Oct 15, 2:02 PM" from an RFC 3339 time. */
+export function when(rfc3339: string | null | undefined): string {
+  if (!rfc3339) return "";
+  const d = new Date(rfc3339);
+  return Number.isNaN(d.getTime())
+    ? ""
+    : d.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
+/** What a waiting question says and offers (never a modal: it sits with the project). */
+export function questionWords(q: CloudQuestion): { text: string; choices: Choice[] } {
+  if (q.kind === "inTrash") {
+    const until = day(q.purgeAt);
+    return {
+      text: until
+        ? `This project's cloud backup is in the trash until ${until}.`
+        : "This project's cloud backup is in the trash.",
+      choices: [
+        { answer: "restore", label: "Restore", primary: true },
+        { answer: "startNew", label: "Start a new cloud backup" },
+        { answer: "turnOff", label: "Turn off backup" },
+      ],
+    };
+  }
+  const from = q.machine ?? "another computer";
+  const at = when(q.at);
+  return {
+    text: at ? `This project is already backed up from ${from} (${at}).` : `This project is already backed up from ${from}.`,
+    choices: [
+      { answer: "continueHere", label: "Continue that backup here", primary: true },
+      { answer: "separate", label: "Back up as a separate project" },
+      { answer: "turnOff", label: "Don't back up here" },
+    ],
+  };
 }

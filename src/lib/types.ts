@@ -293,7 +293,28 @@ export interface CloudView {
   checkedAt: number | null;
   quota: CloudQuotaView | null;
   settings: CloudSettingsView;
+  /** The open project's backup (none without a project, or signed out). */
+  project: CloudProjectView | null;
 }
+
+/** The open project's cloud backup. */
+export interface CloudProjectView {
+  /** On for this project (its own switch, else "Back up new projects"). */
+  backup: boolean;
+  /** The server knows this project. */
+  registered: boolean;
+  noticeSeen: boolean;
+  /** A choice waiting for the user: shown quietly, never a modal. */
+  question: CloudQuestion | null;
+  /** Why this project can't back up now, in plain words. */
+  issue: string | null;
+}
+
+export type CloudQuestion =
+  | { kind: "inTrash"; purgeAt: string | null }
+  | { kind: "otherComputer"; machine: string | null; at: string | null };
+
+export type CloudAnswer = "restore" | "startNew" | "continueHere" | "separate" | "turnOff";
 
 export interface ControlApiPrefs {
   enabled: boolean;

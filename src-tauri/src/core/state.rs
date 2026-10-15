@@ -697,6 +697,29 @@ impl AppState {
             .and_then(|p| p.file.value.id.clone())
     }
 
+    /// The open project's folder and cloud backup ID (`project.json` `cloudId`), if open.
+    pub(crate) fn project_cloud_id(&self) -> Option<(PathBuf, Option<String>)> {
+        read(&self.inner.project)
+            .as_ref()
+            .map(|p| (p.dir.clone(), p.file.value.cloud_id.clone()))
+    }
+
+    /// Sets the open project's cloud backup ID and writes `project.json` (coalesced). Only if
+    /// `dir` is still the open project.
+    pub(crate) fn set_project_cloud_id(&self, dir: &Path, id: String) -> AppResult<()> {
+        {
+            let mut g = write(&self.inner.project);
+            let op = g.as_mut().ok_or(AppError::NoProject)?;
+            if op.dir != dir {
+                return Err(AppError::NoProject);
+            }
+            op.file.value.cloud_id = Some(id);
+            op.file.dirty = true;
+        }
+        self.inner.schedule();
+        Ok(())
+    }
+
     /// Sets the open project's remote control ID and writes `project.json` (coalesced, like
     /// every store write). `NoProject` without one.
     pub(crate) fn set_project_remote_id(&self, id: String) -> AppResult<()> {
@@ -859,16 +882,24 @@ impl AppState {
     /// `prefs-changed` (cross-window) when anything changed.
     pub fn set_prefs(&self, prefs: Prefs) -> Prefs {
         let prefs = clamp_prefs(prefs);
-        let (any_changed, backup_changed, midi_changed, outputs_changed, capi_changed) = {
+        let (
+            any_changed,
+            backup_changed,
+            midi_changed,
+            outputs_changed,
+            capi_changed,
+            cloud_changed,
+        ) = {
             let mut g = write(&self.inner.prefs);
             let any = g.value != prefs;
             let changed = g.value.backup != prefs.backup;
             let midi = g.value.midi != prefs.midi;
             let outputs = g.value.outputs != prefs.outputs;
             let capi = g.value.control_api != prefs.control_api;
+            let cloud = g.value.cloud != prefs.cloud;
             g.value = prefs.clone();
             g.dirty = true;
-            (any, changed, midi, outputs, capi)
+            (any, changed, midi, outputs, capi, cloud)
         };
         self.inner.schedule();
         if any_changed {
@@ -888,7 +919,7 @@ impl AppState {
             // Windows follow at once (on the blocking pool: this may run on the main thread).
             self.outputs_request();
         }
-        if any_changed {
+        if cloud_changed {
             // The cloud backup settings in the view follow prefs.
             self.emit_cloud();
         }
@@ -969,6 +1000,8 @@ impl AppState {
         self.notify_project();
         self.emit_ui_state_changed();
         self.controls_announce();
+        // Cloud backup: a copied folder gets its own cloud ID; registers in the background.
+        self.cloud_project_opened();
         Ok(project)
     }
 
@@ -1034,6 +1067,7 @@ impl AppState {
         }
         self.notify_project();
         self.controls_announce();
+        self.cloud_project_closed();
     }
 
     /// Re-reads the open project's `project.json` and `ui-state.json` from disk, DISCARDING any
@@ -1059,6 +1093,7 @@ impl AppState {
         self.notify_project();
         self.emit_ui_state_changed();
         self.controls_announce();
+        self.cloud_project_opened();
         Ok(project)
     }
 
@@ -1182,6 +1217,7 @@ impl AppState {
     pub fn relocate_project(&self, from: &Path, new_dir: PathBuf) -> AppResult<Project> {
         let project = self.relocate_locked(from, new_dir)?;
         self.notify_project();
+        self.cloud_project_relocated();
         Ok(project)
     }
 

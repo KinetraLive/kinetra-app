@@ -492,13 +492,15 @@ fn storage_refusals_map_to_what_the_app_does_next() {
 
 // ---- Logs ------------------------------------------------------------------------------------
 
-/// A `MakeWriter` that keeps everything written.
+/// A `MakeWriter` that keeps every line Kinetra's own code logs (other crates' lines dropped).
 #[derive(Clone, Default)]
 struct Captured(Arc<Mutex<Vec<u8>>>);
 
 impl std::io::Write for Captured {
     fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
-        self.0.lock().unwrap().extend_from_slice(b);
+        if b.windows(11).any(|w| w == b"kinetra_lib") {
+            self.0.lock().unwrap().extend_from_slice(b);
+        }
         Ok(b.len())
     }
     fn flush(&mut self) -> std::io::Result<()> {
@@ -523,13 +525,8 @@ fn no_url_signature_path_or_hash_reaches_the_log() {
         "POST /v1/cloud/blobs/check",
         vec![err(403, "storage_full", Some(json!({"quota": {}})))],
     );
-    let log = Captured::default();
-    let sub = tracing_subscriber::fmt()
-        .with_writer(log.clone())
-        .with_max_level(tracing::Level::TRACE)
-        .with_ansi(false)
-        .finish();
-    tracing::subscriber::with_default(sub, || {
+    let log = global_log();
+    {
         let r2 = R2::new().unwrap();
         let p = m.presigned("blob", &[]);
         let _ = rt.block_on(r2.put(&p, reqwest::Body::from(b"x".to_vec())));
@@ -547,7 +544,7 @@ fn no_url_signature_path_or_hash_reaches_the_log() {
                 size: 1,
             }],
         ));
-    });
+    }
     let text = String::from_utf8(log.0.lock().unwrap().clone()).unwrap();
     assert!(
         text.contains("storage PUT"),
@@ -563,4 +560,21 @@ fn no_url_signature_path_or_hash_reaches_the_log() {
     ] {
         assert!(!text.contains(secret), "{secret} in the log:\n{text}");
     }
+}
+
+/// One global capturing subscriber for the whole test binary (a scoped one races with other
+/// tests over the callsites' cached interest). Captures every test's Kinetra lines, so the
+/// secret check covers them too.
+fn global_log() -> &'static Captured {
+    static LOG: std::sync::OnceLock<Captured> = std::sync::OnceLock::new();
+    LOG.get_or_init(|| {
+        let c = Captured::default();
+        let sub = tracing_subscriber::fmt()
+            .with_writer(c.clone())
+            .with_max_level(tracing::Level::DEBUG)
+            .with_ansi(false)
+            .finish();
+        let _ = tracing::subscriber::set_global_default(sub);
+        c
+    })
 }

@@ -416,6 +416,11 @@ pub struct ProjectFile {
     /// runs the same show); "Make this a separate show" gives the project a new one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
+    /// The project's cloud backup ID (`app_project_id`, a UUID v7), written the first time it
+    /// backs up. Unlike `id`, a copy gets its own (CLOUD_PROJECTS.md §2.4): a folder opened
+    /// while the folder recorded for this ID still holds it is a copy (`core::cloud::projects`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cloud_id: Option<String>,
 }
 
 /// An open project as the UI sees it.
@@ -655,6 +660,56 @@ pub struct CloudView {
     pub checked_at: Option<i64>,
     pub quota: Option<CloudQuotaView>,
     pub settings: CloudSettingsView,
+    /// The open project's backup (none without a project, or signed out).
+    pub project: Option<CloudProjectView>,
+}
+
+/// The open project's cloud backup.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloudProjectView {
+    /// Backup is on for this project (its own switch, else `CloudPrefs.newProjects`).
+    pub backup: bool,
+    /// The server knows this project (registered from this computer).
+    pub registered: bool,
+    /// The one-time "Backing up to the cloud" notice was shown.
+    pub notice_seen: bool,
+    /// A choice waiting for the user (shown quietly, never a modal).
+    pub question: Option<CloudQuestion>,
+    /// Why this project can't back up now (e.g. the plan's project limit), in plain words.
+    pub issue: Option<String>,
+}
+
+/// A choice cloud backup needs from the user (CLOUD_PROJECTS.md §5, the app plan's decision 1).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum CloudQuestion {
+    /// The project's backup is in the trash: Restore / Start a new cloud backup / Turn off.
+    #[serde(rename_all = "camelCase")]
+    InTrash { purge_at: Option<String> },
+    /// Another computer already backs this project up and this one has no record of it:
+    /// Continue that backup here / Back up as a separate project / Don't back up here.
+    #[serde(rename_all = "camelCase")]
+    OtherComputer {
+        machine: Option<String>,
+        at: Option<String>,
+    },
+}
+
+/// The user's answer to a [`CloudQuestion`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum CloudAnswer {
+    /// In the trash: restore it and carry on.
+    Restore,
+    /// In the trash: leave it there and start a new cloud backup.
+    StartNew,
+    /// Another computer's backup: carry on from it here.
+    ContinueHere,
+    /// Another computer's backup: give this project its own.
+    Separate,
+    /// Either: turn backup off for this project.
+    TurnOff,
 }
 
 /// `Prefs.controlApi`: the local Control API (`core::control_api`). The token lives in the

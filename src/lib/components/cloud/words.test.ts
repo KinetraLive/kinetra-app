@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CloudView } from "$lib/types";
-import { gb, retentionWords, stateWords } from "./words";
+import { gb, questionWords, retentionWords, stateWords } from "./words";
 
 const quota = {
   plan: "pro_monthly",
@@ -29,6 +29,7 @@ const view = (patch: Partial<CloudView>): CloudView => ({
   checkedAt: 1,
   quota,
   settings: { onAir: "pause", limitKbps: 2000, intervalS: 300, newProjects: true },
+  project: null,
   ...patch,
 });
 
@@ -56,6 +57,23 @@ describe("cloud words", () => {
     expect(retentionWords(view({}))).toBeNull();
     expect(retentionWords(view({ quota: { ...quota, retentionDaysNext: 30, retentionFrom: "2026-11-14T12:00:00Z" } }))).toBe(
       "Versions older than 30 days are deleted from Nov 14, 2026.",
+    );
+  });
+});
+
+describe("cloud questions", () => {
+  it("offers the trash choices with the date", () => {
+    const w = questionWords({ kind: "inTrash", purgeAt: "2026-10-22T10:00:00Z" });
+    expect(w.text).toBe("This project's cloud backup is in the trash until Oct 22, 2026.");
+    expect(w.choices.map((c) => c.answer)).toEqual(["restore", "startNew", "turnOff"]);
+  });
+
+  it("names the other computer", () => {
+    const w = questionWords({ kind: "otherComputer", machine: "STUDIO-PC", at: null });
+    expect(w.text).toBe("This project is already backed up from STUDIO-PC.");
+    expect(w.choices.map((c) => c.label)).toEqual(["Continue that backup here", "Back up as a separate project", "Don't back up here"]);
+    expect(questionWords({ kind: "otherComputer", machine: null, at: null }).text).toBe(
+      "This project is already backed up from another computer.",
     );
   });
 });

@@ -1157,6 +1157,7 @@ export function installMockTauri(s: MockScenario): void {
       retentionFrom: null,
     },
     settings: { onAir: "pause", limitKbps: 2000, intervalS: 300, newProjects: true },
+    project: { backup: true, registered: true, noticeSeen: true, question: null, issue: null },
   };
   const remoteNow = (): RemoteView =>
     ({

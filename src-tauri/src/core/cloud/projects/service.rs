@@ -34,7 +34,7 @@ use crate::error::AppResult;
 pub const PRO_CLOUD: &str = kinetra_license::entitlements::PRO_CLOUD_SYNC;
 
 #[derive(Default)]
-struct Svc {
+pub(super) struct Svc {
     quota: Option<Quota>,
     /// Unix seconds of the last answer.
     checked_at: Option<i64>,
@@ -50,12 +50,16 @@ struct Svc {
     file: Option<CloudFile>,
     /// The last view sent (`cloud-changed` goes out on change only).
     sent: Option<CloudView>,
+    /// The open project (see `identity`).
+    pub(super) project: Option<super::identity::OpenProject>,
 }
 
 /// Cloud backup's state (held by `AppState`; see the module docs).
 #[derive(Default)]
 pub struct CloudProjects {
-    inner: Mutex<Svc>,
+    pub(super) inner: Mutex<Svc>,
+    /// `cloud.json` writes, one at a time.
+    save: Mutex<()>,
     /// Tests: the wait before a retry instead of the backoff.
     test_retry: Mutex<Option<std::time::Duration>>,
 }
@@ -116,18 +120,30 @@ impl AppState {
             .clone()
     }
 
-    /// Changes `cloud.json` and writes it (on the blocking pool) when anything changed.
+    /// Changes `cloud.json` (in memory, under the lock, so concurrent changes never lose one)
+    /// and writes it on the blocking pool when anything changed. Each write takes the newest
+    /// content, one at a time, so an older write never lands last.
     pub(crate) fn cloud_file_update(&self, f: impl FnOnce(&mut CloudFile)) {
-        let mut file = self.cloud_file();
-        let before = file.clone();
-        f(&mut file);
-        if file == before {
+        self.cloud_file(); // loaded
+        let changed = {
+            let mut s = lock(&self.cloud_projects().inner);
+            let file = s.file.get_or_insert_with(CloudFile::default);
+            let before = file.clone();
+            f(file);
+            *file != before
+        };
+        if !changed {
             return;
         }
-        lock(&self.cloud_projects().inner).file = Some(file.clone());
-        let dir = self.config_dir().to_path_buf();
+        let weak = self.downgrade();
         let save = move || {
-            if let Err(e) = persist::save(&dir, &file) {
+            let Some(st) = weak.upgrade() else { return };
+            let svc = st.cloud_projects();
+            let _one_at_a_time = lock(&svc.save);
+            let Some(file) = lock(&svc.inner).file.clone() else {
+                return;
+            };
+            if let Err(e) = persist::save(st.config_dir(), &file) {
                 tracing::warn!("cloud.json: {e}");
             }
         };
@@ -167,6 +183,7 @@ impl AppState {
     pub fn cloud_view(&self) -> CloudView {
         let access = self.cloud_access();
         let prefs = self.prefs().cloud;
+        let project = self.cloud_project_view(access);
         let s = lock(&self.cloud_projects().inner);
         let client = s
             .quota
@@ -186,7 +203,16 @@ impl AppState {
                 interval_s: client.backup_interval_s,
                 new_projects: prefs.new_projects,
             },
+            project,
         }
+    }
+
+    /// The last quota answer's state.
+    pub(super) fn cloud_quota_state(&self) -> Option<QuotaState> {
+        lock(&self.cloud_projects().inner)
+            .quota
+            .as_ref()
+            .map(|q| q.state)
     }
 
     /// Sends `cloud-changed` when the view differs from the last one sent.
@@ -261,6 +287,8 @@ impl AppState {
                 if let (true, Some(id)) = (known, account) {
                     self.cloud_file_update(|f| f.accounts.entry(id).or_default().known = true);
                 }
+                // The open project registers once the quota allows it.
+                self.cloud_maybe_register();
             }
             Err((_, Some(wait))) => self.cloud_retry_quota(wait),
             Err((e, None)) => {
@@ -316,6 +344,11 @@ impl AppState {
             let mut s = lock(&self.cloud_projects().inner);
             s.quota = None;
             s.account = None;
+            if let Some(p) = s.project.as_mut() {
+                p.question = None;
+                p.pending = None;
+                p.issue = None;
+            }
             s.checked_at = None;
             s.offline = false;
             s.fails = 0;
