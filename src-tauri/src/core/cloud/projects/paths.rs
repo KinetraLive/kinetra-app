@@ -2,9 +2,9 @@
 //! (kinetra-cloud `crates/core/src/cloud/manifest.rs`), so a file that can't be stored is
 //! skipped and listed here instead of failing the whole commit.
 //!
-//! NFC: the server checks it with a Unicode table this app doesn't carry. A name made only of
-//! characters below U+0300 is always NFC; anything else is sent as it is, and if the server
-//! refuses it (`400 invalid_path`), that one file is dropped and listed (`upload`).
+//! NFC: `scan` normalizes every manifest path to NFC first (the file keeps its own name), so
+//! these rules see what the server sees. Two names that differ only in their Unicode form are
+//! then the same path: the second is a duplicate.
 
 use std::collections::HashSet;
 

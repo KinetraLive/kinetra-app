@@ -184,3 +184,25 @@ fn modified_at_is_rfc3339_utc() {
     assert_eq!(rfc3339(1_791_590_400_500_000_000), "2026-10-10T00:00:00.5Z");
     assert_eq!(hex(&[0, 15, 255]), "000fff");
 }
+
+#[test]
+fn decomposed_names_go_up_in_nfc_and_the_file_keeps_its_name() {
+    let tmp = tempfile::tempdir().unwrap();
+    let r = tmp.path();
+    // "å" as a + combining ring (what macOS gives), and an "ø" that is already composed.
+    let decomposed = "assets/la\u{030A}vt.png";
+    write(r, decomposed, b"x");
+    write(r, "assets/\u{f8}st.png", b"y");
+    let l = list(r, None).unwrap();
+    let paths: Vec<&str> = l.files.iter().map(|f| f.path.as_str()).collect();
+    assert_eq!(paths, ["assets/l\u{e5}vt.png", "assets/\u{f8}st.png"]);
+    // The real file is read under its own (decomposed) name.
+    assert!(l.files[0].abs.ends_with("la\u{030A}vt.png"));
+    assert!(l.files[0].abs.exists());
+    // The same name in both forms: the second is a duplicate, listed.
+    write(r, "assets/l\u{e5}vt.png", b"z");
+    let l = list(r, None).unwrap();
+    assert_eq!(l.files.len(), 2);
+    assert_eq!(l.skipped.len(), 1);
+    assert!(l.skipped[0].reason.contains("same name"));
+}

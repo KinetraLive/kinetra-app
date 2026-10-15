@@ -43,6 +43,8 @@ reqwest = { version = "0.13.5", default-features = false, features = ["native-tl
 # each multipart part (R2 checks parts with MD5; owner OK 2026-10-15).
 sha2 = { version = "0.10", default-features = false }
 md-5 = { version = "0.10", default-features = false }
+# Manifest paths in NFC (CLOUD_PROJECTS.md §8.2; macOS gives decomposed names; owner OK 2026-10-15).
+unicode-normalization = { version = "0.1", default-features = false }
 # Secrets in the OS keychain: Windows Credential Manager here, the macOS Keychain below.
 keyring = { version = "3.6.3", default-features = false, features = ["windows-native"] }
 # Licensing (verification only: no "sign" feature); tags are license-vX.Y.Z.
