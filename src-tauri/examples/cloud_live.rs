@@ -135,6 +135,13 @@ fn main() {
         view.state, q.used_bytes, q.limit_bytes, q.upload_today_used, q.upload_today_limit
     );
 
+    // Content unique to this run: storage keeps blobs per account (a trashed project's too), so
+    // the same bytes as an earlier run would never be sent again.
+    let run = (std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u32)
+        | 1;
     // The test project.
     let parent = tmp.join("shows");
     std::fs::create_dir_all(&parent).unwrap();
@@ -146,9 +153,9 @@ fn main() {
             .unwrap()
     });
     let dir = std::path::PathBuf::from(dir.path);
-    write(&dir, "assets/small.bin", &pseudo(50_000, 1));
+    write(&dir, "assets/small.bin", &pseudo(50_000, run ^ 1));
     write(&dir, "assets/la\u{030A}vt.txt", b"decomposed name");
-    write(&dir, "assets/big.bin", &pseudo(20_000_000, 2));
+    write(&dir, "assets/big.bin", &pseudo(20_000_000, run ^ 2));
 
     // A multipart upload stopped after its first part, then resumed.
     st.cloud_backup_now().expect("backup starts");
@@ -254,7 +261,7 @@ fn main() {
 
     // One changed file.
     std::thread::sleep(Duration::from_millis(20));
-    write(&dir, "assets/small.bin", &pseudo(50_000, 3));
+    write(&dir, "assets/small.bin", &pseudo(50_000, run ^ 3));
     st.cloud_backup_now().unwrap();
     wait_done(&st, Duration::from_secs(120));
     let vs = versions(&api);
@@ -265,7 +272,7 @@ fn main() {
     );
 
     // On air: nothing goes up until it's off.
-    write(&dir, "assets/onair.bin", &pseudo(30_000, 4));
+    write(&dir, "assets/onair.bin", &pseudo(30_000, run ^ 4));
     let obs = st.live().renderer_attach("main", true);
     st.cloud_backup_now().unwrap();
     let t = Instant::now();
