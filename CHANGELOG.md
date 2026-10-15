@@ -9,7 +9,7 @@ update panel: one paragraph per line, no Markdown.
 
 ## Unreleased
 
-Control Kinetra from Bitfocus Companion and Stream Deck: turn on Preferences › Network & API › Control API and copy the token into the Kinetra module. Buttons take and clear graphics, change their text, run cues, step sources and take Preview, and light up red on air and green in Preview. Scripts can use the same API, and a flow can start from an API call, for example to put a score on air from one button.
+Control Kinetra from Bitfocus Companion (module coming soon) and Stream Deck: turn on Preferences › Network & API › Control API and copy the token. Buttons take and clear graphics, change their text, run cues, step sources and take Preview, and light up red on air and green in Preview. Scripts can use the same API, and a flow can start from an API call, for example to put a score on air from one button.
 
 Signed for Windows: the installer and the app now show Rørvik Medieteknikk as the publisher.
 
