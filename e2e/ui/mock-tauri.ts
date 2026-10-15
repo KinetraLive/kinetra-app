@@ -1812,6 +1812,7 @@ export function installMockTauri(s: MockScenario): void {
     cloud_view: () => cloudNow,
     cloud_refresh: () => cloudNow,
     cloud_backup_now: () => cloudNow,
+    cloud_conflict_dismiss: () => cloudNow,
     // ---- Control API ----
     control_api_view: () => controlApi,
     control_api_set: (a) => {

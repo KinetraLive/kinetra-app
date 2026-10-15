@@ -23,9 +23,11 @@ use std::sync::{MutexGuard, PoisonError};
 
 use super::local::{identity, Identity, ProjectRecord};
 use super::service::PRO_CLOUD;
-use super::wire::{CloudProject, IfTrashed, QuotaState};
+use super::wire::{CloudProject, IfTrashed, QuotaState, VersionPatch};
 use crate::core::cloud::api::CallError;
-use crate::core::model::{CloudAccess, CloudAnswer, CloudProjectView, CloudQuestion, ProjectFile};
+use crate::core::model::{
+    CloudAccess, CloudAnswer, CloudConflictView, CloudProjectView, CloudQuestion, ProjectFile,
+};
 use crate::core::persist;
 use crate::core::remote::ids::uuid_v7;
 use crate::core::state::AppState;
@@ -97,6 +99,7 @@ impl AppState {
         }
         self.emit_cloud();
         self.cloud_maybe_register();
+        self.cloud_load_conflict();
     }
 
     /// The project closed: its backup stops (uploaded blobs stay; the next one carries on).
@@ -374,6 +377,106 @@ impl AppState {
     /// The next commit's base (the head this computer knows) and `restored_from` (restore, later).
     pub(super) fn cloud_commit_base(&self) -> (Option<String>, Option<String>) {
         (self.cloud_record().and_then(|r| r.head), None)
+    }
+
+    /// The key of a commit not confirmed yet.
+    pub(super) fn cloud_pending_commit(&self) -> Option<String> {
+        self.cloud_record().and_then(|r| r.pending_commit)
+    }
+
+    pub(super) fn cloud_set_pending_commit(&self, key: Option<String>) {
+        let _ = self.cloud_record_update(|r| r.pending_commit = key);
+    }
+
+    /// Reads an unresolved conflict of the open project from the server (once per open; quiet when
+    /// it can't), so the notice survives a restart.
+    pub(super) fn cloud_load_conflict(&self) {
+        let Some(server_id) = self.cloud_record().and_then(|r| r.server_id) else {
+            return;
+        };
+        if self.cloud_access() != CloudAccess::Available {
+            return;
+        }
+        let Some(rt) = self.live().runtime_handle() else {
+            return;
+        };
+        let Some((dir, _)) = self.project_cloud_id() else {
+            return;
+        };
+        let weak = self.downgrade();
+        rt.spawn(async move {
+            let Some(st) = weak.upgrade() else { return };
+            let Ok((api, session, _)) = st.cloud_session_parts() else {
+                return;
+            };
+            let Ok(p) = api.cloud_project(&session, &server_id).await else {
+                return;
+            };
+            if !p.conflict {
+                return;
+            }
+            let Ok(page) = api.cloud_versions(&session, &server_id, None, 50).await else {
+                return;
+            };
+            let open = page
+                .versions
+                .iter()
+                .find(|v| v.conflict.as_ref().is_some_and(|c| c.resolved_at.is_none()));
+            let Some(v) = open else { return };
+            let other_id = v.conflict.as_ref().map(|c| c.with_version_id.clone());
+            let other = page
+                .versions
+                .iter()
+                .find(|x| Some(&x.id) == other_id.as_ref());
+            let view = CloudConflictView {
+                machine: other.and_then(|o| o.machine_name.clone()),
+                at: other.map(|o| o.created_at.clone()),
+                version_id: v.id.clone(),
+            };
+            if let Some(p) = lock(&st.cloud_projects().inner)
+                .project
+                .as_mut()
+                .filter(|p| p.dir == dir)
+            {
+                p.backup.conflict.get_or_insert(view);
+            }
+            st.emit_cloud();
+        });
+    }
+
+    /// "Dismiss" on the conflict notice: both versions stay; the conflict is resolved (§9).
+    pub async fn cloud_conflict_dismiss(&self) -> AppResult<()> {
+        let (dir, version_id) = {
+            let s = self.cloud_open();
+            let p = s.project.as_ref().ok_or(AppError::NoProject)?;
+            let Some(c) = p.backup.conflict.as_ref() else {
+                return Ok(());
+            };
+            (p.dir.clone(), c.version_id.clone())
+        };
+        let server_id = self
+            .cloud_record()
+            .and_then(|r| r.server_id)
+            .ok_or(AppError::NoProject)?;
+        let (api, session, _) = self.cloud_session_parts()?;
+        let patch = VersionPatch {
+            conflict_resolved: Some(true),
+            ..Default::default()
+        };
+        match api
+            .cloud_patch_version(&session, &server_id, &version_id, &patch)
+            .await
+        {
+            Ok(_) => {}
+            // Gone (deleted, or resolved by a later backup): nothing left to dismiss.
+            Err(CallError::Api { status: 404, .. }) => {}
+            Err(e) => return Err(e.into()),
+        }
+        if let Some(p) = self.cloud_open().project.as_mut().filter(|p| p.dir == dir) {
+            p.backup.conflict = None;
+        }
+        self.emit_cloud();
+        Ok(())
     }
 
     /// A commit went through: its version is the head this computer knows.

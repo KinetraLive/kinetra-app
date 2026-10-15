@@ -53,6 +53,9 @@ pub struct ProjectRecord {
     /// RFC 3339 of the last backup that finished here.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_at: Option<String>,
+    /// The `Idempotency-Key` of a commit not confirmed yet (reused until it is).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pending_commit: Option<String>,
     /// Multipart uploads in progress, by blob SHA-256, so a restart resumes them.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub uploads: BTreeMap<String, MultipartRecord>,

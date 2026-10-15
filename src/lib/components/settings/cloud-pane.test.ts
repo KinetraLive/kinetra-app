@@ -11,6 +11,7 @@ const api = vi.hoisted(() => ({
   cloudSetBackup: vi.fn(),
   cloudAnswer: vi.fn(),
   cloudBackupNow: vi.fn(),
+  cloudConflictDismiss: vi.fn(),
 }));
 const license = vi.hoisted(() => ({ signIn: vi.fn(), start: vi.fn(), view: null }));
 vi.mock("$lib/api/cloud", () => api);
@@ -152,10 +153,14 @@ describe("Cloud backup pane: backing up", () => {
       project: {
         ...project,
         error: "Cloud backup: offline, will retry.",
-        conflict: { machine: "STUDIO-PC", at: null },
+        conflict: { machine: "STUDIO-PC", at: null, versionId: "v1" },
       },
     });
     expect(await screen.findByText("Cloud backup: offline, will retry.")).toBeTruthy();
     expect(screen.getByText("This project was also backed up from STUDIO-PC. Both versions are kept.")).toBeTruthy();
+    api.cloudConflictDismiss.mockResolvedValue(base);
+    await fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    await waitFor(() => expect(api.cloudConflictDismiss).toHaveBeenCalled());
+    await waitFor(() => expect(screen.queryByText(/Both versions are kept/)).toBeNull());
   });
 });

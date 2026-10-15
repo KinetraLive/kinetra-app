@@ -15,3 +15,5 @@ export const cloudNoticeSeen = () => call<void>("cloud_notice_seen");
 export const cloudAnswer = (answer: CloudAnswer) => call<CloudView>("cloud_answer", { answer });
 /** "Back up now": starts a backup of the open project; progress follows on `cloud-changed`. */
 export const cloudBackupNow = () => call<CloudView>("cloud_backup_now");
+/** "Dismiss" on the conflict notice: both versions stay; the server marks it resolved. */
+export const cloudConflictDismiss = () => call<CloudView>("cloud_conflict_dismiss");

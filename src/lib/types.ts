@@ -319,7 +319,7 @@ export interface CloudProjectView {
   /** Why the last backup didn't finish, in plain words. */
   error: string | null;
   /** Another computer backed this project up in between; both are kept. */
-  conflict: { machine: string | null; at: string | null } | null;
+  conflict: { machine: string | null; at: string | null; versionId: string } | null;
 }
 
 export type CloudPhase = "scanning" | "hashing" | "uploading" | "committing";

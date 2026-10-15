@@ -62,6 +62,12 @@ struct Fake {
     /// Called before a single PUT's body is read.
     on_put: Option<Arc<dyn Fn() + Send + Sync>>,
     quota_state: String,
+    /// Commits stored but answered with 502 (the answer is lost), this many times.
+    lose_commit_answers: u32,
+    /// Commits refused with 429.
+    commits_429: bool,
+    /// PATCHes seen (version id → body).
+    patches: Vec<(String, Value)>,
 }
 
 type F = Arc<Mutex<Fake>>;
@@ -254,8 +260,15 @@ async fn handle(
             let key = h("idempotency-key");
             let mut f = f.lock().unwrap();
             f.log.push("COMMIT".into());
-            if let Some(prev) = f.commits_by_key.get(&key) {
-                return ok(200, prev.clone());
+            if f.commits_429 {
+                return err(429, "rate_limited", Value::Null);
+            }
+            if let Some(prev) = f.commits_by_key.get(&key).cloned() {
+                if f.lose_commit_answers > 0 {
+                    f.lose_commit_answers -= 1;
+                    return StatusCode::BAD_GATEWAY.into_response();
+                }
+                return ok(200, prev);
             }
             let b = json_body();
             let files = b["manifest"]["files"]
@@ -285,7 +298,51 @@ async fn handle(
             let base = b["base_version_id"].as_str().map(str::to_string);
             let r = version(&mut f, base, &files, 0);
             f.commits_by_key.insert(key, r.clone());
+            if f.lose_commit_answers > 0 {
+                f.lose_commit_answers -= 1;
+                return StatusCode::BAD_GATEWAY.into_response();
+            }
             ok(201, r)
+        }
+        ("GET", ["v1", "cloud", "projects", pid]) => {
+            let f = f.lock().unwrap();
+            let conflict = f
+                .versions
+                .iter()
+                .any(|v| v["conflict"].is_object() && v["conflict"]["resolved_at"].is_null());
+            ok(
+                200,
+                json!({"id": pid, "app_project_id": "x", "name": "Gala", "head": null,
+                "versions": f.versions.len(), "kept": 0, "conflict": conflict}),
+            )
+        }
+        ("GET", ["v1", "cloud", "projects", _, "versions"]) => {
+            let f = f.lock().unwrap();
+            let list: Vec<Value> = f
+                .versions
+                .iter()
+                .rev()
+                .map(|v| {
+                    let mut v = v.clone();
+                    v.as_object_mut().unwrap().remove("manifest");
+                    v
+                })
+                .collect();
+            ok(200, json!({"versions": list, "next": null}))
+        }
+        ("PATCH", ["v1", "cloud", "projects", _, "versions", vid]) => {
+            let mut f = f.lock().unwrap();
+            let b = json_body();
+            f.patches.push((vid.to_string(), b.clone()));
+            let Some(v) = f.versions.iter_mut().find(|v| v["id"] == *vid) else {
+                return err(404, "not_found", Value::Null);
+            };
+            if b["conflict_resolved"] == true && v["conflict"].is_object() {
+                v["conflict"]["resolved_at"] = json!("2026-10-15T15:00:00Z");
+            }
+            let mut out = v.clone();
+            out.as_object_mut().unwrap().remove("manifest");
+            ok(200, out)
         }
         ("PUT", ["r2", "blob", sha]) => {
             let on_put = f.lock().unwrap().on_put.clone();
@@ -416,6 +473,10 @@ impl Env {
         let p = self.dir.join(rel);
         std::fs::create_dir_all(p.parent().unwrap()).unwrap();
         std::fs::write(p, bytes).unwrap();
+    }
+
+    fn rt_block<T>(&self, f: impl std::future::Future<Output = T>) -> T {
+        self._rt.block_on(f)
     }
 
     fn log(&self) -> Vec<String> {
@@ -747,8 +808,8 @@ fn another_computers_newer_backup_is_a_conflict_not_a_failure() {
     // Another computer committed in between.
     {
         let mut f = e.fake.lock().unwrap();
-        let other = version(&mut f, None, &[], 0);
-        let _ = other;
+        let head = f.head.clone();
+        let _ = version(&mut f, head, &[], 0);
     }
     let v = e.backup();
     let p = v.project.unwrap();
@@ -836,4 +897,88 @@ fn switching_to_pause_mid_backup_pauses_at_once() {
     drop(obs);
     e.wait_done();
     assert_eq!(e.view().project.unwrap().error, None);
+}
+
+#[test]
+fn a_lost_commit_answer_is_retried_with_the_same_key_and_makes_one_version() {
+    let e = env();
+    e.write("a.txt", b"x");
+    e.backup();
+    e.write("b.txt", b"y");
+    // The server stores the commit, but the answer never arrives (twice).
+    e.fake.lock().unwrap().lose_commit_answers = 2;
+    let v = e.backup();
+    let p = v.project.unwrap();
+    assert_eq!(p.error, None);
+    assert!(p.conflict.is_none(), "not a conflict with ourselves");
+    assert_eq!(e.fake.lock().unwrap().versions.len(), 2);
+    // Answers lost on every try: offline now, and the next backup reuses the key.
+    e.write("c.txt", b"z");
+    e.fake.lock().unwrap().lose_commit_answers = 3;
+    let v = e.backup();
+    assert_eq!(
+        v.project.unwrap().error.as_deref(),
+        Some("Cloud backup: offline, will retry.")
+    );
+    assert_eq!(e.fake.lock().unwrap().versions.len(), 3);
+    let v = e.backup();
+    let p = v.project.unwrap();
+    assert_eq!(p.error, None);
+    assert!(p.conflict.is_none());
+    assert_eq!(
+        e.fake.lock().unwrap().versions.len(),
+        3,
+        "the stored commit was confirmed"
+    );
+    // Confirmed: the key is forgotten, the next backup makes a new version.
+    e.backup();
+    assert_eq!(e.fake.lock().unwrap().versions.len(), 4);
+}
+
+#[test]
+fn a_conflict_comes_back_after_reopening_and_dismiss_resolves_it() {
+    let e = env();
+    e.write("a.txt", b"x");
+    e.backup();
+    {
+        let mut f = e.fake.lock().unwrap();
+        let head = f.head.clone();
+        let _ = version(&mut f, head, &[], 0);
+    }
+    let v = e.backup();
+    let c = v.project.unwrap().conflict.unwrap();
+    // Reopened (or after a restart): the notice is read from the server.
+    e.st.close_project();
+    e.st.open_project(&e.dir).unwrap();
+    wait_until("conflict loaded", || {
+        e.view().project.is_some_and(|p| p.conflict.is_some())
+    });
+    assert_eq!(
+        e.view().project.unwrap().conflict.unwrap().version_id,
+        c.version_id
+    );
+    // Dismiss: the server marks it resolved, the notice goes.
+    e.rt_block(e.st.cloud_conflict_dismiss()).unwrap();
+    assert!(e.view().project.unwrap().conflict.is_none());
+    let patches = e.fake.lock().unwrap().patches.clone();
+    assert_eq!(
+        patches,
+        [(c.version_id.clone(), json!({"conflict_resolved": true}))]
+    );
+    e.st.close_project();
+    e.st.open_project(&e.dir).unwrap();
+    std::thread::sleep(Duration::from_millis(150));
+    assert!(e.view().project.unwrap().conflict.is_none());
+}
+
+#[test]
+fn too_many_commits_says_so_instead_of_offline() {
+    let e = env();
+    e.write("a.txt", b"x");
+    e.fake.lock().unwrap().commits_429 = true;
+    let v = e.backup();
+    assert_eq!(
+        v.project.unwrap().error.as_deref(),
+        Some("Cloud backup is busy for this account. Kinetra will try again later.")
+    );
 }

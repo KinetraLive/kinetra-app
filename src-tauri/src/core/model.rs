@@ -727,6 +727,8 @@ pub use crate::core::cloud::projects::scan::Skipped as CloudSkipped;
 pub struct CloudConflictView {
     pub machine: Option<String>,
     pub at: Option<String>,
+    /// The version that has the conflict (Dismiss resolves it).
+    pub version_id: String,
 }
 
 /// A choice cloud backup needs from the user (CLOUD_PROJECTS.md §5, the app plan's decision 1).

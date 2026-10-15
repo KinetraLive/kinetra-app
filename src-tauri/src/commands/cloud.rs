@@ -60,3 +60,11 @@ pub async fn cloud_backup_now(state: State<'_, AppState>) -> AppResult<CloudView
     })
     .await
 }
+
+/// "Dismiss" on the conflict notice: both versions stay; the server marks it resolved.
+#[tauri::command]
+pub async fn cloud_conflict_dismiss(state: State<'_, AppState>) -> AppResult<CloudView> {
+    let state = state.inner().clone();
+    state.cloud_conflict_dismiss().await?;
+    Ok(state.cloud_view())
+}

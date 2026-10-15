@@ -56,6 +56,11 @@ const PROGRESS_EVERY: Duration = Duration::from_millis(100);
 const TRIES: u32 = 3;
 /// Commit attempts (each `missing_blobs` or refused path is one).
 const COMMITS: u32 = 4;
+/// Waits before committing again with the same key after the server wasn't reached.
+#[cfg(not(test))]
+const COMMIT_RETRIES: [Duration; 2] = [Duration::from_secs(2), Duration::from_secs(5)];
+#[cfg(test)]
+const COMMIT_RETRIES: [Duration; 2] = [Duration::from_millis(10), Duration::from_millis(20)];
 
 /// The backup state of the open project (in the service's state; the view reads it).
 #[derive(Debug, Clone, Default)]
@@ -83,10 +88,13 @@ enum Fail {
 
 impl From<CallError> for Fail {
     fn from(e: CallError) -> Self {
-        if e.is_offline()
-            || matches!(&e, CallError::Api { status, .. } if *status >= 500 || *status == 429)
-        {
+        if e.is_offline() || matches!(&e, CallError::Api { status, .. } if *status >= 500) {
             return Fail::Offline;
+        }
+        if matches!(&e, CallError::Api { status: 429, .. }) {
+            return Fail::Message(
+                "Cloud backup is busy for this account. Kinetra will try again later.".into(),
+            );
         }
         match e {
             CallError::Api { code, message, .. } => Fail::Message(
@@ -925,8 +933,14 @@ impl AppState {
             .cloud_activation()
             .ok_or_else(|| Fail::Message("This computer isn't activated. Sign in again.".into()))?;
         let (base, restored_from) = self.cloud_commit_base();
-        let mut key = uuid_v7();
-        for _ in 0..COMMITS {
+        // A commit whose answer was lost is retried with its key: the server returns that version
+        // instead of a second one (which would look like a conflict with ourselves).
+        let mut key = self.cloud_pending_commit().unwrap_or_else(uuid_v7);
+        self.cloud_set_pending_commit(Some(key.clone()));
+        let mut offline = 0u32;
+        let mut tries = 0u32;
+        while tries < COMMITS {
+            tries += 1;
             let version = NewVersion {
                 base_version_id: base.clone(),
                 restored_from: restored_from.clone(),
@@ -953,9 +967,11 @@ impl AppState {
                 .await
             {
                 Ok(c) => {
+                    self.cloud_set_pending_commit(None);
                     let conflict = c.conflict.map(|x| CloudConflictView {
                         machine: x.with_version.machine_name,
                         at: Some(x.with_version.created_at),
+                        version_id: c.version.id.clone(),
                     });
                     let head = c.version.id.clone();
                     let at = c.version.created_at.clone();
@@ -1012,6 +1028,19 @@ impl AppState {
                         reason: "Cloud backup can't store this name.".into(),
                     });
                     key = uuid_v7();
+                    self.cloud_set_pending_commit(Some(key.clone()));
+                }
+                // Not reached / the server is busy: the same key again, a little later.
+                Err(e)
+                    if e.is_offline()
+                        || matches!(&e, CallError::Api { status, .. } if *status >= 500) =>
+                {
+                    offline += 1;
+                    if offline > COMMIT_RETRIES.len() as u32 {
+                        return Err(Fail::Offline);
+                    }
+                    tries -= 1;
+                    tokio::time::sleep(COMMIT_RETRIES[offline as usize - 1]).await;
                 }
                 Err(e) => return Err(e.into()),
             }

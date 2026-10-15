@@ -11,7 +11,7 @@
 
 <script lang="ts">
   import { toAppError } from "$lib/api";
-  import { cloudAnswer, cloudBackupNow, cloudRefresh, cloudSetBackup } from "$lib/api/cloud";
+  import { cloudAnswer, cloudBackupNow, cloudConflictDismiss, cloudRefresh, cloudSetBackup } from "$lib/api/cloud";
   import Button from "$lib/components/Button.svelte";
   import NumberInput from "$lib/components/NumberInput.svelte";
   import ProgressBar from "$lib/components/ProgressBar.svelte";
@@ -64,6 +64,7 @@
   const answer = (a: CloudAnswer) => act(async () => (cloud.view = await cloudAnswer(a)));
   const setBackup = (on: boolean) => act(async () => (cloud.view = await cloudSetBackup(on)));
   const backUpNow = () => act(async () => (cloud.view = await cloudBackupNow()));
+  const dismiss = () => act(async () => (cloud.view = await cloudConflictDismiss()));
   const canBackUp = $derived(
     !!project?.backup && !project.question && !project.run && (view?.state === "ok" || view?.state === "warning" || view?.state === "full"),
   );
@@ -165,7 +166,10 @@
         </SettingsRow>
         {#if project.conflict}
           <SettingsRow label="Another computer">
-            <p class="status">{conflictWords(project.conflict)}</p>
+            <p class="status">
+              <span>{conflictWords(project.conflict)}</span>
+              <Button size="sm" disabled={busy} onclick={dismiss}>Dismiss</Button>
+            </p>
           </SettingsRow>
         {/if}
         {#if project.skipped > 0}
