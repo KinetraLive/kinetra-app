@@ -17,6 +17,7 @@
 
 import type {
   ApiStatus,
+  CloudView,
   ApplyStyleResult,
   AssetImportProgress,
   AssetInfo,
@@ -172,6 +173,8 @@ export interface MockScenario {
   /** The Control API (Preferences › Network & API): the switch and connected programs; default off.
    *  `control_api_set` switches it (emits `control-api`), `control_api_disconnect` drops one. */
   controlApi?: ControlApiView;
+  /** Cloud backup (Preferences › Cloud backup): default Pro, signed in, 36% used. */
+  cloud?: CloudView;
 }
 
 export function installMockTauri(s: MockScenario): void {
@@ -1129,6 +1132,35 @@ export function installMockTauri(s: MockScenario): void {
   const timers = new Map<string, ReturnType<typeof setTimeout>>();
   let remoteState: Partial<RemoteView> = s.remote ?? {};
   let controlApi: ControlApiView = s.controlApi ?? { enabled: false, clients: [] };
+  const cloudNow: CloudView = s.cloud ?? {
+    access: "available",
+    state: "ok",
+    offline: false,
+    checkedAt: 1_791_590_400,
+    quota: {
+      plan: "pro_monthly",
+      usedBytes: 7_340_032_000,
+      pendingBytes: 0,
+      limitBytes: 20e9,
+      percent: 36,
+      warnPercent: 80,
+      projectsUsed: 12,
+      projectsLimit: 100,
+      maxFileBytes: 5e9,
+      retentionDays: 30,
+      keptPerProject: 50,
+      uploadTodayUsed: 1.2e9,
+      uploadTodayLimit: 40e9,
+      uploadTodayResetsAt: "2026-10-16T00:00:00Z",
+      purgeAt: null,
+      retentionDaysNext: null,
+      retentionFrom: null,
+    },
+    settings: { onAir: "pause", limitKbps: 2000, intervalS: 300, newProjects: true },
+    project: { backup: true, registered: true, serverId: "0199e2a0-0001-7000-8000-000000000001", noticeSeen: true, question: null, issue: null, lastBackupAt: "2026-10-15T12:02:00Z", run: null, report: [], skipped: 0, error: null, conflict: null },
+    restore: null,
+    heldUntil: null,
+  };
   const remoteNow = (): RemoteView =>
     ({
       state: "off", on: false, takeLocked: false, crew: [], showId: null, crewUrl: null, controllerUrl: null,
@@ -1778,6 +1810,45 @@ export function installMockTauri(s: MockScenario): void {
       channel: "stable",
       commit: "fa23a08",
     }),
+    // ---- Cloud backup ----
+    cloud_view: () => cloudNow,
+    cloud_refresh: () => cloudNow,
+    cloud_backup_now: () => cloudNow,
+    cloud_conflict_dismiss: () => cloudNow,
+    cloud_notice_seen: () => null,
+    cloud_exit_should_ask: () => false,
+    cloud_backup_before_exit: () => cloudNow,
+    cloud_versions: () => ({
+      versions: [
+        { id: "v3", createdAt: "2026-10-15T12:02:00Z", machine: "STUDIO-PC", label: null, kept: false, isHead: true, damaged: false, conflict: false, fileCount: 312, logicalBytes: 1.83e9, newBytes: 4.2e6, reason: "auto", expiresAt: null },
+        { id: "v2", createdAt: "2026-10-15T10:40:00Z", machine: "STUDIO-PC", label: "After soundcheck", kept: true, isHead: false, damaged: false, conflict: false, fileCount: 311, logicalBytes: 1.82e9, newBytes: 0, reason: "manual", expiresAt: null },
+        { id: "v1", createdAt: "2026-10-14T18:10:00Z", machine: "LAPTOP", label: null, kept: false, isHead: false, damaged: false, conflict: false, fileCount: 298, logicalBytes: 1.8e9, newBytes: 1.8e9, reason: "close", expiresAt: "2026-11-13T18:10:00Z" },
+      ],
+      next: null,
+    }),
+    cloud_version_keep: (a) => ({ id: a.id, kept: a.kept }),
+    cloud_version_label: (a) => ({ id: a.id, label: a.label }),
+    cloud_version_delete: () => null,
+    cloud_projects_list: () => [
+      { id: "p1", name: "Election night", versions: 41, kept: 3, conflict: false, lastAt: "2026-10-15T12:02:00Z", lastMachine: "STUDIO-PC", trashedAt: null, purgeAt: null, open: true, here: true },
+      { id: "p2", name: "Spring gala", versions: 12, kept: 0, conflict: false, lastAt: "2026-09-30T20:15:00Z", lastMachine: "LAPTOP", trashedAt: null, purgeAt: null, open: false, here: false },
+    ],
+    cloud_project_rename: () => null,
+    cloud_project_trash: () => null,
+    cloud_project_untrash: () => null,
+    cloud_restore_plan: (a) => ({
+      folder:
+        a.mode === "replace"
+          ? "D:\\Shows\\Election night"
+          : a.mode === "download"
+            ? "D:\\Shows\\spring-gala"
+            : "D:\\Shows\\election-night-2026-10-15-1040",
+      backupFirst: true,
+      copyFolder: null,
+    }),
+    cloud_restore_start: () => cloudNow,
+    cloud_restore_cancel: () => null,
+    cloud_restore_dismiss: () => cloudNow,
     // ---- Control API ----
     control_api_view: () => controlApi,
     control_api_set: (a) => {
@@ -1862,7 +1933,7 @@ export function installMockTauri(s: MockScenario): void {
         plan: "pro_yearly",
         planName: "Kinetra Pro (yearly)",
         entitlements: ["core.app", "pro.ai", "pro.polls"],
-        features: { ai: true, polls: true, control: true },
+        features: { ai: true, polls: true, control: true, cloud: true },
         pending: null,
         endsAt: now + 200 * 86400,
         updatesUntil: null,

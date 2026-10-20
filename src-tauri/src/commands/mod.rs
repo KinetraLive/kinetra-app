@@ -9,6 +9,7 @@ pub mod app;
 pub mod assets;
 pub mod automation;
 pub mod backup;
+pub mod cloud;
 pub mod control;
 pub mod control_api;
 pub mod flows;

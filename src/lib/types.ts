@@ -226,7 +226,225 @@ export interface Prefs {
   outputs?: OutputConfig[];
   /** The local Control API on this machine. Absent = off. The token is in the keychain. */
   controlApi?: ControlApiPrefs;
+  /** Cloud backup on this machine. Absent = defaults (new projects back up, the server's on-air policy). */
+  cloud?: CloudPrefs;
 }
+
+/** `Prefs.cloud`. `onAir` / `limitKbps` absent = the server's defaults. */
+export interface CloudPrefs {
+  newProjects: boolean;
+  onAir?: CloudOnAir;
+  /** 64–1,000,000 kbit/s. */
+  limitKbps?: number;
+}
+
+export const CLOUD_LIMIT_KBPS = { min: 64, max: 1_000_000 } as const;
+
+/** While anything is on air: pause transfers, or limit them. */
+export type CloudOnAir = "pause" | "limit";
+
+// ---- Cloud backup (src-tauri/src/core/cloud/projects) ----
+
+/** The account's cloud state from the last quota answer. */
+export type CloudState = "ok" | "warning" | "full" | "lapsed" | "notInPlan";
+
+/** signedOut: nothing is asked. free: no Pro and no backups known here (no request; "Check for
+ * backups" asks once). available: the server is asked. */
+/** "unavailable": this build has no cloud backup (KINETRA_CLOUD; its UI isn't in the build either). */
+export type CloudAccess = "unavailable" | "signedOut" | "free" | "available";
+
+/** Sizes in bytes (GB = 10⁹ for display), times RFC 3339. */
+export interface CloudQuotaView {
+  plan: string | null;
+  usedBytes: number;
+  pendingBytes: number;
+  limitBytes: number;
+  percent: number;
+  warnPercent: number;
+  projectsUsed: number;
+  projectsLimit: number;
+  maxFileBytes: number;
+  retentionDays: number;
+  keptPerProject: number;
+  uploadTodayUsed: number;
+  uploadTodayLimit: number;
+  uploadTodayResetsAt: string | null;
+  /** Lapsed: when everything is deleted. */
+  purgeAt: string | null;
+  /** After a downgrade: the shorter history applies from `retentionFrom`. */
+  retentionDaysNext: number | null;
+  retentionFrom: string | null;
+}
+
+export interface CloudSettingsView {
+  onAir: CloudOnAir;
+  limitKbps: number;
+  /** Seconds after the last change. */
+  intervalS: number;
+  newProjects: boolean;
+}
+
+/** Cloud backup as the UI sees it (`cloud_view`, `cloud-changed`). */
+export interface CloudView {
+  access: CloudAccess;
+  state: CloudState | null;
+  /** The last request didn't reach the server. */
+  offline: boolean;
+  /** Unix seconds of the last answer. */
+  checkedAt: number | null;
+  quota: CloudQuotaView | null;
+  settings: CloudSettingsView;
+  /** The open project's backup (none without a project, or signed out). */
+  project: CloudProjectView | null;
+  /** A restore running or just finished (one at a time; open project or not). */
+  restore: CloudRestoreView | null;
+  /** Today's upload allowance is used: automatic backups continue at this time (RFC 3339). */
+  heldUntil: string | null;
+}
+
+/** How a version is restored: a separate project in a new folder, the same cloud project in a new
+ * folder (the picker's Download), or over the open project. */
+export type CloudRestoreMode = "newFolder" | "download" | "replace";
+export type CloudRestorePhase = "preparing" | "backingUp" | "copying" | "downloading" | "replacing";
+
+export interface CloudRestoreRequest {
+  projectId: string;
+  /** null = the newest version. */
+  versionId: string | null;
+  mode: CloudRestoreMode;
+  /** The new folder (newFolder, download): must not exist yet, or be empty. */
+  folder: string | null;
+}
+
+/** Where a restore would go; Replace: backed up first, else copied to `copyFolder`. */
+export interface CloudRestorePlan {
+  folder: string;
+  backupFirst: boolean;
+  copyFolder: string | null;
+}
+
+export interface CloudRestoreView {
+  mode: CloudRestoreMode;
+  versionId: string;
+  folder: string;
+  phase: CloudRestorePhase;
+  doneBytes: number;
+  totalBytes: number;
+  paused: boolean;
+  limited: boolean;
+  /** Set once it ended. */
+  result: CloudRestoreResult | null;
+}
+
+export interface CloudRestoreResult {
+  ok: boolean;
+  error: string | null;
+  /** Files that didn't arrive intact (at most 100; `damagedCount` in all). */
+  damaged: string[];
+  damagedCount: number;
+  /** Replace: where the copy of the project as it was went (when it wasn't backed up). */
+  copyFolder: string | null;
+  reused: number;
+}
+
+/** The open project's cloud backup. */
+export interface CloudProjectView {
+  /** On for this project (its own switch, else "Back up new projects"). */
+  backup: boolean;
+  /** The server knows this project. */
+  registered: boolean;
+  /** The server's id for it (restores of the open project name it). */
+  serverId: string | null;
+  noticeSeen: boolean;
+  /** A choice waiting for the user: shown quietly, never a modal. */
+  question: CloudQuestion | null;
+  /** Why this project can't back up now, in plain words. */
+  issue: string | null;
+  /** A backup running now. */
+  run: CloudRunView | null;
+  /** RFC 3339 of the last backup that finished here. */
+  lastBackupAt: string | null;
+  /** Files the last backup left out (at most 100). */
+  report: CloudSkipped[];
+  /** How many files it left out in all. */
+  skipped: number;
+  /** Why the last backup didn't finish, in plain words. */
+  error: string | null;
+  /** Another computer backed this project up in between; both are kept. */
+  /** `otherVersionId`: the other computer's version ("Open the other version"). */
+  conflict: { machine: string | null; at: string | null; versionId: string; otherVersionId: string | null } | null;
+}
+
+export type CloudPhase = "scanning" | "hashing" | "uploading" | "committing";
+
+export interface CloudRunView {
+  phase: CloudPhase;
+  doneBytes: number;
+  totalBytes: number;
+  /** Waiting because something is on air. */
+  paused: boolean;
+  /** Sending slowly because something is on air ("Limit speed"). */
+  limited: boolean;
+}
+
+export interface CloudSkipped {
+  path: string;
+  reason: string;
+}
+
+/** A version in the history. Sizes in bytes, times RFC 3339. */
+export interface CloudVersionView {
+  id: string;
+  createdAt: string;
+  /** The computer it was backed up from. */
+  machine: string | null;
+  label: string | null;
+  kept: boolean;
+  /** The newest version (can't be deleted). */
+  isHead: boolean;
+  /** Some of its files are missing on the server: it can't be fully restored. */
+  damaged: boolean;
+  /** Part of a conflict not dismissed yet. */
+  conflict: boolean;
+  fileCount: number;
+  logicalBytes: number;
+  newBytes: number;
+  /** auto | close | manual */
+  reason: string | null;
+  /** When the plan's history length deletes it; none for newest, kept and conflicting ones. */
+  expiresAt: string | null;
+}
+
+export interface CloudVersionPage {
+  versions: CloudVersionView[];
+  /** Pass as `before` for the next page; null on the last. */
+  next: string | null;
+}
+
+/** A project in the account's cloud backup. */
+export interface CloudProjectSummary {
+  id: string;
+  name: string;
+  versions: number;
+  kept: number;
+  conflict: boolean;
+  lastAt: string | null;
+  lastMachine: string | null;
+  /** In the trash: deleted for good on `purgeAt`. */
+  trashedAt: string | null;
+  purgeAt: string | null;
+  /** The open project's backup. */
+  open: boolean;
+  /** This computer has a folder for it. */
+  here: boolean;
+}
+
+export type CloudQuestion =
+  | { kind: "firstBackup"; bytes: number }
+  | { kind: "inTrash"; purgeAt: string | null }
+  | { kind: "otherComputer"; machine: string | null; at: string | null };
+
+export type CloudAnswer = "restore" | "startNew" | "continueHere" | "separate" | "turnOff" | "backUp";
 
 export interface ControlApiPrefs {
   enabled: boolean;
@@ -565,6 +783,7 @@ export type PreferenceSectionId =
   | "outputs"
   | "network"
   | "license"
+  | "cloud"
   | "shortcuts"
   | "advanced"
   | "about";
@@ -743,7 +962,7 @@ export type LicenseStatus =
  * show ends (a loss waiting for nothing to be on air). */
 export interface LicenseView {
   signedIn: boolean;
-  account: { email: string; name: string | null } | null;
+  account: { email: string; name: string | null; id?: string } | null;
   status: LicenseStatus;
   access: "full" | "reduced" | "free";
   plan: string | null;
@@ -751,7 +970,7 @@ export interface LicenseView {
   planName: string | null;
   entitlements: string[];
   /** The app's Pro features, unlocked or not (decided in the core). */
-  features: { ai: boolean; polls: boolean; control: boolean };
+  features: { ai: boolean; polls: boolean; control: boolean; cloud: boolean };
   pending: string[] | null;
   endsAt: number | null;
   updatesUntil: number | null;

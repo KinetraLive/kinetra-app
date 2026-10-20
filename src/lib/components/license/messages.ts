@@ -57,6 +57,22 @@ export const API_MESSAGES: Readonly<Record<string, string | null>> = {
   poll_limit_reached: "You have as many polls open as your plan allows. Close one to open this.",
   poll_monthly_limit_reached: null,
   poll_expired: "This poll is about to be deleted. Duplicate it to run it again.",
+  // Cloud backup. Quiet: the project on this computer is never affected.
+  invalid_path: "A file name can't be backed up. It's listed in the backup report.",
+  too_many_files: "This project has more than 50,000 files. Cloud backup can't hold it.",
+  manifest_too_large: "This project has too many files for one cloud backup.",
+  file_too_large: "A file is too large for cloud backup. It's listed in the backup report.",
+  cloud_not_in_plan: "Cloud backup is part of Kinetra Pro.",
+  cloud_read_only: "Your plan no longer includes cloud backup. Your backups can still be downloaded.",
+  storage_full: "Cloud storage is full. Your project is saved on this computer; cloud backup is paused.",
+  daily_upload_limit: "Today's cloud upload allowance is used. Backup continues tomorrow.",
+  project_in_trash: "This project's cloud backup is in the trash.",
+  too_many_projects: "You have as many projects in the cloud as your plan allows.",
+  too_many_kept: "You're keeping as many versions as your plan allows.",
+  missing_blobs: "The backup wasn't complete. Kinetra will try again.",
+  upload_mismatch: "A file changed during the backup. Kinetra will try again.",
+  cannot_delete_head: "The newest version can't be deleted. Delete the project's backup instead.",
+  cloud_unavailable: "Cloud backup: offline, will retry.",
 };
 
 /** The message for a failed licensing / sign-in call. */

@@ -1480,3 +1480,29 @@ fn a_hand_edited_file_releases_the_moved_axis_on_reload() {
         anchor(None, Some(AnchorV::Middle), false)
     );
 }
+
+#[test]
+fn reading_the_same_hand_edit_twice_keeps_the_move() {
+    // Editors often save twice, and the watcher reloads after the first reload already applied
+    // the edit: the file still holds the old anchor until the flusher writes it back. A second
+    // reload of the same content must not re-anchor the layer (it used to snap back to 760).
+    use crate::core::model::AnchorV;
+    let (e, doc) = anchored_env();
+    let id = doc.id.clone();
+    let path = e.dir.join("screens").join(format!("{id}.json"));
+    let text = fs::read_to_string(&path).unwrap();
+    fs::write(&path, text.replace("\"x\": 760", "\"x\": 33")).unwrap();
+    assert!(e.st.reload_screen(&e.dir, &id).is_some());
+    // The same file again, before the write-back.
+    assert!(e.st.reload_screen(&e.dir, &id).is_none());
+    let got = e.st.get_screen(&id).unwrap().doc;
+    assert_eq!(got.meta.layers[0].rect, rect(33, 490, 400, 100));
+    assert_eq!(
+        got.meta.layers[0].anchor,
+        anchor(None, Some(AnchorV::Middle), false)
+    );
+    assert_eq!(
+        e.st.live().with_layer(&id, "l1", |l| l.rect).unwrap(),
+        Some(rect(33, 490, 400, 100))
+    );
+}

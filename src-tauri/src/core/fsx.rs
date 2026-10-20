@@ -118,6 +118,34 @@ fn push(path: &Path, what: Own) {
         what,
         at: Instant::now(),
     });
+    call_change_hooks(path);
+}
+
+/// Told about every change Kinetra makes to a file or folder (after it is recorded, before or
+/// after it hits the disk). Must be cheap and must not block: called on every write.
+pub type ChangeHook = dyn Fn(&Path) + Send + Sync;
+
+/// Process-wide (several `AppState`s in tests): held weakly, so a dropped owner unregisters.
+static CHANGE_HOOKS: Mutex<Vec<std::sync::Weak<ChangeHook>>> = Mutex::new(Vec::new());
+
+/// Registers `hook` for every own change (see [`ChangeHook`]) for as long as the `Arc` lives.
+pub fn add_change_hook(hook: &std::sync::Arc<ChangeHook>) {
+    let mut g = CHANGE_HOOKS.lock().unwrap_or_else(PoisonError::into_inner);
+    g.retain(|w| w.strong_count() > 0);
+    g.push(std::sync::Arc::downgrade(hook));
+}
+
+fn call_change_hooks(path: &Path) {
+    let hooks: Vec<_> = {
+        let g = CHANGE_HOOKS.lock().unwrap_or_else(PoisonError::into_inner);
+        if g.is_empty() {
+            return;
+        }
+        g.iter().filter_map(std::sync::Weak::upgrade).collect()
+    };
+    for h in hooks {
+        h(path);
+    }
 }
 
 /// Records that Kinetra removed or is about to remove `path` (a file, or a folder with everything

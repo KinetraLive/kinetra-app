@@ -11,6 +11,7 @@ pub mod control_actions;
 pub mod control_api;
 pub mod controls;
 pub mod copy;
+pub mod devprofile;
 pub mod displays;
 pub mod events;
 pub mod fieldvals;

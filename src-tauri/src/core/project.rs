@@ -154,6 +154,7 @@ pub fn init_in(path: &Path, name: &str) -> Result<ProjectFile, ProjectError> {
         created_at: fsx::now_rfc3339(),
         settings: ProjectSettings::default(),
         id: None,
+        cloud_id: None,
     };
     persist::save(path, &file)?;
     Ok(file)

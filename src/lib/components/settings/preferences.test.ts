@@ -191,7 +191,7 @@ const emit = (event: string, payload: unknown) => events.handlers.get(event)?.(p
 
 describe("sections", () => {
   it("are General, Appearance, Outputs, Network & API, License, Shortcuts, Advanced, About, each a lazy body", () => {
-    expect(PREFERENCE_SECTIONS.map((s) => s.title)).toEqual(["General", "Appearance", "Outputs", "Network & API", "License", "Shortcuts", "Advanced", "About"]);
+    expect(PREFERENCE_SECTIONS.map((s) => s.title)).toEqual(["General", "Appearance", "Outputs", "Network & API", "License", "Cloud backup", "Shortcuts", "Advanced", "About"]);
     for (const s of PREFERENCE_SECTIONS) expect(typeof s.load).toBe("function");
   });
 
@@ -263,6 +263,7 @@ describe("Preferences window", () => {
       "Outputs",
       "Network & API",
       "License",
+      "Cloud backup",
       "Shortcuts",
       "Advanced",
       "About",

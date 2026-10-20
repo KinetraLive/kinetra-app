@@ -14,6 +14,15 @@ function remoteBuild() {
   return process.env.npm_lifecycle_event === "dev";
 }
 
+/** KINETRA_CLOUD: "1" | "0"; unset = on for `pnpm dev` and tests (vitest), off for builds. */
+function cloudBuild() {
+  const v = (process.env.KINETRA_CLOUD ?? "").trim();
+  if (v === "1") return true;
+  if (v === "0") return false;
+  if (v) throw new Error(`KINETRA_CLOUD must be "1" or "0", not ${JSON.stringify(v)}`);
+  return process.env.npm_lifecycle_event === "dev" || !!process.env.VITEST;
+}
+
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
   preprocess: vitePreprocess(),
@@ -39,6 +48,18 @@ const config = {
       $remote: remoteBuild()
         ? "src/lib/components/remote/build-on.ts"
         : "src/lib/components/remote/build-off.ts",
+      // Cloud backup is in builds with KINETRA_CLOUD=1 (CI release builds leave it off until the
+      // production API has cloud projects switched on), `pnpm dev` and tests; other builds get the
+      // empty module (scripts/check-cloud-build.mjs checks the output). The core decides the same
+      // way at its build (src-tauri/build.rs).
+      $cloud: cloudBuild()
+        ? "src/lib/components/cloud/build-on.ts"
+        : "src/lib/components/cloud/build-off.ts",
+      // The picker's "In the cloud" card: its own alias, so the shell's `$cloud` stays out of the
+      // picker and the card out of the shell.
+      "$cloud-picker": cloudBuild()
+        ? "src/lib/components/picker/PickerCloud.svelte"
+        : "src/lib/components/picker/NoCloud.svelte",
     },
   },
 };

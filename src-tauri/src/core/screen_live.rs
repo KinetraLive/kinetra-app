@@ -853,6 +853,10 @@ impl AppState {
     /// applies it by the live rules, then emits `project-files-changed`. An invalid file keeps the
     /// last good live state (it is not set aside: the user may be in the middle of editing it).
     pub fn handle_file_changes(&self, dir: &Path, batch: Vec<(FileKind, String)>) {
+        // An outside edit is a change for cloud backup too.
+        if !batch.is_empty() && self.project_dir().ok().as_deref() == Some(dir) {
+            self.cloud_touch();
+        }
         for (kind, id) in batch {
             if self.project_dir().ok().as_deref() != Some(dir) {
                 return;
@@ -908,13 +912,26 @@ impl AppState {
             message,
         };
         let prev = self.screens().doc(id);
-        match screens::get_after(dir, id, prev.as_ref().map(|d| &d.meta)) {
+        let raw = screens::read_file_meta(dir, id);
+        // The same outside edit read again (an editor saving twice, or the watcher after a direct
+        // reload, before the anchor write-back): already applied. Releasing again would compare
+        // against the released document and put the layer back on its anchor.
+        if let Ok(meta) = &raw {
+            if self.screens().is_outside_seen(id, meta) {
+                return None;
+            }
+        }
+        let outside = raw.as_ref().ok().cloned();
+        match raw.and_then(|meta| screens::doc_after(id, meta, prev.as_ref().map(|d| &d.meta))) {
             // Exactly what is applied already (typically our own write, seen late under load
             // after the own-write memory expired): nothing changed, nothing to announce.
             Ok((doc, _)) if prev.as_ref() == Some(&doc) => None,
             // The file edited outside wins over unsaved Control edits.
             Ok((doc, released)) => {
                 self.screens().clear_dirty(id);
+                if let Some(meta) = outside {
+                    self.screens().set_outside_seen(id, meta);
+                }
                 let applied = self.apply_screen_doc(dir, &doc);
                 if released {
                     // A layer moved by hand let go of its anchor axis: the file is written back

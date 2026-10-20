@@ -66,9 +66,9 @@ use crate::core::live_hub::LiveHub;
 use crate::core::model::{
     BackupInfo, BackupPrefs, BackupReason, ControlsDoc, MidiPrefs, OscSettings, Prefs, Project,
     ProjectFile, ProjectSettings, RecentProject, UiState, BACKUP_INTERVAL_RANGE,
-    BACKUP_RETENTION_RANGE, COMMAND_ID_MAX, KEYBINDINGS_CAP, KEYS_PER_COMMAND, MIDI_DEVICES_CAP,
-    MIDI_NAME_MAX, OSC_ALLOW_CAP, OSC_HOST_MAX, PALETTE_RECENT_CAP, SCREEN_CROP_OVERLAYS,
-    SCREEN_GRID_SIZE_RANGE, ZOOM_RANGE, ZOOM_STEP,
+    BACKUP_RETENTION_RANGE, CLOUD_LIMIT_KBPS, COMMAND_ID_MAX, KEYBINDINGS_CAP, KEYS_PER_COMMAND,
+    MIDI_DEVICES_CAP, MIDI_NAME_MAX, OSC_ALLOW_CAP, OSC_HOST_MAX, PALETTE_RECENT_CAP,
+    SCREEN_CROP_OVERLAYS, SCREEN_GRID_SIZE_RANGE, ZOOM_RANGE, ZOOM_STEP,
 };
 use crate::core::persist::{self, RecentsFile, Store};
 use crate::core::recipes;
@@ -165,6 +165,8 @@ struct Inner {
     outputs: crate::core::outputs::Outputs,
     /// Sign-in and licensing (see `core::cloud::service`).
     cloud: crate::core::cloud::service::Cloud,
+    /// Cloud backup of projects (see `core::cloud::projects`).
+    cloud_projects: crate::core::cloud::projects::service::CloudProjects,
     /// Remote control through kinetra-cloud (see `core::remote`).
     remote: crate::core::remote::Remote,
     /// The local Control API (see `core::control_api`).
@@ -323,6 +325,10 @@ pub fn is_command_id(id: &str) -> bool {
 /// command is unbound on purpose).
 pub fn clamp_prefs(mut p: Prefs) -> Prefs {
     p.zoom = p.zoom.and_then(clamp_zoom);
+    p.cloud.limit_kbps = p
+        .cloud
+        .limit_kbps
+        .map(|k| k.clamp(*CLOUD_LIMIT_KBPS.start(), *CLOUD_LIMIT_KBPS.end()));
     p.outputs = crate::core::outputs::clamp_outputs(std::mem::take(&mut p.outputs));
     p.midi = clamp_midi_prefs(std::mem::take(&mut p.midi));
     p.keybindings = std::mem::take(&mut p.keybindings)
@@ -573,6 +579,7 @@ impl AppState {
             displays: Default::default(),
             outputs: Default::default(),
             cloud: Default::default(),
+            cloud_projects: Default::default(),
             remote: Default::default(),
             control_api: Default::default(),
         });
@@ -659,6 +666,11 @@ impl AppState {
         &self.inner.cloud
     }
 
+    /// Cloud backup of projects (see `core::cloud::projects`).
+    pub(crate) fn cloud_projects(&self) -> &crate::core::cloud::projects::service::CloudProjects {
+        &self.inner.cloud_projects
+    }
+
     /// API source polling and secrets (see `core::api_poll`).
     pub fn api(&self) -> &ApiPoller {
         &self.inner.api
@@ -683,6 +695,53 @@ impl AppState {
         read(&self.inner.project)
             .as_ref()
             .and_then(|p| p.file.value.id.clone())
+    }
+
+    /// The open project's folder and cloud backup ID (`project.json` `cloudId`), if open.
+    pub(crate) fn project_cloud_id(&self) -> Option<(PathBuf, Option<String>)> {
+        read(&self.inner.project)
+            .as_ref()
+            .map(|p| (p.dir.clone(), p.file.value.cloud_id.clone()))
+    }
+
+    /// The open project's cloud backup ID, set to `new` first if it has none (atomic: two callers
+    /// never give one project two IDs). Writes `project.json` (coalesced) when it was set.
+    pub(crate) fn ensure_project_cloud_id(
+        &self,
+        dir: &Path,
+        new: String,
+    ) -> AppResult<(String, bool)> {
+        let made = {
+            let mut g = write(&self.inner.project);
+            let op = g.as_mut().ok_or(AppError::NoProject)?;
+            if op.dir != dir {
+                return Err(AppError::NoProject);
+            }
+            if let Some(id) = &op.file.value.cloud_id {
+                return Ok((id.clone(), false));
+            }
+            op.file.value.cloud_id = Some(new.clone());
+            op.file.dirty = true;
+            new
+        };
+        self.inner.schedule();
+        Ok((made, true))
+    }
+
+    /// Sets the open project's cloud backup ID and writes `project.json` (coalesced). Only if
+    /// `dir` is still the open project.
+    pub(crate) fn set_project_cloud_id(&self, dir: &Path, id: String) -> AppResult<()> {
+        {
+            let mut g = write(&self.inner.project);
+            let op = g.as_mut().ok_or(AppError::NoProject)?;
+            if op.dir != dir {
+                return Err(AppError::NoProject);
+            }
+            op.file.value.cloud_id = Some(id);
+            op.file.dirty = true;
+        }
+        self.inner.schedule();
+        Ok(())
     }
 
     /// Sets the open project's remote control ID and writes `project.json` (coalesced, like
@@ -847,16 +906,24 @@ impl AppState {
     /// `prefs-changed` (cross-window) when anything changed.
     pub fn set_prefs(&self, prefs: Prefs) -> Prefs {
         let prefs = clamp_prefs(prefs);
-        let (any_changed, backup_changed, midi_changed, outputs_changed, capi_changed) = {
+        let (
+            any_changed,
+            backup_changed,
+            midi_changed,
+            outputs_changed,
+            capi_changed,
+            cloud_changed,
+        ) = {
             let mut g = write(&self.inner.prefs);
             let any = g.value != prefs;
             let changed = g.value.backup != prefs.backup;
             let midi = g.value.midi != prefs.midi;
             let outputs = g.value.outputs != prefs.outputs;
             let capi = g.value.control_api != prefs.control_api;
+            let cloud = g.value.cloud != prefs.cloud;
             g.value = prefs.clone();
             g.dirty = true;
-            (any, changed, midi, outputs, capi)
+            (any, changed, midi, outputs, capi, cloud)
         };
         self.inner.schedule();
         if any_changed {
@@ -875,6 +942,10 @@ impl AppState {
         if outputs_changed {
             // Windows follow at once (on the blocking pool: this may run on the main thread).
             self.outputs_request();
+        }
+        if cloud_changed {
+            // The cloud backup settings in the view follow prefs.
+            self.emit_cloud();
         }
         if capi_changed {
             self.control_api_prefs_changed(prefs.control_api.enabled);
@@ -953,6 +1024,8 @@ impl AppState {
         self.notify_project();
         self.emit_ui_state_changed();
         self.controls_announce();
+        // Cloud backup: a copied folder gets its own cloud ID; registers in the background.
+        self.cloud_project_opened();
         Ok(project)
     }
 
@@ -1018,6 +1091,7 @@ impl AppState {
         }
         self.notify_project();
         self.controls_announce();
+        self.cloud_project_closed();
     }
 
     /// Re-reads the open project's `project.json` and `ui-state.json` from disk, DISCARDING any
@@ -1043,6 +1117,7 @@ impl AppState {
         self.notify_project();
         self.emit_ui_state_changed();
         self.controls_announce();
+        self.cloud_project_opened();
         Ok(project)
     }
 
@@ -1166,6 +1241,7 @@ impl AppState {
     pub fn relocate_project(&self, from: &Path, new_dir: PathBuf) -> AppResult<Project> {
         let project = self.relocate_locked(from, new_dir)?;
         self.notify_project();
+        self.cloud_project_relocated();
         Ok(project)
     }
 
@@ -1370,6 +1446,44 @@ impl AppState {
         self.emit_ui_state_changed();
         self.controls_announce();
         self.emit_backup_created(&pre);
+        Ok(project)
+    }
+
+    /// Replaces the open project's files on disk with `swap(dir)` and reloads it, like
+    /// `restore_backup`: under `io` after a flush (no store write lands in between), the watcher
+    /// sitting it out, the reload's hooks after. Only while `dir` is the open project. Used by
+    /// cloud restore's Replace.
+    pub(crate) fn replace_project_files(
+        &self,
+        dir: &Path,
+        swap: impl FnOnce(&Path) -> AppResult<()>,
+    ) -> AppResult<Project> {
+        self.ensure_not_moving()?;
+        let project = {
+            let _io = lock(&self.inner.io);
+            self.inner.flush_locked();
+            if self.project_dir()? != dir {
+                return Err(AppError::NoProject);
+            }
+            self.inner.stop_watcher();
+            let swapped = swap(dir);
+            let mut backed_up = false;
+            if swapped.is_ok() {
+                self.templates_migrate_locked(dir, &mut backed_up);
+                self.templates_rewrite_fonts_locked(dir);
+            }
+            let project = swapped.and_then(|()| self.inner.reload_locked());
+            self.inner.start_watcher();
+            let project = project?;
+            self.flows_migrate_locked(dir, &mut backed_up);
+            project
+        };
+        self.flows_project_opened();
+        self.rules_project_opened();
+        self.notify_project();
+        self.emit_ui_state_changed();
+        self.controls_announce();
+        self.cloud_project_opened();
         Ok(project)
     }
 

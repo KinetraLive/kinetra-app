@@ -72,13 +72,19 @@ fn parse_ioreg_uuid(out: &str) -> Option<String> {
 
 /// The fingerprint sent to the server and bound into tokens (64 hex).
 pub fn fingerprint() -> Option<String> {
-    os_machine_id().map(|id| kinetra_license::machine::fingerprint(&id))
+    let profile = crate::core::devprofile::active();
+    os_machine_id().map(|id| {
+        kinetra_license::machine::fingerprint(&crate::core::devprofile::machine_id(id, profile))
+    })
 }
 
 /// The computer's name ("STUDIO-PC"), shown in the account's lists. Control characters
 /// removed, at most 100 characters (API.md).
 pub fn machine_name() -> String {
-    clean_name(&raw_name())
+    crate::core::devprofile::machine_name(
+        clean_name(&raw_name()),
+        crate::core::devprofile::active(),
+    )
 }
 
 #[cfg(target_os = "macos")]

@@ -1,6 +1,8 @@
 <!--
   App top bar, left to right: Kinetra logo (mark centred over the rail) · divider · project
-  switcher · flexible space · remote control's chip (only in builds with remote control and while
+  switcher · flexible space · cloud backup's chip (only in builds with cloud backup and while the
+  open project backs up or restores: a lazy chunk that also hosts the version history; `$cloud`) ·
+  remote control's chip (only in builds with remote control and while
   it is on: a lazy chunk with its panel; `$remote`) · output server status · theme toggle. Watches remote control (`remote`: the view and
   the cue list's position, which Control's cue strip reads) on every app page.
 
@@ -24,6 +26,7 @@
   import ProjectSwitcher from "./ProjectSwitcher.svelte";
   import { remote } from "$lib/components/remote/state.svelte";
   import { loadChip } from "$remote";
+  import { loadTopBar } from "$cloud";
 
   $effect(() => server.watch());
   $effect(() => remote.watch());
@@ -42,6 +45,9 @@
   <div class="right">
     {#if loadChip && remote.view?.on}
       {#await loadChip() then Chip}<Chip />{/await}
+    {/if}
+    {#if loadTopBar}
+      {#await loadTopBar() then CloudPart}<CloudPart />{/await}
     {/if}
     <div class="status" role="status">
       {#if status?.state === "running"}

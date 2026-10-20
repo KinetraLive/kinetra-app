@@ -521,8 +521,20 @@ pub fn get_after(
     id: &str,
     prev: Option<&ScreenMeta>,
 ) -> ScreenResult<(ScreenDoc, bool)> {
-    let path = screen_path(project, id)?;
-    let mut meta = read_meta(&path, id)?;
+    doc_after(id, read_file_meta(project, id)?, prev)
+}
+
+/// Screen `id`'s file as written (before validation or anchor handling).
+pub fn read_file_meta(project: &Path, id: &str) -> ScreenResult<ScreenMeta> {
+    read_meta(&screen_path(project, id)?, id)
+}
+
+/// [`get_after`] for a file already read.
+pub fn doc_after(
+    id: &str,
+    mut meta: ScreenMeta,
+    prev: Option<&ScreenMeta>,
+) -> ScreenResult<(ScreenDoc, bool)> {
     let released = prev.is_some_and(|p| anchors::release_moved(p, &mut meta));
     let doc = validate(ScreenDoc {
         id: id.to_string(),
@@ -1319,6 +1331,10 @@ struct Applied {
     /// Screens whose remembered document is newer than their file (Control field edits), written
     /// by the content flusher.
     dirty: BTreeSet<String>,
+    /// Per screen, the file content last applied from an outside edit (as read, before an
+    /// anchor release), until Kinetra writes the file itself: the same content read again (an
+    /// editor saving twice, the watcher after a direct reload) changes nothing.
+    outside: BTreeMap<String, ScreenMeta>,
     /// The project's brand kit (`settings.brand`) every plan resolves against.
     brand: Arc<BrandKit>,
     /// The latest `apply_style` undo step (in memory only).
@@ -1414,6 +1430,7 @@ impl ScreenStore {
             docs: docs.into_iter().map(|d| (d.id.clone(), d)).collect(),
             templates,
             dirty: BTreeSet::new(),
+            outside: BTreeMap::new(),
             brand: Arc::new(brand),
             style_undo: None,
         };
@@ -1553,6 +1570,7 @@ impl ScreenStore {
         let removed = {
             let mut a = lock(&self.applied);
             a.dirty.remove(id);
+            a.outside.remove(id);
             a.docs.remove(id)
         };
         if removed.is_some() {
@@ -1571,7 +1589,19 @@ impl ScreenStore {
 
     /// The file is current again (saved, or replaced from outside).
     pub fn clear_dirty(&self, id: &str) {
-        lock(&self.applied).dirty.remove(id);
+        let mut a = lock(&self.applied);
+        a.dirty.remove(id);
+        a.outside.remove(id);
+    }
+
+    /// Whether `meta` is exactly the outside edit last applied to screen `id`.
+    pub fn is_outside_seen(&self, id: &str, meta: &ScreenMeta) -> bool {
+        lock(&self.applied).outside.get(id) == Some(meta)
+    }
+
+    /// Remembers the outside edit just applied to screen `id` (see `Applied::outside`).
+    pub fn set_outside_seen(&self, id: &str, meta: ScreenMeta) {
+        lock(&self.applied).outside.insert(id.to_string(), meta);
     }
 
     pub fn is_dirty(&self, id: &str) -> bool {
@@ -1586,6 +1616,9 @@ impl ScreenStore {
         }
         let project = a.project.clone()?;
         let ids = std::mem::take(&mut a.dirty);
+        for id in &ids {
+            a.outside.remove(id);
+        }
         let docs = ids
             .iter()
             .filter_map(|id| a.docs.get(id).cloned())

@@ -533,3 +533,52 @@ data: {"id":"0199…","status":"open","total_votes":20,…}
 | 409 | `poll_monthly_limit_reached` | `details.max` polls created this month; `details.resets_at` (unix) | Show `message` and the reset date |
 | 409 | `poll_expired` | Opening a poll past its lifetime (it's about to be deleted) | Create a new one |
 | 401, 429 `rate_limited` | | as elsewhere | |
+
+## Cloud projects
+
+Backup and version history of projects. The full contract (bodies, app behaviour, manifest
+and path rules, conflicts) is `docs/CLOUD_PROJECTS.md`, a copy of kinetra-cloud's; this is
+the summary. Needs a usable license with `pro.cloud_sync` (not a day pass); without one but
+with data stored, the account is read-only (`state: lapsed`). File bytes never come here:
+the app uploads to and downloads from storage with presigned URLs (valid 10 minutes). All
+bearer auth, rate-limited per account (commits also per project). Projects and versions
+that aren't yours answer `404`. The app's client is `src-tauri/src/core/cloud/projects/`.
+
+| Endpoint | Answer |
+|---|---|
+| `GET /v1/cloud/quota` | **200** state (`ok`, `warning`, `full`, `lapsed`, `not_in_plan`), usage, limits, today's upload, lapse and retention-change dates, client defaults |
+| `GET /v1/cloud/projects` (`?trashed=include`) | **200** `{"projects": [...]}` |
+| `POST /v1/cloud/projects` `{"app_project_id", "name", "if_trashed"?}` | **201** new / **200** existing; `409 project_in_trash`, `409 too_many_projects` |
+| `GET` / `PATCH {"name"}` / `DELETE /v1/cloud/projects/{id}` | **200** project (`DELETE` = to the trash for 7 days) |
+| `POST /v1/cloud/projects/{id}/restore` | **200** project; `409 conflict` if another live project has its app ID |
+| `POST /v1/cloud/blobs/check` `{"blobs": [{"sha256", "size"}]}` (≤ 1 000) | **200** `{"missing": [{sha256, size, upload}], "reserved_until"}`; `upload` is `{kind: "put", url, headers, expires_at}` or, over 16 MiB, `{kind: "multipart", upload_id, part_size, part_count}`; `403 storage_full` / `daily_upload_limit` (`details.quota`), `400 file_too_large` |
+| `POST /v1/cloud/uploads/{id}/parts` `{"parts": [{"number", "md5"}]}` (≤ 100) | **200** `{"parts": [{number, url, headers, expires_at}]}` (each part bound to its length and MD5) |
+| `GET /v1/cloud/uploads/{id}` | **200** `{sha256, size, part_size, part_count, parts_done: [{number, etag}], expires_at}` (resume) |
+| `POST /v1/cloud/uploads/{id}/complete` `{"parts": [{"number", "etag"}]}` | **200** `{sha256, state: "stored"}`; `409 upload_mismatch` |
+| `DELETE /v1/cloud/uploads/{id}` | **204** |
+| `POST /v1/cloud/projects/{id}/versions` (`Idempotency-Key`) | **201** `{"version", "conflict"}` (**200** for a retry); `409 missing_blobs` (`details.missing`), `400 invalid_path` / `too_many_files` / `manifest_too_large`, `409 project_in_trash` |
+| `GET /v1/cloud/projects/{id}/versions?before=&limit=` | **200** `{"versions", "next"}`, newest first |
+| `GET /v1/cloud/projects/{id}/versions/{vid}/manifest` | **200** `{"version", "manifest"}` |
+| `PATCH /v1/cloud/projects/{id}/versions/{vid}` `{"kept"?, "label"?, "conflict_resolved"?}` | **200** version; `409 too_many_kept` |
+| `DELETE /v1/cloud/projects/{id}/versions/{vid}` | **204**; `409 cannot_delete_head` |
+| `POST /v1/cloud/blobs/download` `{"sha256s": [...]}` (≤ 1 000) | **200** `{"urls": [{sha256, url, expires_at}], "missing": [...]}` |
+
+### Errors
+
+| Status | `code` | Meaning | What the app should do |
+|---|---|---|---|
+| 400 | `invalid_path` | A manifest path breaks the path rules; `details: {index, reason}`. | Skip that file, list it in the backup report. |
+| 400 | `too_many_files` | Over 50 000 files in a version. | Tell the user. |
+| 400 | `manifest_too_large` | Commit body over 8 MB. | Tell the user. |
+| 400 | `file_too_large` | A file over `max_file_bytes`; `details: {sha256, max_file_bytes}`. | Skip that file, list it in the backup report. |
+| 403 | `cloud_not_in_plan` | No cloud backup in the plan. | Offer the upgrade; no error styling. |
+| 403 | `cloud_read_only` | Lapsed: writes refused; `details.purge_at`. | Show the deletion date; downloads still work. |
+| 403 | `storage_full` | Would exceed `limit_bytes`; `details.quota`. | Pause uploads; commit what's already stored. |
+| 403 | `daily_upload_limit` | Today's upload allowance used; `details.quota`. | Retry after `upload_today.resets_at`. |
+| 409 | `project_in_trash` | The project is in the trash; `details: {project_id, purge_at}`. | Offer Restore / Start a new cloud backup / Turn off backup. |
+| 409 | `too_many_projects` | The plan's project limit. | Tell the user. |
+| 409 | `too_many_kept` | The plan's kept-versions limit; `details.limit`. | Tell the user. |
+| 409 | `missing_blobs` | Committed before every upload finished; `details.missing`. | Upload those, commit again with the same key. |
+| 409 | `upload_mismatch` | Multipart parts missing, out of order, or the size is wrong. | Start that file again. |
+| 409 | `cannot_delete_head` | The newest version can't be deleted. | Delete the project instead. |
+| 503 | `cloud_unavailable` | Cloud backup is switched off or storage didn't answer. | "Cloud backup: offline, will retry"; back off. |

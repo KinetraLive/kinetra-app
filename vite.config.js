@@ -10,6 +10,9 @@ const host = process.env.TAURI_DEV_HOST;
 // the stores... A chunk only runs once its own static imports have loaded, so those entries are
 // no-ops that every route and lazy chunk paid for in bytes (≈0.1–0.35 KB gz per route). The
 // bundle is captured first; without it (or for HTML hosts) the list stays as Vite made it.
+// SvelteKit's app entry, which every page loads, imports every route and so carried every route's
+// chunks (1.5 KB gz on the picker); it keeps only their CSS, which nothing else loads. A route's
+// JS then arrives through its own imports on its first open (`e2e/ui/routes.measure.ts`).
 /** @type {import("vite").Rolldown.OutputBundle | null} */
 let outputBundle = null;
 /** @type {import("vite").Plugin} */
@@ -36,6 +39,10 @@ function withoutLoaded(_file, deps, { hostId, hostType }) {
     if (chunk?.type === "chunk") chunk.imports.forEach(walk);
   };
   walk(hostId);
+  const host = bundle[hostId];
+  if (host.type === "chunk" && host.isEntry && /[\\/]generated[\\/]client(-optimized)?[\\/]app\.js$/.test(host.facadeModuleId ?? "")) {
+    return deps.filter((d) => d.endsWith(".css"));
+  }
   return deps.filter((d) => !loaded.has(d));
 }
 

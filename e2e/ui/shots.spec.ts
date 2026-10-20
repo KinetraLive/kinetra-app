@@ -162,6 +162,31 @@ for (const theme of ["dark", "light"] as const) {
       await page.getByRole("button", { name: /New project/ }).click();
       await expect(page.getByLabel("Name")).toBeVisible();
       await shot(page, `${theme}-9-picker-new-project`);
+
+      // In the cloud: the account's projects, then Download's panel (slice 10).
+      await page.getByRole("button", { name: /New project/ }).click();
+      await page.getByRole("button", { name: /In the cloud/ }).click();
+      await expect(page.getByText("Spring gala")).toBeVisible();
+      await shot(page, `${theme}-118-picker-in-the-cloud`);
+      await page.getByRole("button", { name: "Download", exact: true }).nth(1).click();
+      await expect(page.getByText("D:\\Shows\\spring-gala")).toBeVisible();
+      await shot(page, `${theme}-118-picker-download`);
+    });
+
+    // Version history › Restore… (slice 10): a new folder, or replace this project.
+    test("cloud restore", async ({ page, context, server }) => {
+      await routeOutput(context, server, new Set());
+      await open(page, "/dashboard", { theme, screens: [], lanAccess: false, selectedScreenId: null, testOnAir: false });
+      await page.getByRole("button", { name: /Last backup/ }).click();
+      await page.getByRole("button", { name: "Version history…" }).click();
+      const dialog = page.getByRole("dialog", { name: "Version history" });
+      await expect(dialog.getByText("After soundcheck")).toBeVisible();
+      await dialog.getByRole("button", { name: "Restore…" }).nth(1).click();
+      await expect(dialog.getByText("D:\\Shows\\election-night-2026-10-15-1040")).toBeVisible();
+      await shot(page, `${theme}-119-history-restore`);
+      await dialog.getByLabel("Replace this project").check();
+      await expect(dialog.getByText(/backs up the project as it is first/)).toBeVisible();
+      await shot(page, `${theme}-119-history-replace`);
     });
 
     // The Preferences window (980×720, its own route): every section, then About's update states.
@@ -1759,7 +1784,7 @@ for (const theme of ["dark", "light"] as const) {
           polls: [],
           pollQuota: null,
           pollSources: [],
-          license: { plan: "free", access: "free", entitlements: ["core.app"], features: { ai: false, polls: false, control: false } },
+          license: { plan: "free", access: "free", entitlements: ["core.app"], features: { ai: false, polls: false, control: false, cloud: false } },
         }),
       );
       await page.getByRole("button", { name: "New poll: needs Kinetra Pro" }).first().click();

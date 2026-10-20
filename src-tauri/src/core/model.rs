@@ -416,6 +416,11 @@ pub struct ProjectFile {
     /// runs the same show); "Make this a separate show" gives the project a new one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
+    /// The project's cloud backup ID (`app_project_id`, a UUID v7), written the first time it
+    /// backs up. Unlike `id`, a copy gets its own (CLOUD_PROJECTS.md §2.4): a folder opened
+    /// while the folder recorded for this ID still holds it is a copy (`core::cloud::projects`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cloud_id: Option<String>,
 }
 
 /// An open project as the UI sees it.
@@ -547,6 +552,370 @@ pub struct Prefs {
     /// The local Control API on this machine (off by default). Omitted while off.
     #[serde(skip_serializing_if = "ControlApiPrefs::is_default")]
     pub control_api: ControlApiPrefs,
+    /// Cloud backup on this machine. Omitted while default.
+    #[serde(skip_serializing_if = "CloudPrefs::is_default")]
+    pub cloud: CloudPrefs,
+}
+
+/// `Prefs.cloud`: cloud backup settings of this machine (`core::cloud::projects`). The server's
+/// `client` defaults apply where these are `None`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct CloudPrefs {
+    /// Projects back up unless turned off one by one (owner decision 2026-10-15: on).
+    pub new_projects: bool,
+    /// While anything is on air: pause or limit transfers. `None` = the server's default.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub on_air: Option<CloudOnAir>,
+    /// The limit for `limit`, in kbit/s ([`CLOUD_LIMIT_KBPS`]). `None` = the server's default.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit_kbps: Option<u32>,
+}
+
+impl Default for CloudPrefs {
+    fn default() -> Self {
+        Self {
+            new_projects: true,
+            on_air: None,
+            limit_kbps: None,
+        }
+    }
+}
+
+impl CloudPrefs {
+    pub fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
+}
+
+/// `CloudPrefs.limitKbps` range.
+pub const CLOUD_LIMIT_KBPS: std::ops::RangeInclusive<u32> = 64..=1_000_000;
+
+pub use crate::core::cloud::projects::wire::OnAir as CloudOnAir;
+
+// ---- Cloud backup (core::cloud::projects) -----------------------------------------------------
+
+/// The account's cloud state from the last quota answer (CLOUD_PROJECTS.md §2.5, §4).
+pub use crate::core::cloud::projects::wire::QuotaState as CloudState;
+
+/// What the app may do with cloud backup on this computer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum CloudAccess {
+    /// This build has no cloud backup (`KINETRA_CLOUD`, `CLOUD_BUILD`): nothing is asked, nothing
+    /// runs, and the UI isn't in the build.
+    Unavailable,
+    /// Not signed in: nothing is asked.
+    SignedOut,
+    /// No `pro.cloud_sync` and no backups known on this computer: no request is made (the UI
+    /// offers Pro, and "Check for backups" asks once).
+    Free,
+    /// The server is asked; `state` says what it allows.
+    Available,
+}
+
+/// The quota as the UI shows it. Sizes in bytes (GB = 10⁹ for display), times RFC 3339.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloudQuotaView {
+    pub plan: Option<String>,
+    pub used_bytes: u64,
+    pub pending_bytes: u64,
+    pub limit_bytes: u64,
+    pub percent: u64,
+    pub warn_percent: u64,
+    pub projects_used: u64,
+    pub projects_limit: u64,
+    pub max_file_bytes: u64,
+    pub retention_days: u64,
+    pub kept_per_project: u64,
+    pub upload_today_used: u64,
+    pub upload_today_limit: u64,
+    pub upload_today_resets_at: Option<String>,
+    /// Lapsed: when everything is deleted.
+    pub purge_at: Option<String>,
+    /// After a downgrade: the shorter history (days) applies from `retention_from`.
+    pub retention_days_next: Option<u64>,
+    pub retention_from: Option<String>,
+}
+
+/// The cloud backup settings that apply (this machine's, else the server's defaults).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloudSettingsView {
+    pub on_air: CloudOnAir,
+    pub limit_kbps: u32,
+    /// Seconds after the last change.
+    pub interval_s: u64,
+    pub new_projects: bool,
+}
+
+/// Cloud backup as the UI sees it (`cloud_view`, `cloud-changed`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloudView {
+    pub access: CloudAccess,
+    /// The last answer's state; `None` before the first one.
+    pub state: Option<CloudState>,
+    /// The last request didn't reach the server ("Cloud backup: offline, will retry.").
+    pub offline: bool,
+    /// Unix seconds of the last answer.
+    pub checked_at: Option<i64>,
+    pub quota: Option<CloudQuotaView>,
+    pub settings: CloudSettingsView,
+    /// The open project's backup (none without a project, or signed out).
+    pub project: Option<CloudProjectView>,
+    /// A restore running or just finished (one at a time; open project or not).
+    pub restore: Option<CloudRestoreView>,
+    /// Today's upload allowance is used: automatic backups continue at this time (RFC 3339).
+    pub held_until: Option<String>,
+}
+
+/// How a version is restored (CLOUD_PROJECTS.md §10 "Restoring").
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum CloudRestoreMode {
+    /// Into a new folder as a separate project (its own cloud backup).
+    NewFolder,
+    /// "In the cloud › Download": into a new folder, continuing the same cloud backup (unless
+    /// this computer already has a folder for it; then it's a separate project).
+    Download,
+    /// Replace the open project's files with the version (backed up or copied first).
+    Replace,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum CloudRestorePhase {
+    Preparing,
+    /// Replace: backing up the project as it is first.
+    BackingUp,
+    /// Replace: copying the project as it is first (when it can't back up).
+    Copying,
+    Downloading,
+    Replacing,
+}
+
+/// What `cloud_restore_start` restores.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloudRestoreRequest {
+    /// The server's project id.
+    pub project_id: String,
+    /// The version; `None` = the newest.
+    pub version_id: Option<String>,
+    pub mode: CloudRestoreMode,
+    /// The new folder (new folder, download): must not exist yet, or be empty.
+    pub folder: Option<String>,
+}
+
+/// What a restore will do, for the dialog (`cloud_restore_plan`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloudRestorePlan {
+    /// The suggested new folder (new folder, download); the open project's (replace).
+    pub folder: String,
+    /// Replace: the project is backed up first (`true`), else copied to `copyFolder`.
+    pub backup_first: bool,
+    pub copy_folder: Option<String>,
+}
+
+/// A restore in progress, or how it ended.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloudRestoreView {
+    pub mode: CloudRestoreMode,
+    pub version_id: String,
+    /// The folder restored into (the open project's for replace).
+    pub folder: String,
+    pub phase: CloudRestorePhase,
+    pub done_bytes: u64,
+    pub total_bytes: u64,
+    /// Waiting because something is on air.
+    pub paused: bool,
+    pub limited: bool,
+    /// Set once it ended.
+    pub result: Option<CloudRestoreResult>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloudRestoreResult {
+    /// The folder holds the version (damaged files aside, new folder only).
+    pub ok: bool,
+    /// Why it stopped, in plain words (none when it worked).
+    pub error: Option<String>,
+    /// Files that didn't arrive intact after a retry (at most [`CLOUD_REPORT_MAX`]).
+    pub damaged: Vec<String>,
+    pub damaged_count: u32,
+    /// Replace: where the copy of the project as it was went (when it wasn't backed up).
+    pub copy_folder: Option<String>,
+    /// Files taken from this computer instead of downloaded.
+    pub reused: u32,
+}
+
+/// The open project's cloud backup.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloudProjectView {
+    /// Backup is on for this project (its own switch, else `CloudPrefs.newProjects`).
+    pub backup: bool,
+    /// The server knows this project (registered from this computer).
+    pub registered: bool,
+    /// The server's id for it (restores of the open project name it).
+    pub server_id: Option<String>,
+    /// The one-time "Backing up to the cloud" notice was shown.
+    pub notice_seen: bool,
+    /// A choice waiting for the user (shown quietly, never a modal).
+    pub question: Option<CloudQuestion>,
+    /// Why this project can't back up now (e.g. the plan's project limit), in plain words.
+    pub issue: Option<String>,
+    /// A backup running now.
+    pub run: Option<CloudRunView>,
+    /// RFC 3339 of the last backup that finished (this computer).
+    pub last_backup_at: Option<String>,
+    /// Files the last backup left out, and why (at most [`CLOUD_REPORT_MAX`]).
+    pub report: Vec<CloudSkipped>,
+    /// How many files the last backup left out in all.
+    pub skipped: u32,
+    /// Why the last backup didn't finish, in plain words ("Cloud backup: offline, will retry.").
+    pub error: Option<String>,
+    /// The last backup found another computer's newer backup (both kept, §9).
+    pub conflict: Option<CloudConflictView>,
+}
+
+/// A version in the history (CLOUD_PROJECTS.md §7, §10).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloudVersionView {
+    pub id: String,
+    /// RFC 3339.
+    pub created_at: String,
+    /// The computer it was backed up from.
+    pub machine: Option<String>,
+    pub label: Option<String>,
+    pub kept: bool,
+    /// The newest version (can't be deleted).
+    pub is_head: bool,
+    /// The server is missing some of its files: it can't be fully restored.
+    pub damaged: bool,
+    /// Part of a conflict not dismissed yet.
+    pub conflict: bool,
+    pub file_count: u64,
+    /// The files' total size; `new_bytes` = what it stored for the first time.
+    pub logical_bytes: u64,
+    pub new_bytes: u64,
+    /// auto | close | manual.
+    pub reason: Option<String>,
+    /// When retention deletes it (none for the newest, kept and conflicting versions).
+    pub expires_at: Option<String>,
+}
+
+/// One page of the history, newest first; `next` asks for the page after it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloudVersionPage {
+    pub versions: Vec<CloudVersionView>,
+    pub next: Option<String>,
+}
+
+/// A project in the account's cloud backup (Preferences › Cloud backup › Cloud projects).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloudProjectSummary {
+    pub id: String,
+    pub name: String,
+    pub versions: u64,
+    pub kept: u64,
+    pub conflict: bool,
+    /// The newest version's time and computer.
+    pub last_at: Option<String>,
+    pub last_machine: Option<String>,
+    /// In the trash: deleted for good on `purge_at`.
+    pub trashed_at: Option<String>,
+    pub purge_at: Option<String>,
+    /// The open project's backup.
+    pub open: bool,
+    /// This computer has a folder for it.
+    pub here: bool,
+}
+
+/// Files listed in a backup report at most.
+pub const CLOUD_REPORT_MAX: usize = 100;
+
+/// A backup in progress.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloudRunView {
+    pub phase: CloudPhase,
+    /// Bytes read (hashing) or sent (uploading) so far, of `total_bytes`.
+    pub done_bytes: u64,
+    pub total_bytes: u64,
+    /// Waiting because something is on air.
+    pub paused: bool,
+    /// Sending slowly because something is on air (`limit`).
+    pub limited: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum CloudPhase {
+    Scanning,
+    Hashing,
+    Uploading,
+    Committing,
+}
+
+/// A file a backup left out.
+pub use crate::core::cloud::projects::scan::Skipped as CloudSkipped;
+
+/// Another computer backed this project up in between (CLOUD_PROJECTS.md §9).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloudConflictView {
+    pub machine: Option<String>,
+    pub at: Option<String>,
+    /// The version that has the conflict (Dismiss resolves it).
+    pub version_id: String,
+    /// The other computer's version ("Open the other version").
+    pub other_version_id: Option<String>,
+}
+
+/// A choice cloud backup needs from the user (CLOUD_PROJECTS.md §5, the app plan's decision 1).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum CloudQuestion {
+    /// The project's backup is in the trash: Restore / Start a new cloud backup / Turn off.
+    #[serde(rename_all = "camelCase")]
+    InTrash { purge_at: Option<String> },
+    /// The first automatic backup would upload `bytes` (over 1 GB): Back up / Turn off.
+    #[serde(rename_all = "camelCase")]
+    FirstBackup { bytes: u64 },
+    /// Another computer already backs this project up and this one has no record of it:
+    /// Continue that backup here / Back up as a separate project / Don't back up here.
+    #[serde(rename_all = "camelCase")]
+    OtherComputer {
+        machine: Option<String>,
+        at: Option<String>,
+    },
+}
+
+/// The user's answer to a [`CloudQuestion`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum CloudAnswer {
+    /// A large first backup: go ahead.
+    BackUp,
+    /// In the trash: restore it and carry on.
+    Restore,
+    /// In the trash: leave it there and start a new cloud backup.
+    StartNew,
+    /// Another computer's backup: carry on from it here.
+    ContinueHere,
+    /// Another computer's backup: give this project its own.
+    Separate,
+    /// Either: turn backup off for this project.
+    TurnOff,
 }
 
 /// `Prefs.controlApi`: the local Control API (`core::control_api`). The token lives in the

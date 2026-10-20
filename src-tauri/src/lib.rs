@@ -71,6 +71,7 @@ pub(crate) fn shutdown_services(handle: &AppHandle) {
         // Output windows closed, the displays thread stopped.
         state.outputs_shutdown();
         state.cloud_stop();
+        state.cloud_projects_stop();
     }
     // Closes renderer sockets and releases the port; bounded to about a second.
     if let Some(server) = handle.try_state::<ServerManager>() {
@@ -147,9 +148,13 @@ pub fn run() {
             _ => {}
         })
         .setup(|app| {
-            init_logging(&app.path().app_log_dir()?);
-            let config_dir = app.path().app_config_dir()?;
-            core::fsx::migrate_legacy_config(&config_dir);
+            // A debug dev profile (`core::devprofile`) keeps its own folders.
+            let profile = core::devprofile::active();
+            init_logging(&core::devprofile::dir(app.path().app_log_dir()?, profile));
+            let config_dir = core::devprofile::dir(app.path().app_config_dir()?, profile);
+            if profile.is_none() {
+                core::fsx::migrate_legacy_config(&config_dir);
+            }
             let sink: Arc<dyn EventSink> = Arc::new(TauriSink(app.handle().clone()));
             let state = AppState::load(config_dir, sink.clone())?;
             // Auto-out timers run on Tauri's runtime (live commands may be sync, off-runtime).
@@ -296,6 +301,27 @@ pub fn run() {
             commands::sources::retry_api_source,
             commands::sources::set_api_paused,
             commands::sources::watch_api_source,
+            commands::cloud::cloud_view,
+            commands::cloud::cloud_refresh,
+            commands::cloud::cloud_set_backup,
+            commands::cloud::cloud_notice_seen,
+            commands::cloud::cloud_answer,
+            commands::cloud::cloud_backup_now,
+            commands::cloud::cloud_conflict_dismiss,
+            commands::cloud::cloud_exit_should_ask,
+            commands::cloud::cloud_backup_before_exit,
+            commands::cloud::cloud_versions,
+            commands::cloud::cloud_version_keep,
+            commands::cloud::cloud_version_label,
+            commands::cloud::cloud_version_delete,
+            commands::cloud::cloud_projects_list,
+            commands::cloud::cloud_project_rename,
+            commands::cloud::cloud_project_trash,
+            commands::cloud::cloud_project_untrash,
+            commands::cloud::cloud_restore_plan,
+            commands::cloud::cloud_restore_start,
+            commands::cloud::cloud_restore_cancel,
+            commands::cloud::cloud_restore_dismiss,
             commands::polls::polls_quota,
             commands::polls::list_polls,
             commands::polls::create_poll,

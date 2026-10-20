@@ -113,6 +113,15 @@ After each release build `scripts/check-remote-build.mjs` checks the frontend bu
 control text without the flag, all of it with it. Local dev (`pnpm tauri dev`, debug builds) and
 the e2e suites have it on.
 
+**Cloud backup** works the same way with `KINETRA_CLOUD=1` (the core: the `kinetra_cloud` cfg,
+`core::cloud::projects::CLOUD_BUILD`; the UI: the `$cloud` and `$cloud-picker` aliases). Release
+builds take it from the repository variable `KINETRA_CLOUD` (unset = 0) until the production API
+has cloud projects switched on (kinetra-cloud `KINETRA_CLOUD_ENABLED=true`); set the variable to 1
+then (and add cloud backup to CHANGELOG's Unreleased notes in the same change). Without it the app
+makes no cloud request and runs nothing for it, and `scripts/check-cloud-build.mjs` checks that
+the frontend build has none of its UI (all of it with the flag). Local dev, tests and the UI
+harness have it on.
+
 After each release build, `scripts/check-release-overrides.mjs` proves the debug-only test
 overrides (the e2e fixture's entitlement override, the template sandbox bypass) aren't in
 release builds: `cargo check --release --example release_guard` must fail with exactly their
