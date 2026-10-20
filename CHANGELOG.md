@@ -9,7 +9,7 @@ update panel: one paragraph per line, no Markdown.
 
 ## Unreleased
 
-Cloud backup (Pro): your projects back up to the cloud while you work, and each backup is kept as a version you can go back to. Restore an older version into a new folder or over the project, or get a project onto another computer with In the cloud on the start screen. Backups never get in the way of a show: they pause while anything is on air (or go slowly, if you prefer), and every restored file is checked before it's used.
+Cloud backup (Pro and Team): your projects back up to the cloud while you work, and each backup is kept as a version you can go back to. Restore an older version into a new folder or over the project, or get a project onto another computer with In the cloud on the start screen. Backups never get in the way of a show: they pause while anything is on air (or go slowly, if you prefer), and every restored file is checked before it's used.
 
 Control Kinetra from Bitfocus Companion (module coming soon) and Stream Deck: turn on Preferences › Network & API › Control API and copy the token. Buttons take and clear graphics, change their text, run cues, step sources and take Preview, and light up red on air and green in Preview. Scripts can use the same API, and a flow can start from an API call, for example to put a score on air from one button.
 
