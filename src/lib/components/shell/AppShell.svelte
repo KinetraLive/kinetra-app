@@ -46,6 +46,8 @@
   import TopBar from "./TopBar.svelte";
   import { remote } from "$lib/components/remote/state.svelte";
   import { setRemote } from "$remote";
+  import { cloud } from "$lib/components/cloud/state.svelte";
+  import { history } from "$lib/components/cloud/history/open.svelte";
 
   let { children }: { children?: Snippet } = $props();
 
@@ -139,6 +141,8 @@
         automationOff: () => automationOff,
         toggleRemote: setRemote ? () => void toggleRemote() : undefined,
         remoteOn: () => remote.view?.on ?? false,
+        openHistory: history.show,
+        historyReady: () => !!cloud.view?.project?.registered,
       }),
     ),
   );

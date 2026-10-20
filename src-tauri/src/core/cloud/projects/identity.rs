@@ -434,6 +434,18 @@ impl AppState {
         }
     }
 
+    /// Shows `question` for the open project at `dir`.
+    pub(super) fn cloud_set_question_pub(&self, dir: &Path, question: CloudQuestion) {
+        self.cloud_set_question(dir, Some(question), None);
+        self.emit_cloud();
+    }
+
+    /// Clears the open project's question.
+    pub(super) fn cloud_clear_question(&self, dir: &Path) {
+        self.cloud_set_question(dir, None, None);
+        self.emit_cloud();
+    }
+
     fn cloud_set_issue(&self, dir: &Path, issue: &str) {
         if let Some(p) = self.cloud_open().project.as_mut().filter(|p| p.dir == dir) {
             p.issue = Some(issue.to_string());

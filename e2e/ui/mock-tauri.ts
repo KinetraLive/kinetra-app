@@ -1816,6 +1816,24 @@ export function installMockTauri(s: MockScenario): void {
     cloud_notice_seen: () => null,
     cloud_exit_should_ask: () => false,
     cloud_backup_before_exit: () => cloudNow,
+    cloud_versions: () => ({
+      versions: [
+        { id: "v3", createdAt: "2026-10-15T12:02:00Z", machine: "STUDIO-PC", label: null, kept: false, isHead: true, damaged: false, conflict: false, fileCount: 312, logicalBytes: 1.83e9, newBytes: 4.2e6, reason: "auto", expiresAt: null },
+        { id: "v2", createdAt: "2026-10-15T10:40:00Z", machine: "STUDIO-PC", label: "After soundcheck", kept: true, isHead: false, damaged: false, conflict: false, fileCount: 311, logicalBytes: 1.82e9, newBytes: 0, reason: "manual", expiresAt: null },
+        { id: "v1", createdAt: "2026-10-14T18:10:00Z", machine: "LAPTOP", label: null, kept: false, isHead: false, damaged: false, conflict: false, fileCount: 298, logicalBytes: 1.8e9, newBytes: 1.8e9, reason: "close", expiresAt: "2026-11-13T18:10:00Z" },
+      ],
+      next: null,
+    }),
+    cloud_version_keep: (a) => ({ id: a.id, kept: a.kept }),
+    cloud_version_label: (a) => ({ id: a.id, label: a.label }),
+    cloud_version_delete: () => null,
+    cloud_projects_list: () => [
+      { id: "p1", name: "Election night", versions: 41, kept: 3, conflict: false, lastAt: "2026-10-15T12:02:00Z", lastMachine: "STUDIO-PC", trashedAt: null, purgeAt: null, open: true, here: true },
+      { id: "p2", name: "Spring gala", versions: 12, kept: 0, conflict: false, lastAt: "2026-09-30T20:15:00Z", lastMachine: "LAPTOP", trashedAt: null, purgeAt: null, open: false, here: false },
+    ],
+    cloud_project_rename: () => null,
+    cloud_project_trash: () => null,
+    cloud_project_untrash: () => null,
     // ---- Control API ----
     control_api_view: () => controlApi,
     control_api_set: (a) => {

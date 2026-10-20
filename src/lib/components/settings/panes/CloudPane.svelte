@@ -22,6 +22,8 @@
   import { cloud } from "$lib/components/cloud/state.svelte";
   import { conflictWords, lastWords, questionWords, retentionWords, runWords, size, stateWords } from "$lib/components/cloud/words";
   import ProLock from "$lib/components/license/ProLock.svelte";
+  import CloudProjects from "../cloud/CloudProjects.svelte";
+  import { loadHistory } from "$lib/components/cloud/history/open.svelte";
   import { license } from "$lib/components/license/state.svelte";
   import { cloudLinks } from "$lib/api/license";
   import { openInBrowser } from "$lib/components/license/open";
@@ -64,6 +66,8 @@
   const answer = (a: CloudAnswer) => act(async () => (cloud.view = await cloudAnswer(a)));
   const setBackup = (on: boolean) => act(async () => (cloud.view = await cloudSetBackup(on)));
   const backUpNow = () => act(async () => (cloud.view = await cloudBackupNow()));
+  /** The history dialog, in this window. */
+  let historyOpen = $state(false);
   const dismiss = () => act(async () => (cloud.view = await cloudConflictDismiss()));
   const canBackUp = $derived(
     !!project?.backup && !project.question && !project.run && (view?.state === "ok" || view?.state === "warning" || view?.state === "full"),
@@ -162,6 +166,9 @@
               <span>{lastWords(project.lastBackupAt) ?? "Not backed up yet"}</span>
             {/if}
             <Button size="sm" disabled={busy || !canBackUp} onclick={backUpNow}>Back up now</Button>
+            {#if project.registered}
+              <Button size="sm" variant="ghost" onclick={() => (historyOpen = true)}>Version history…</Button>
+            {/if}
           </p>
         </SettingsRow>
         {#if project.conflict}
@@ -231,6 +238,16 @@
     </SettingsRow>
   {/if}
 </SettingsSection>
+
+{#if view?.access === "available" && view.state !== "notInPlan"}
+  <SettingsSection title="Cloud projects">
+    <CloudProjects />
+  </SettingsSection>
+{/if}
+
+{#if historyOpen}
+  {#await loadHistory() then History}<History open={historyOpen} onclose={() => (historyOpen = false)} />{/await}
+{/if}
 
 <style>
   .status,

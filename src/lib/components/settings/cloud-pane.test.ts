@@ -10,6 +10,7 @@ const api = vi.hoisted(() => ({
   cloudRefresh: vi.fn(),
   cloudSetBackup: vi.fn(),
   cloudAnswer: vi.fn(),
+  cloudProjectsList: vi.fn(async () => []),
   cloudBackupNow: vi.fn(),
   cloudConflictDismiss: vi.fn(),
 }));

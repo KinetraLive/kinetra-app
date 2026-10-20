@@ -70,6 +70,11 @@ struct Fake {
     patches: Vec<(String, Value)>,
     /// The `reason` of every version committed.
     reasons: Vec<String>,
+    /// The project as the server holds it: name, in the trash.
+    proj_name: String,
+    trashed: bool,
+    /// Kept versions allowed per project.
+    kept_limit: usize,
 }
 
 type F = Arc<Mutex<Fake>>;
@@ -110,6 +115,20 @@ fn version(f: &mut Fake, base: Option<String>, files: &[Value], new_bytes: u64) 
     json!({"version": v, "conflict": with.map(|w| json!({"with_version": w}))})
 }
 
+fn fake_project(f: &Fake, app: &str, id: &str) -> Value {
+    let head = f.versions.last().map(|v| {
+        let mut v = v.clone();
+        v.as_object_mut().unwrap().remove("manifest");
+        v
+    });
+    json!({"id": id, "app_project_id": app, "name": f.proj_name, "head": head,
+        "versions": f.versions.len(),
+        "kept": f.versions.iter().filter(|v| v["kept"] == true).count(),
+        "conflict": f.versions.iter().any(|v| v["conflict"].is_object() && v["conflict"]["resolved_at"].is_null()),
+        "trashed_at": if f.trashed { json!("2026-10-20T10:00:00Z") } else { Value::Null },
+        "purge_at": if f.trashed { json!("2026-10-27T10:00:00Z") } else { Value::Null }})
+}
+
 async fn handle(
     State(f): State<F>,
     method: Method,
@@ -148,6 +167,7 @@ async fn handle(
             let app = b["app_project_id"].as_str().unwrap_or("").to_string();
             let mut f = f.lock().unwrap();
             let created = !f.projects.contains_key(&app);
+            f.proj_name = b["name"].as_str().unwrap_or("").to_string();
             let id = f
                 .projects
                 .entry(app.clone())
@@ -308,6 +328,58 @@ async fn handle(
             }
             ok(201, r)
         }
+        ("GET", ["v1", "cloud", "projects"]) => {
+            let f = f.lock().unwrap();
+            let include = uri.query().is_some_and(|q| q.contains("trashed=include"));
+            let list: Vec<Value> = f
+                .projects
+                .iter()
+                .filter(|_| include || !f.trashed)
+                .map(|(app, id)| fake_project(&f, app, id))
+                .collect();
+            ok(200, json!({"projects": list}))
+        }
+        ("PATCH", ["v1", "cloud", "projects", pid]) => {
+            let mut f = f.lock().unwrap();
+            f.proj_name = json_body()["name"].as_str().unwrap_or("").to_string();
+            let app = f
+                .projects
+                .iter()
+                .find(|(_, id)| id.as_str() == *pid)
+                .map(|(a, _)| a.clone())
+                .unwrap_or_default();
+            ok(200, fake_project(&f, &app, pid))
+        }
+        ("DELETE", ["v1", "cloud", "projects", pid]) => {
+            let mut f = f.lock().unwrap();
+            f.trashed = true;
+            let app = f
+                .projects
+                .iter()
+                .find(|(_, id)| id.as_str() == *pid)
+                .map(|(a, _)| a.clone())
+                .unwrap_or_default();
+            ok(200, fake_project(&f, &app, pid))
+        }
+        ("POST", ["v1", "cloud", "projects", pid, "restore"]) => {
+            let mut f = f.lock().unwrap();
+            f.trashed = false;
+            let app = f
+                .projects
+                .iter()
+                .find(|(_, id)| id.as_str() == *pid)
+                .map(|(a, _)| a.clone())
+                .unwrap_or_default();
+            ok(200, fake_project(&f, &app, pid))
+        }
+        ("DELETE", ["v1", "cloud", "projects", _, "versions", vid]) => {
+            let mut f = f.lock().unwrap();
+            if f.head.as_deref() == Some(*vid) {
+                return err(409, "cannot_delete_head", Value::Null);
+            }
+            f.versions.retain(|v| v["id"] != *vid);
+            StatusCode::NO_CONTENT.into_response()
+        }
         ("GET", ["v1", "cloud", "projects", pid]) => {
             let f = f.lock().unwrap();
             let conflict = f
@@ -344,6 +416,23 @@ async fn handle(
             if b["conflict_resolved"] == true && v["conflict"].is_object() {
                 v["conflict"]["resolved_at"] = json!("2026-10-15T15:00:00Z");
             }
+            if let Some(k) = b["kept"].as_bool() {
+                v["kept"] = json!(k);
+            }
+            if b.get("label").is_some() {
+                v["label"] = b["label"].clone();
+            }
+            let kept = f.versions.iter().filter(|v| v["kept"] == true).count();
+            if b["kept"] == true && kept > f.kept_limit {
+                let id = vid.to_string();
+                if let Some(v) = f.versions.iter_mut().find(|v| v["id"] == id.as_str()) {
+                    v["kept"] = json!(false);
+                }
+                return err(409, "too_many_kept", json!({"limit": f.kept_limit}));
+            }
+            let Some(v) = f.versions.iter().find(|v| v["id"] == *vid) else {
+                return err(404, "not_found", Value::Null);
+            };
             let mut out = v.clone();
             out.as_object_mut().unwrap().remove("manifest");
             ok(200, out)
@@ -433,6 +522,7 @@ fn env() -> Env {
     st.live().set_runtime(rt.handle().clone());
     let fake: F = Arc::new(Mutex::new(Fake {
         quota_state: "ok".into(),
+        kept_limit: 50,
         ..Default::default()
     }));
     let app = axum::Router::new()
@@ -1022,15 +1112,15 @@ fn a_change_backs_up_after_the_interval_and_nothing_waits_at_rest() {
 #[test]
 fn many_changes_make_one_backup_after_the_last() {
     let e = env();
-    e.st.set_test_cloud_interval(Some(Duration::from_millis(300)));
+    e.st.set_test_cloud_interval(Some(Duration::from_millis(600)));
     e.rt_block(e.st.cloud_refresh(false)).unwrap();
     for i in 0..5 {
         own_write(&e, &format!("assets/{i}.txt"), b"x");
-        std::thread::sleep(Duration::from_millis(100));
+        std::thread::sleep(Duration::from_millis(60));
     }
     wait_until("auto backup", || reasons(&e).len() == 1);
     e.wait_done();
-    std::thread::sleep(Duration::from_millis(400));
+    std::thread::sleep(Duration::from_millis(700));
     assert_eq!(reasons(&e), ["auto"], "one backup for the burst");
     let paths = e.paths();
     assert!((0..5).all(|i| paths.contains(&format!("assets/{i}.txt"))));
@@ -1130,4 +1220,92 @@ fn quitting_asks_only_with_changes_and_nothing_on_air() {
     e.wait_done();
     assert_eq!(reasons(&e).last().map(String::as_str), Some("close"));
     assert!(!e.st.cloud_exit_should_ask());
+}
+
+// ---- Slice 9: history and the account's projects -------------------------------------------------
+
+#[test]
+fn the_history_pages_keeps_labels_and_deletes() {
+    let e = env();
+    for i in 0..3 {
+        e.write(&format!("v{i}.txt"), b"x");
+        e.backup();
+    }
+    let page = e.rt_block(e.st.cloud_versions(None)).unwrap();
+    assert_eq!(page.versions.len(), 3);
+    assert!(page.versions[0].is_head, "newest first");
+    assert_eq!(page.versions[0].machine.as_deref(), Some("STUDIO-PC (b)"));
+    let middle = page.versions[1].id.clone();
+    let oldest = page.versions[2].id.clone();
+    let head = page.versions[0].id.clone();
+    // Keep and label.
+    let v = e.rt_block(e.st.cloud_version_keep(&middle, true)).unwrap();
+    assert!(v.kept);
+    let v = e
+        .rt_block(e.st.cloud_version_label(&middle, Some("  Before the show ".into())))
+        .unwrap();
+    assert_eq!(v.label.as_deref(), Some("Before the show"));
+    let v = e
+        .rt_block(e.st.cloud_version_label(&middle, Some(" ".into())))
+        .unwrap();
+    assert_eq!(v.label, None, "blank clears it");
+    // The plan's limit, in words.
+    e.fake.lock().unwrap().kept_limit = 1;
+    let er = e
+        .rt_block(e.st.cloud_version_keep(&oldest, true))
+        .unwrap_err();
+    assert_eq!(
+        er.to_string(),
+        "Your plan keeps up to 1 version per project."
+    );
+    // The newest can't be deleted; another can.
+    let er = e.rt_block(e.st.cloud_version_delete(&head)).unwrap_err();
+    assert!(
+        er.to_string()
+            .starts_with("The newest version can't be deleted."),
+        "{er}"
+    );
+    e.rt_block(e.st.cloud_version_delete(&oldest)).unwrap();
+    let page = e.rt_block(e.st.cloud_versions(None)).unwrap();
+    assert_eq!(page.versions.len(), 2);
+}
+
+#[test]
+fn cloud_projects_rename_trash_and_restore() {
+    let e = env();
+    e.write("a.txt", b"x");
+    e.backup();
+    let list = e.rt_block(e.st.cloud_projects_list(false)).unwrap();
+    assert_eq!(list.len(), 1);
+    let p = &list[0];
+    assert!(p.open && p.here);
+    assert_eq!(p.versions, 1);
+    assert!(p.last_at.is_some());
+    let p = e
+        .rt_block(e.st.cloud_project_rename(&p.id, "Gala 2026"))
+        .unwrap();
+    assert_eq!(p.name, "Gala 2026");
+    // To the trash: the open project's backup asks what to do.
+    let t = e.rt_block(e.st.cloud_project_trash(&p.id)).unwrap();
+    assert_eq!(t.purge_at.as_deref(), Some("2026-10-27T10:00:00Z"));
+    assert!(matches!(
+        e.view().project.unwrap().question,
+        Some(crate::core::model::CloudQuestion::InTrash { .. })
+    ));
+    assert!(e
+        .rt_block(e.st.cloud_projects_list(false))
+        .unwrap()
+        .is_empty());
+    assert_eq!(e.rt_block(e.st.cloud_projects_list(true)).unwrap().len(), 1);
+    // Back from the trash: the question goes.
+    let r = e.rt_block(e.st.cloud_project_untrash(&p.id)).unwrap();
+    assert!(r.trashed_at.is_none());
+    assert!(e.view().project.unwrap().question.is_none());
+}
+
+#[test]
+fn the_history_needs_a_backed_up_project() {
+    let e = env();
+    let er = e.rt_block(e.st.cloud_versions(None)).unwrap_err();
+    assert_eq!(er.to_string(), "This project has no cloud backup yet.");
 }

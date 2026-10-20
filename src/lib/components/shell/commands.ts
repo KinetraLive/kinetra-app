@@ -17,6 +17,10 @@ export interface ShellActions {
   /** Absent in builds without remote control: no command then. */
   toggleRemote?: () => void;
   remoteOn: () => boolean;
+  /** The open project's cloud version history (absent: no command). */
+  openHistory?: () => void;
+  /** Cloud backup has a history for the open project. */
+  historyReady?: () => boolean;
 }
 
 export function shellCommands(a: ShellActions): Command[] {
@@ -59,6 +63,18 @@ export function shellCommands(a: ShellActions): Command[] {
             keywords: ["remote", "crew", "browser"],
             section: "settings" as const,
             run: a.toggleRemote,
+          },
+        ]
+      : []),
+    ...(a.openHistory
+      ? [
+          {
+            id: "cloud.history",
+            title: "Version history",
+            keywords: ["cloud", "backup", "versions", "history"],
+            section: "goto" as const,
+            when: () => a.historyReady?.() ?? false,
+            run: a.openHistory,
           },
         ]
       : []),

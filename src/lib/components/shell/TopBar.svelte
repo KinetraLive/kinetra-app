@@ -26,6 +26,7 @@
   import { remote } from "$lib/components/remote/state.svelte";
   import { loadChip } from "$remote";
   import { cloud } from "$lib/components/cloud/state.svelte";
+  import { history, loadHistory } from "$lib/components/cloud/history/open.svelte";
 
   $effect(() => server.watch());
   $effect(() => remote.watch());
@@ -85,6 +86,9 @@
     <ThemeToggle />
   </div>
 </header>
+{#if history.open}
+  {#await loadHistory() then History}<History open={history.open} onclose={history.close} />{/await}
+{/if}
 
 <style>
   .topbar {

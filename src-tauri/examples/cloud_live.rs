@@ -310,9 +310,48 @@ fn main() {
         "no URL, signature, session or hash in the log",
     );
 
-    // Clean up: the test project goes to the trash.
-    let trashed = rt.block_on(api.cloud_trash(&session, &pid)).unwrap();
+    // The history, through the app.
+    let page = rt.block_on(st.cloud_versions(None)).unwrap();
+    println!("history: {} versions", page.versions.len());
+    check(page.versions.len() >= 4 && page.versions[0].is_head, "the history lists every version, newest first");
+    let middle = page.versions[1].id.clone();
+    let oldest = page.versions.last().unwrap().id.clone();
+    let v = rt.block_on(st.cloud_version_keep(&middle, true)).unwrap();
+    check(v.kept, "a version can be kept");
+    let v = rt
+        .block_on(st.cloud_version_label(&middle, Some("Claude live test".into())))
+        .unwrap();
+    check(v.label.as_deref() == Some("Claude live test"), "a version can be labeled");
+    let head = page.versions[0].id.clone();
+    check(
+        rt.block_on(st.cloud_version_delete(&head)).is_err(),
+        "the newest version can't be deleted",
+    );
+    rt.block_on(st.cloud_version_delete(&oldest)).unwrap();
+    let after = rt.block_on(st.cloud_versions(None)).unwrap();
+    check(
+        after.versions.len() == page.versions.len() - 1,
+        "an older version can be deleted",
+    );
+    let list = rt.block_on(st.cloud_projects_list(false)).unwrap();
+    check(
+        list.iter().any(|p| p.id == pid && p.open && p.here),
+        "the project list shows this project",
+    );
+    let renamed = rt
+        .block_on(st.cloud_project_rename(&pid, "Claude live test (renamed)"))
+        .unwrap();
+    check(renamed.name == "Claude live test (renamed)", "a cloud project can be renamed");
+
+    // Clean up: the test project goes to the trash (through the app: the open project asks).
+    let trashed = rt.block_on(st.cloud_project_trash(&pid)).unwrap();
     println!("trashed: purge_at={:?}", trashed.purge_at);
+    check(
+        st.cloud_view()
+            .project
+            .is_some_and(|p| p.question.is_some()),
+        "the open project asks what to do after its backup went to the trash",
+    );
     let view = rt.block_on(st.cloud_refresh(false)).unwrap();
     let q = view.quota.unwrap();
     println!(

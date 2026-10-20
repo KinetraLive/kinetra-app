@@ -339,6 +339,53 @@ export interface CloudSkipped {
   reason: string;
 }
 
+/** A version in the history. Sizes in bytes, times RFC 3339. */
+export interface CloudVersionView {
+  id: string;
+  createdAt: string;
+  /** The computer it was backed up from. */
+  machine: string | null;
+  label: string | null;
+  kept: boolean;
+  /** The newest version (can't be deleted). */
+  isHead: boolean;
+  /** Some of its files are missing on the server: it can't be fully restored. */
+  damaged: boolean;
+  /** Part of a conflict not dismissed yet. */
+  conflict: boolean;
+  fileCount: number;
+  logicalBytes: number;
+  newBytes: number;
+  /** auto | close | manual */
+  reason: string | null;
+  /** When the plan's history length deletes it; none for newest, kept and conflicting ones. */
+  expiresAt: string | null;
+}
+
+export interface CloudVersionPage {
+  versions: CloudVersionView[];
+  /** Pass as `before` for the next page; null on the last. */
+  next: string | null;
+}
+
+/** A project in the account's cloud backup. */
+export interface CloudProjectSummary {
+  id: string;
+  name: string;
+  versions: number;
+  kept: number;
+  conflict: boolean;
+  lastAt: string | null;
+  lastMachine: string | null;
+  /** In the trash: deleted for good on `purgeAt`. */
+  trashedAt: string | null;
+  purgeAt: string | null;
+  /** The open project's backup. */
+  open: boolean;
+  /** This computer has a folder for it. */
+  here: boolean;
+}
+
 export type CloudQuestion =
   | { kind: "firstBackup"; bytes: number }
   | { kind: "inTrash"; purgeAt: string | null }

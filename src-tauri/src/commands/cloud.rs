@@ -5,7 +5,9 @@
 use tauri::State;
 
 use super::project::blocking;
-use crate::core::model::{CloudAnswer, CloudView};
+use crate::core::model::{
+    CloudAnswer, CloudProjectSummary, CloudVersionPage, CloudVersionView, CloudView,
+};
 use crate::core::state::AppState;
 use crate::error::AppResult;
 
@@ -85,4 +87,83 @@ pub async fn cloud_backup_before_exit(state: State<'_, AppState>) -> AppResult<C
         Ok(state.cloud_view())
     })
     .await
+}
+
+/// A page of the open project's history, newest first (`before`: the last page's `next`).
+#[tauri::command]
+pub async fn cloud_versions(
+    state: State<'_, AppState>,
+    before: Option<String>,
+) -> AppResult<CloudVersionPage> {
+    let state = state.inner().clone();
+    state.cloud_versions(before).await
+}
+
+/// Keep a version (retention never deletes it) or let it go.
+#[tauri::command]
+pub async fn cloud_version_keep(
+    state: State<'_, AppState>,
+    id: String,
+    kept: bool,
+) -> AppResult<CloudVersionView> {
+    let state = state.inner().clone();
+    state.cloud_version_keep(&id, kept).await
+}
+
+/// A version's label (null or blank clears it).
+#[tauri::command]
+pub async fn cloud_version_label(
+    state: State<'_, AppState>,
+    id: String,
+    label: Option<String>,
+) -> AppResult<CloudVersionView> {
+    let state = state.inner().clone();
+    state.cloud_version_label(&id, label).await
+}
+
+/// Deletes a version (not the newest).
+#[tauri::command]
+pub async fn cloud_version_delete(state: State<'_, AppState>, id: String) -> AppResult<()> {
+    let state = state.inner().clone();
+    state.cloud_version_delete(&id).await
+}
+
+/// The account's cloud projects (with the trash when `trashed`).
+#[tauri::command]
+pub async fn cloud_projects_list(
+    state: State<'_, AppState>,
+    trashed: bool,
+) -> AppResult<Vec<CloudProjectSummary>> {
+    let state = state.inner().clone();
+    state.cloud_projects_list(trashed).await
+}
+
+#[tauri::command]
+pub async fn cloud_project_rename(
+    state: State<'_, AppState>,
+    id: String,
+    name: String,
+) -> AppResult<CloudProjectSummary> {
+    let state = state.inner().clone();
+    state.cloud_project_rename(&id, &name).await
+}
+
+/// Moves a cloud project to the trash (deleted for good after 7 days).
+#[tauri::command]
+pub async fn cloud_project_trash(
+    state: State<'_, AppState>,
+    id: String,
+) -> AppResult<CloudProjectSummary> {
+    let state = state.inner().clone();
+    state.cloud_project_trash(&id).await
+}
+
+/// Restores a cloud project from the trash.
+#[tauri::command]
+pub async fn cloud_project_untrash(
+    state: State<'_, AppState>,
+    id: String,
+) -> AppResult<CloudProjectSummary> {
+    let state = state.inner().clone();
+    state.cloud_project_untrash(&id).await
 }

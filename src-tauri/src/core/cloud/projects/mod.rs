@@ -16,6 +16,7 @@ pub mod api;
 pub mod backoff;
 pub mod backup;
 pub mod gate;
+pub mod history;
 pub mod identity;
 pub mod local;
 pub mod paths;

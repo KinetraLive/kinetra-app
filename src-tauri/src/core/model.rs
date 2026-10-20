@@ -692,6 +692,62 @@ pub struct CloudProjectView {
     pub conflict: Option<CloudConflictView>,
 }
 
+/// A version in the history (CLOUD_PROJECTS.md §7, §10).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloudVersionView {
+    pub id: String,
+    /// RFC 3339.
+    pub created_at: String,
+    /// The computer it was backed up from.
+    pub machine: Option<String>,
+    pub label: Option<String>,
+    pub kept: bool,
+    /// The newest version (can't be deleted).
+    pub is_head: bool,
+    /// The server is missing some of its files: it can't be fully restored.
+    pub damaged: bool,
+    /// Part of a conflict not dismissed yet.
+    pub conflict: bool,
+    pub file_count: u64,
+    /// The files' total size; `new_bytes` = what it stored for the first time.
+    pub logical_bytes: u64,
+    pub new_bytes: u64,
+    /// auto | close | manual.
+    pub reason: Option<String>,
+    /// When retention deletes it (none for the newest, kept and conflicting versions).
+    pub expires_at: Option<String>,
+}
+
+/// One page of the history, newest first; `next` asks for the page after it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloudVersionPage {
+    pub versions: Vec<CloudVersionView>,
+    pub next: Option<String>,
+}
+
+/// A project in the account's cloud backup (Preferences › Cloud backup › Cloud projects).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloudProjectSummary {
+    pub id: String,
+    pub name: String,
+    pub versions: u64,
+    pub kept: u64,
+    pub conflict: bool,
+    /// The newest version's time and computer.
+    pub last_at: Option<String>,
+    pub last_machine: Option<String>,
+    /// In the trash: deleted for good on `purge_at`.
+    pub trashed_at: Option<String>,
+    pub purge_at: Option<String>,
+    /// The open project's backup.
+    pub open: bool,
+    /// This computer has a folder for it.
+    pub here: bool,
+}
+
 /// Files listed in a backup report at most.
 pub const CLOUD_REPORT_MAX: usize = 100;
 

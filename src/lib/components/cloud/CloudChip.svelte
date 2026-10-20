@@ -16,9 +16,11 @@
   import { toasts } from "$lib/stores/toasts.svelte";
   import type { CloudAnswer } from "$lib/types";
   import { cloud } from "./state.svelte";
+  import { history } from "./history/open.svelte";
   import { chipWords, conflictWords, questionWords } from "./words";
 
   const id = $props.id();
+  let pop: HTMLDivElement | undefined = $state();
   const view = $derived(cloud.view);
   const chip = $derived(chipWords(view));
   const project = $derived(view?.project ?? null);
@@ -52,7 +54,7 @@
     <CloudIcon size={14} aria-hidden="true" />
     <span class="text tnum">{chip.text}</span>
   </button>
-  <div id="{id}-panel" popover class="pop">
+  <div id="{id}-panel" popover class="pop" bind:this={pop}>
     <p class="lead" role="status">{chip.notice ? "This project backs up to the cloud while you work." : chip.label}</p>
     {#if question}
       <div class="row">
@@ -71,6 +73,15 @@
       {/if}
       <div class="row">
         <Button size="sm" disabled={busy || !!project.run} onclick={() => act(cloudBackupNow)}>Back up now</Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={!project.registered}
+          onclick={() => {
+            pop?.hidePopover();
+            history.show();
+          }}>Version history…</Button
+        >
         {#if project.conflict}
           <Button size="sm" disabled={busy} onclick={() => act(cloudConflictDismiss)}>Dismiss</Button>
         {/if}
