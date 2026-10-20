@@ -84,20 +84,69 @@ pub fn user_agent() -> String {
     format!("Kinetra/{} ({os})", env!("CARGO_PKG_VERSION"))
 }
 
-/// The API base for this process: [`API_BASE`], or `KINETRA_API_BASE` in debug builds (the
-/// e2e mock server). Release builds can't be pointed elsewhere.
+/// The API base for this process: [`API_BASE`], or `KINETRA_API_BASE` in debug builds (the dev
+/// API, the e2e and test mock servers). Release builds can't be pointed elsewhere. An override
+/// must be `https://`, or `http://` to this computer (the mocks): the session token never goes
+/// over plain HTTP to another machine; anything else is ignored.
 pub fn api_base() -> String {
     #[cfg(debug_assertions)]
     if let Ok(v) = std::env::var("KINETRA_API_BASE") {
+        let v = v.trim_end_matches('/');
         if !v.is_empty() {
-            return v.trim_end_matches('/').to_string();
+            if safe_base(v) {
+                return v.to_string();
+            }
+            tracing::warn!(
+                "KINETRA_API_BASE ignored: it must be https:// or http:// to this computer"
+            );
         }
     }
     API_BASE.to_string()
 }
 
+/// `https://…`, or `http://` to the loopback (`127.0.0.1`, `localhost`, `[::1]`, any port).
+#[cfg_attr(not(any(debug_assertions, test)), allow(dead_code))]
+fn safe_base(base: &str) -> bool {
+    let lower = base.to_ascii_lowercase();
+    if lower.starts_with("https://") {
+        return true;
+    }
+    let Some(rest) = lower.strip_prefix("http://") else {
+        return false;
+    };
+    let host = rest.split(['/', '?', '#']).next().unwrap_or("");
+    let host = match host.strip_prefix('[') {
+        Some(v6) => v6.split(']').next().unwrap_or(""),
+        None => host.split(':').next().unwrap_or(""),
+    };
+    matches!(host, "127.0.0.1" | "localhost" | "::1")
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn an_api_override_is_https_or_this_computer() {
+        for ok in [
+            "https://vps-b17d613f.tail33aa62.ts.net:8445",
+            "HTTPS://api.example",
+            "http://127.0.0.1:51234",
+            "http://localhost:7000/x",
+            "http://[::1]:9",
+        ] {
+            assert!(super::safe_base(ok), "{ok}");
+        }
+        for bad in [
+            "http://api.kinetra.live",
+            "http://192.168.1.20:8445",
+            "http://127.0.0.1.evil.example",
+            "http://localhost.evil.example:80",
+            "ftp://127.0.0.1",
+            "127.0.0.1:8080",
+        ] {
+            assert!(!super::safe_base(bad), "{bad}");
+        }
+    }
+
     #[test]
     fn extra_keys_are_added_to_the_embedded_ones() {
         let base = r#"{"iat":1,"keys":[{"kid":"prod","public_key":"a","status":"active"}]}"#;
