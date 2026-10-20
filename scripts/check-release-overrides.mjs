@@ -12,7 +12,13 @@ import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
 
 /** The overrides release_guard.rs calls; each must be missing in a release build. */
-export const OVERRIDES = ["set_test_entitlements", "load_unchecked_for_tests", "dev_profile", "extra_trusted_keys"];
+export const OVERRIDES = [
+  "set_test_entitlements",
+  "load_unchecked_for_tests",
+  "dev_profile",
+  "extra_trusted_keys",
+  "corrupt_downloads",
+];
 
 /**
  * Problems (empty = fine) from cargo's JSON messages: every error must be E0599 (no method) or

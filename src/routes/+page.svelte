@@ -1,8 +1,9 @@
 <!--
   Project picker (welcome screen).
   Layout: header (mark + KINETRA wordmark as the h1, one muted line), then two columns:
-  actions on the left (New / Open / Cloud panels, with the inline New project form under New and
-  the "folder isn't empty" confirmation under Open), recent projects on the right. One column
+  actions on the left (New / Open / In the cloud, with the inline New project form under New, the
+  "folder isn't empty" confirmation under Open and the account's cloud projects under In the cloud,
+  each a lazy chunk), recent projects on the right. One column
   below 760px. The expanded action and keyboard focus draw the viewfinder brackets.
   `/?new=1` (from the top-bar switcher) opens with the New project form expanded.
 -->
@@ -16,12 +17,12 @@
   import { toAppError } from "$lib/api";
   import Card from "$lib/components/Card.svelte";
   import ThemeToggle from "$lib/components/ThemeToggle.svelte";
-  import Tooltip from "$lib/components/Tooltip.svelte";
   import type NewProjectFormComponent from "$lib/components/picker/NewProjectForm.svelte";
   import RecentList from "$lib/components/picker/RecentList.svelte";
   import { describeError, parentDir } from "$lib/components/picker/format";
   import { openFolder, pickFolder } from "$lib/projectFlow";
   import type InitFolderPanelComponent from "$lib/components/picker/InitFolderPanel.svelte";
+  import type CloudListComponent from "$lib/components/picker/CloudList.svelte";
   import { project } from "$lib/stores/project.svelte";
 
   let newOpen = $state(false);
@@ -50,6 +51,26 @@
       void import("$lib/components/picker/InitFolderPanel.svelte").then((m) => (InitFolderPanel = m.default));
     }
   });
+  // The account's cloud projects: a lazy chunk, loaded like the form (pointer or focus on its card).
+  let cloudOpen = $state(false);
+  let CloudList = $state.raw<typeof CloudListComponent | null>(null);
+  let cloudLoading: Promise<void> | null = null;
+  function loadCloud() {
+    cloudLoading ??= import("$lib/components/picker/CloudList.svelte").then((m) => {
+      CloudList = m.default;
+    });
+    return cloudLoading;
+  }
+  /** A downloaded project: open it. */
+  async function openDownloaded(path: string) {
+    openError = null;
+    try {
+      const outcome = await openFolder(path);
+      if (outcome.status === "opened") toDashboard();
+    } catch (e) {
+      openError = describeError(toAppError(e));
+    }
+  }
   let confirmError = $state<string | null>(null);
   let initializing = $state(false);
   let recentsError = $state<string | null>(null);
@@ -238,15 +259,29 @@
           />
         {/if}
 
-        <Tooltip text="Cloud projects aren't available yet." placement="bottom" focusable>
-          <Card interactive disabled padding="none" class="action">
-            <span class="icon" aria-hidden="true"><Cloud size={18} /></span>
-            <span class="text">
-              <span class="title">Cloud <span class="soon">Coming soon</span></span>
-              <span class="desc">Work on shows from anywhere.</span>
-            </span>
-          </Card>
-        </Tooltip>
+        <Card
+          interactive
+          padding="none"
+          class="action"
+          selected={cloudOpen}
+          aria-expanded={cloudOpen}
+          aria-controls="cloud-projects"
+          onpointerenter={loadCloud}
+          onfocus={loadCloud}
+          onclick={() => {
+            void loadCloud();
+            cloudOpen = !cloudOpen;
+          }}
+        >
+          <span class="icon" class:on={cloudOpen} aria-hidden="true"><Cloud size={18} /></span>
+          <span class="text">
+            <span class="title">In the cloud</span>
+            <span class="desc">Download a project from your cloud backup.</span>
+          </span>
+        </Card>
+        {#if cloudOpen && CloudList}
+          <CloudList id="cloud-projects" onopened={openDownloaded} />
+        {/if}
       </div>
 
       <RecentList onopened={toDashboard} loadError={recentsError} />
@@ -309,9 +344,6 @@
     gap: var(--s-2);
     min-width: 0;
   }
-  .actions > :global(.tt) {
-    display: flex;
-  }
   .actions :global(.card.action) {
     display: grid;
     grid-template-columns: 32px minmax(0, 1fr) auto;
@@ -353,23 +385,6 @@
     color: var(--text-muted);
     font-size: var(--fs-xs);
     line-height: 18px;
-    white-space: nowrap;
-  }
-
-  /* Looks like an accent Badge; a plain span keeps the Badge component out of the picker's initial
-     bundle (budget: 50 KB gz). */
-  .soon {
-    display: inline-flex;
-    align-items: center;
-    height: 20px;
-    padding: 0 var(--s-2);
-    border-radius: var(--r-control);
-    background: var(--surface-2);
-    box-shadow: inset 0 0 0 1px var(--line);
-    color: var(--accent-text);
-    font-size: var(--fs-xs);
-    font-weight: 500;
-    line-height: 1;
     white-space: nowrap;
   }
 

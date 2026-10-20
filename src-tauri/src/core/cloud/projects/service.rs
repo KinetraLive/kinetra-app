@@ -52,6 +52,8 @@ pub(super) struct Svc {
     sent: Option<CloudView>,
     /// The open project (see `identity`).
     pub(super) project: Option<super::identity::OpenProject>,
+    /// The restore running or just finished (see `restore`).
+    pub(super) restore: Option<super::restore::RestoreState>,
     /// Backups of projects that were closed with changes not in the cloud (folder, task, cancel).
     pub(super) closing: Vec<(
         std::path::PathBuf,
@@ -220,6 +222,7 @@ impl AppState {
                 new_projects: prefs.new_projects,
             },
             project,
+            restore: s.restore.as_ref().map(|r| r.view.clone()),
         }
     }
 
@@ -386,6 +389,7 @@ impl AppState {
 
     /// Stops background work (exit).
     pub fn cloud_projects_stop(&self) {
+        self.cloud_restore_cancel();
         self.cloud_backup_cancel_all();
         if let Some(t) = lock(&self.cloud_projects().inner).retry.take() {
             t.abort();

@@ -2,16 +2,18 @@
 // hosts the lazy dialog and registers how to open it; nothing else is loaded until it opens.
 // Plain functions (no runes): this is in every page's shell.
 
-let opener: (() => void) | null = null;
+type Opener = (restore?: string) => void;
+let opener: Opener | null = null;
 
 /** The top bar registers its opener (null on teardown). */
-export function setHistoryOpener(open: (() => void) | null): void {
+export function setHistoryOpener(open: Opener | null): void {
   opener = open;
 }
 
-/** Opens the version history (no-op outside the main window's shell). */
-export function openHistory(): void {
-  opener?.();
+/** Opens the version history (no-op outside the main window's shell); `restore`: a version to offer
+ * restoring at once ("Open the other version"). */
+export function openHistory(restore?: string): void {
+  opener?.(restore);
 }
 
 /** The dialog component (its own lazy chunk). */

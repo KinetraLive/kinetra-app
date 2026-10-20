@@ -30,6 +30,7 @@ const view = (patch: Partial<CloudView>): CloudView => ({
   quota,
   settings: { onAir: "pause", limitKbps: 2000, intervalS: 300, newProjects: true },
   project: null,
+  restore: null,
   ...patch,
 });
 
@@ -104,6 +105,7 @@ describe("the top bar chip", () => {
   const project = {
     backup: true,
     registered: true,
+    serverId: "p1",
     noticeSeen: true,
     question: null,
     issue: null,
@@ -131,6 +133,21 @@ describe("the top bar chip", () => {
     });
     const run = { phase: "uploading" as const, doneBytes: 1, totalBytes: 2, paused: true, limited: false };
     expect(chipWords(view({ project: { ...project, run } }))).toMatchObject({ text: "Paused while on air", tone: "warning" });
+    const restore = {
+      mode: "newFolder" as const,
+      versionId: "v1",
+      folder: "C:\\Shows\\gala-old",
+      phase: "downloading" as const,
+      doneBytes: 1,
+      totalBytes: 4,
+      paused: false,
+      limited: false,
+      result: null,
+    };
+    // A restore running shows before a backup; a finished one says nothing here.
+    expect(chipWords(view({ restore, project: { ...project, run } }))?.text).toBe("Restoring… 25%");
+    const result = { ok: true, error: null, damaged: [], damagedCount: 0, copyFolder: null, reused: 0 };
+    expect(chipWords(view({ restore: { ...restore, result }, project }))?.text).toBe("Not backed up yet");
     expect(chipWords(view({ project: { ...project, noticeSeen: false } }))).toMatchObject({ text: "Backing up to the cloud", notice: true });
     expect(chipWords(view({ offline: true, project }))?.label).toBe("Cloud backup: offline, will retry.");
     expect(chipWords(view({ state: "full", project }))?.text).toBe("Cloud backup paused");

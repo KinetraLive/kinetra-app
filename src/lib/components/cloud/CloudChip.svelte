@@ -3,7 +3,8 @@
   project backs up (a lazy chunk). A cloud icon and quiet words (`chipWords`: a question first,
   then work in progress, the one-time "Backing up to the cloud" notice, problems, then "Last
   backup …"); the popover has the whole sentence, the question's choices, the notice's Turn off /
-  OK, the conflict's Dismiss, Back up now and a link to Preferences › Cloud backup. Never modal,
+  OK, the conflict's Open the other version (the history's restore) and Dismiss, Back up now and a
+  link to Preferences › Cloud backup. Never modal,
   never opens by itself.
   Props: none (reads `cloud`, which the top bar watches).
 -->
@@ -78,10 +79,19 @@
           variant="ghost"
           disabled={!project.registered}
           onclick={() => {
-            pop?.hidePopover();
+            pop?.hidePopover?.();
             openHistory();
           }}>Version history…</Button
         >
+        {#if project.conflict?.otherVersionId}
+          <Button
+            size="sm"
+            onclick={() => {
+              pop?.hidePopover?.();
+              openHistory(project.conflict?.otherVersionId ?? undefined);
+            }}>Open the other version</Button
+          >
+        {/if}
         {#if project.conflict}
           <Button size="sm" disabled={busy} onclick={() => act(cloudConflictDismiss)}>Dismiss</Button>
         {/if}

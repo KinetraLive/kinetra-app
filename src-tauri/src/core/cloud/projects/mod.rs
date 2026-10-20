@@ -21,6 +21,7 @@ pub mod identity;
 pub mod local;
 pub mod paths;
 pub mod r2;
+pub mod restore;
 pub mod scan;
 pub mod schedule;
 pub mod service;
@@ -32,5 +33,7 @@ mod tests;
 mod tests_backup;
 #[cfg(test)]
 mod tests_identity;
+#[cfg(test)]
+mod tests_restore;
 #[cfg(test)]
 mod tests_service;

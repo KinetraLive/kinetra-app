@@ -13,7 +13,8 @@ const api = vi.hoisted(() => ({
 }));
 vi.mock("$lib/api/cloud-history", () => api);
 vi.mock("$lib/api/cloud-backup", () => api);
-vi.mock("$lib/api", () => ({ toAppError: (e: unknown) => ({ message: String(e) }) }));
+vi.mock("$lib/api", () => ({ on: () => () => {}, toAppError: (e: unknown) => ({ message: String(e) }) }));
+vi.mock("$lib/api/cloud", () => ({ cloudView: vi.fn(() => new Promise(() => {})) }));
 
 import HistoryDialog from "./HistoryDialog.svelte";
 

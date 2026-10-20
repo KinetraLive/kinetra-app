@@ -141,7 +141,7 @@
         automationOff: () => automationOff,
         toggleRemote: setRemote ? () => void toggleRemote() : undefined,
         remoteOn: () => remote.view?.on ?? false,
-        openHistory,
+        openHistory: () => openHistory(),
         historyReady: () => !!cloud.view?.project?.registered,
       }),
     ),

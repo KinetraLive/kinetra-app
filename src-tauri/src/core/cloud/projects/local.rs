@@ -61,6 +61,10 @@ pub struct ProjectRecord {
     /// The `Idempotency-Key` of a commit not confirmed yet (reused until it is).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pending_commit: Option<String>,
+    /// A version restored over this project here (Replace): the next commit says so
+    /// (`restored_from`), then it's cleared.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub restored_from: Option<String>,
     /// Multipart uploads in progress, by blob SHA-256, so a restart resumes them.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub uploads: BTreeMap<String, MultipartRecord>,

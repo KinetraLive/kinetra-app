@@ -1157,7 +1157,8 @@ export function installMockTauri(s: MockScenario): void {
       retentionFrom: null,
     },
     settings: { onAir: "pause", limitKbps: 2000, intervalS: 300, newProjects: true },
-    project: { backup: true, registered: true, noticeSeen: true, question: null, issue: null, lastBackupAt: "2026-10-15T12:02:00Z", run: null, report: [], skipped: 0, error: null, conflict: null },
+    project: { backup: true, registered: true, serverId: "0199e2a0-0001-7000-8000-000000000001", noticeSeen: true, question: null, issue: null, lastBackupAt: "2026-10-15T12:02:00Z", run: null, report: [], skipped: 0, error: null, conflict: null },
+    restore: null,
   };
   const remoteNow = (): RemoteView =>
     ({
@@ -1834,6 +1835,19 @@ export function installMockTauri(s: MockScenario): void {
     cloud_project_rename: () => null,
     cloud_project_trash: () => null,
     cloud_project_untrash: () => null,
+    cloud_restore_plan: (a) => ({
+      folder:
+        a.mode === "replace"
+          ? "D:\\Shows\\Election night"
+          : a.mode === "download"
+            ? "D:\\Shows\\spring-gala"
+            : "D:\\Shows\\election-night-2026-10-15-1040",
+      backupFirst: true,
+      copyFolder: null,
+    }),
+    cloud_restore_start: () => cloudNow,
+    cloud_restore_cancel: () => null,
+    cloud_restore_dismiss: () => cloudNow,
     // ---- Control API ----
     control_api_view: () => controlApi,
     control_api_set: (a) => {

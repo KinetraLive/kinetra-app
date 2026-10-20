@@ -1449,6 +1449,44 @@ impl AppState {
         Ok(project)
     }
 
+    /// Replaces the open project's files on disk with `swap(dir)` and reloads it, like
+    /// `restore_backup`: under `io` after a flush (no store write lands in between), the watcher
+    /// sitting it out, the reload's hooks after. Only while `dir` is the open project. Used by
+    /// cloud restore's Replace.
+    pub(crate) fn replace_project_files(
+        &self,
+        dir: &Path,
+        swap: impl FnOnce(&Path) -> AppResult<()>,
+    ) -> AppResult<Project> {
+        self.ensure_not_moving()?;
+        let project = {
+            let _io = lock(&self.inner.io);
+            self.inner.flush_locked();
+            if self.project_dir()? != dir {
+                return Err(AppError::NoProject);
+            }
+            self.inner.stop_watcher();
+            let swapped = swap(dir);
+            let mut backed_up = false;
+            if swapped.is_ok() {
+                self.templates_migrate_locked(dir, &mut backed_up);
+                self.templates_rewrite_fonts_locked(dir);
+            }
+            let project = swapped.and_then(|()| self.inner.reload_locked());
+            self.inner.start_watcher();
+            let project = project?;
+            self.flows_migrate_locked(dir, &mut backed_up);
+            project
+        };
+        self.flows_project_opened();
+        self.rules_project_opened();
+        self.notify_project();
+        self.emit_ui_state_changed();
+        self.controls_announce();
+        self.cloud_project_opened();
+        Ok(project)
+    }
+
     /// Stops the open project's backup timer (no-op when none runs).
     pub(crate) fn stop_backup_worker(&self) {
         self.inner.stop_backup_worker();

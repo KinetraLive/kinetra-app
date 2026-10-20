@@ -662,6 +662,91 @@ pub struct CloudView {
     pub settings: CloudSettingsView,
     /// The open project's backup (none without a project, or signed out).
     pub project: Option<CloudProjectView>,
+    /// A restore running or just finished (one at a time; open project or not).
+    pub restore: Option<CloudRestoreView>,
+}
+
+/// How a version is restored (CLOUD_PROJECTS.md §10 "Restoring").
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum CloudRestoreMode {
+    /// Into a new folder as a separate project (its own cloud backup).
+    NewFolder,
+    /// "In the cloud › Download": into a new folder, continuing the same cloud backup (unless
+    /// this computer already has a folder for it; then it's a separate project).
+    Download,
+    /// Replace the open project's files with the version (backed up or copied first).
+    Replace,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum CloudRestorePhase {
+    Preparing,
+    /// Replace: backing up the project as it is first.
+    BackingUp,
+    /// Replace: copying the project as it is first (when it can't back up).
+    Copying,
+    Downloading,
+    Replacing,
+}
+
+/// What `cloud_restore_start` restores.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloudRestoreRequest {
+    /// The server's project id.
+    pub project_id: String,
+    /// The version; `None` = the newest.
+    pub version_id: Option<String>,
+    pub mode: CloudRestoreMode,
+    /// The new folder (new folder, download): must not exist yet, or be empty.
+    pub folder: Option<String>,
+}
+
+/// What a restore will do, for the dialog (`cloud_restore_plan`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloudRestorePlan {
+    /// The suggested new folder (new folder, download); the open project's (replace).
+    pub folder: String,
+    /// Replace: the project is backed up first (`true`), else copied to `copyFolder`.
+    pub backup_first: bool,
+    pub copy_folder: Option<String>,
+}
+
+/// A restore in progress, or how it ended.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloudRestoreView {
+    pub mode: CloudRestoreMode,
+    pub version_id: String,
+    /// The folder restored into (the open project's for replace).
+    pub folder: String,
+    pub phase: CloudRestorePhase,
+    pub done_bytes: u64,
+    pub total_bytes: u64,
+    /// Waiting because something is on air.
+    pub paused: bool,
+    pub limited: bool,
+    /// Set once it ended.
+    pub result: Option<CloudRestoreResult>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloudRestoreResult {
+    /// The folder holds the version (damaged files aside, new folder only).
+    pub ok: bool,
+    /// Why it stopped, in plain words (none when it worked).
+    pub error: Option<String>,
+    /// Files that didn't arrive intact after a retry (at most [`CLOUD_REPORT_MAX`]).
+    pub damaged: Vec<String>,
+    pub damaged_count: u32,
+    /// Replace: where the copy of the project as it was went (when it wasn't backed up).
+    pub copy_folder: Option<String>,
+    /// Files taken from this computer instead of downloaded.
+    pub reused: u32,
 }
 
 /// The open project's cloud backup.
@@ -672,6 +757,8 @@ pub struct CloudProjectView {
     pub backup: bool,
     /// The server knows this project (registered from this computer).
     pub registered: bool,
+    /// The server's id for it (restores of the open project name it).
+    pub server_id: Option<String>,
     /// The one-time "Backing up to the cloud" notice was shown.
     pub notice_seen: bool,
     /// A choice waiting for the user (shown quietly, never a modal).
@@ -785,6 +872,8 @@ pub struct CloudConflictView {
     pub at: Option<String>,
     /// The version that has the conflict (Dismiss resolves it).
     pub version_id: String,
+    /// The other computer's version ("Open the other version").
+    pub other_version_id: Option<String>,
 }
 
 /// A choice cloud backup needs from the user (CLOUD_PROJECTS.md §5, the app plan's decision 1).

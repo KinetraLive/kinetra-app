@@ -56,7 +56,8 @@ const base: CloudView = {
     retentionFrom: null,
   },
   settings: { onAir: "pause", limitKbps: 2000, intervalS: 300, newProjects: true },
-  project: { backup: true, registered: true, noticeSeen: true, question: null, issue: null, run: null, lastBackupAt: null, report: [], skipped: 0, error: null, conflict: null },
+  restore: null,
+  project: { backup: true, registered: true, serverId: "p1", noticeSeen: true, question: null, issue: null, run: null, lastBackupAt: null, report: [], skipped: 0, error: null, conflict: null },
 };
 
 async function show(v: CloudView) {
@@ -156,7 +157,7 @@ describe("Cloud backup pane: backing up", () => {
       project: {
         ...project,
         error: "Cloud backup: offline, will retry.",
-        conflict: { machine: "STUDIO-PC", at: null, versionId: "v1" },
+        conflict: { machine: "STUDIO-PC", at: null, versionId: "v1", otherVersionId: "v0" },
       },
     });
     expect(await screen.findByText("Cloud backup: offline, will retry.")).toBeTruthy();

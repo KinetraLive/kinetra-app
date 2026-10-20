@@ -4,11 +4,15 @@
   50 at a time ("Show older"). Each row: time, computer, label, marks (Newest, Kept, Also backed up
   elsewhere, Damaged), what it holds, "Deleted on …" when the plan's history length removes it.
   Per version: Keep (retention never deletes it), Label (inline), Delete (inline confirm; not the
-  newest). Restoring a version comes with restore.
-  Props: open, onclose.
+  newest), Restore… (a new folder, or replace this project: the lazy RestorePanel under the row).
+  `restore`: a version to offer restoring at once (the conflict notice's "Open the other version").
+  Props: open, onclose, restore, openable (the main window: a restored folder can be opened).
 -->
 <script lang="ts">
+  import { onMount } from "svelte";
+  import { goto } from "$app/navigation";
   import Pin from "lucide-svelte/icons/pin";
+  import RotateCcw from "lucide-svelte/icons/rotate-ccw";
   import PinOff from "lucide-svelte/icons/pin-off";
   import Trash2 from "lucide-svelte/icons/trash-2";
   import Tag from "lucide-svelte/icons/tag";
@@ -20,10 +24,36 @@
   import Button from "$lib/components/Button.svelte";
   import IconButton from "$lib/components/IconButton.svelte";
   import { toasts } from "$lib/stores/toasts.svelte";
+  import { openFolder } from "$lib/projectFlow";
   import type { CloudVersionView } from "$lib/types";
+  import { cloud } from "../state.svelte";
   import { byDay, expiresWords, timeLabel, versionBadges, versionFacts } from "./words";
 
-  let { open, onclose }: { open: boolean; onclose: () => void } = $props();
+  let {
+    open,
+    onclose,
+    restore = null,
+    openable = false,
+  }: { open: boolean; onclose: () => void; restore?: string | null; openable?: boolean } = $props();
+
+  onMount(() => cloud.watch());
+  const serverId = $derived(cloud.view?.project?.serverId ?? null);
+  /** The version whose restore panel is open ("other": the `restore` prop's, at the top). */
+  let restoring = $state<string | null>(null);
+  const loadPanel = () => import("../restore/RestorePanel.svelte").then((m) => m.default);
+
+  /** Opens a restored folder as the project (main window only). */
+  async function openRestored(folder: string) {
+    try {
+      const o = await openFolder(folder);
+      if (o.status === "opened") {
+        onclose();
+        void goto("/dashboard");
+      }
+    } catch (e) {
+      toasts.push({ kind: "error", message: toAppError(e).message });
+    }
+  }
 
   const id = $props.id();
   let dialog: HTMLDialogElement | undefined = $state();
@@ -60,6 +90,7 @@
     if (open && !d.open) {
       if (typeof d.showModal === "function") d.showModal();
       else d.setAttribute("open", "");
+      restoring = restore ? "other" : null;
       void load(null);
     } else if (!open && d.open) {
       if (typeof d.close === "function") d.close();
@@ -132,6 +163,22 @@
     <IconButton label="Close" onclick={onclose}><X size={16} /></IconButton>
   </header>
   <div class="body">
+    {#if restoring === "other" && restore && serverId}
+      <section class="other">
+        <h3 class="section-label">The other computer's version</h3>
+        {#await loadPanel() then Panel}
+          <Panel
+            projectId={serverId}
+            versionId={restore}
+            name=""
+            at={versions.find((x) => x.id === restore)?.createdAt ?? null}
+            modes={["newFolder"]}
+            onopen={openable ? openRestored : undefined}
+            onclose={() => (restoring = null)}
+          />
+        {/await}
+      </section>
+    {/if}
     {#if failed}
       <p class="msg" role="alert">{failed}</p>
       <Button size="sm" onclick={() => load(null)}>Try again</Button>
@@ -173,6 +220,18 @@
                   <Button size="sm" variant="primary" disabled={busy === v.id} onclick={() => saveLabel(v)}>Save</Button>
                   <Button size="sm" variant="ghost" onclick={() => (labeling = null)}>Cancel</Button>
                 </div>
+              {:else if restoring === v.id && serverId}
+                {#await loadPanel() then Panel}
+                  <Panel
+                    projectId={serverId}
+                    versionId={v.id}
+                    name=""
+                    at={v.createdAt}
+                    modes={["newFolder", "replace"]}
+                    onopen={openable ? openRestored : undefined}
+                    onclose={() => (restoring = null)}
+                  />
+                {/await}
               {:else if deleting === v.id}
                 <div class="edit" role="group" aria-label="Delete this version?">
                   <span>Delete this version?</span>
@@ -191,6 +250,20 @@
                 onclick={() => keep(v)}
               >
                 {#if v.kept}<PinOff size={14} />{:else}<Pin size={14} />{/if}
+              </IconButton>
+              <IconButton
+                label="Restore…"
+                size="sm"
+                pressed={restoring === v.id}
+                pressedFill={false}
+                disabled={!serverId}
+                onclick={() => {
+                  restoring = restoring === v.id ? null : v.id;
+                  labeling = null;
+                  deleting = null;
+                }}
+              >
+                <RotateCcw size={14} />
               </IconButton>
               <IconButton label="Label" size="sm" disabled={busy === v.id} onclick={() => startLabel(v)}>
                 <Tag size={14} />
@@ -333,6 +406,9 @@
   }
   .msg {
     color: var(--text-muted);
+  }
+  .other {
+    align-self: stretch;
   }
   @keyframes enter {
     from {

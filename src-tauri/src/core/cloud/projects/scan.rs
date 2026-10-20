@@ -199,7 +199,7 @@ pub fn list(root: &Path, max_file_bytes: Option<u64>) -> io::Result<Listing> {
 
 /// The manifest path: relative, `/`-separated, in NFC (macOS gives decomposed names; the file
 /// itself is never renamed: `Found::abs` keeps its real name).
-fn rel_utf8(rel: &Path) -> Option<String> {
+pub(super) fn rel_utf8(rel: &Path) -> Option<String> {
     use unicode_normalization::UnicodeNormalization;
     let parts: Option<Vec<&str>> = rel.components().map(|c| c.as_os_str().to_str()).collect();
     Some(parts?.join("/").nfc().collect())

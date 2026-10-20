@@ -6,7 +6,8 @@ use tauri::State;
 
 use super::project::blocking;
 use crate::core::model::{
-    CloudAnswer, CloudProjectSummary, CloudVersionPage, CloudVersionView, CloudView,
+    CloudAnswer, CloudProjectSummary, CloudRestoreMode, CloudRestorePlan, CloudRestoreRequest,
+    CloudVersionPage, CloudVersionView, CloudView,
 };
 use crate::core::state::AppState;
 use crate::error::AppResult;
@@ -166,4 +167,45 @@ pub async fn cloud_project_untrash(
 ) -> AppResult<CloudProjectSummary> {
     let state = state.inner().clone();
     state.cloud_project_untrash(&id).await
+}
+
+/// Where a restore would go, and (Replace) whether the project is backed up or copied first.
+#[tauri::command]
+pub async fn cloud_restore_plan(
+    state: State<'_, AppState>,
+    mode: CloudRestoreMode,
+    name: String,
+    at: Option<String>,
+) -> AppResult<CloudRestorePlan> {
+    let state = state.inner().clone();
+    blocking(move || state.cloud_restore_plan(mode, &name, at.as_deref())).await
+}
+
+/// Starts restoring a version (returns at once; `cloud-changed` follows it).
+#[tauri::command]
+pub async fn cloud_restore_start(
+    state: State<'_, AppState>,
+    request: CloudRestoreRequest,
+) -> AppResult<CloudView> {
+    let state = state.inner().clone();
+    blocking(move || {
+        state.cloud_restore_start(request)?;
+        Ok(state.cloud_view())
+    })
+    .await
+}
+
+/// Stops a running restore (the project stays as it was).
+#[tauri::command]
+pub async fn cloud_restore_cancel(state: State<'_, AppState>) -> AppResult<()> {
+    state.inner().cloud_restore_cancel();
+    Ok(())
+}
+
+/// Forgets a finished restore's result.
+#[tauri::command]
+pub async fn cloud_restore_dismiss(state: State<'_, AppState>) -> AppResult<CloudView> {
+    let state = state.inner().clone();
+    state.cloud_restore_dismiss();
+    Ok(state.cloud_view())
 }

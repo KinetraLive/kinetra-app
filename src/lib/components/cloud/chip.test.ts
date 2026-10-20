@@ -15,6 +15,8 @@ vi.mock("$lib/api/cloud", () => api);
 vi.mock("$lib/api/cloud-backup", () => api);
 vi.mock("$lib/api", () => ({ on: () => () => {}, toAppError: (e: unknown) => ({ message: String(e) }) }));
 vi.mock("$lib/components/settings/open", () => ({ preferencesLink: () => () => {} }));
+const host = vi.hoisted(() => ({ openHistory: vi.fn() }));
+vi.mock("./history/host", () => host);
 
 import CloudChip from "./CloudChip.svelte";
 import { cloud } from "./state.svelte";
@@ -22,6 +24,7 @@ import { cloud } from "./state.svelte";
 const project: CloudProjectView = {
   backup: true,
   registered: true,
+  serverId: "p1",
   noticeSeen: true,
   question: null,
   issue: null,
@@ -42,6 +45,7 @@ function show(p: Partial<CloudProjectView>) {
     quota: null,
     settings: { onAir: "pause", limitKbps: 2000, intervalS: 300, newProjects: true },
     project: { ...project, ...p },
+    restore: null,
   } satisfies CloudView;
   render(CloudChip);
 }
@@ -77,6 +81,12 @@ describe("cloud chip", () => {
     show({ run: { phase: "uploading", doneBytes: 1, totalBytes: 4, paused: false, limited: false } });
     expect(screen.getByRole("button", { name: "Backing up… 25%" })).toBeTruthy();
     expect((screen.getByRole("button", { name: "Back up now", hidden: true }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("opens the other computer's version from the conflict notice", async () => {
+    show({ conflict: { machine: "STUDIO-PC", at: null, versionId: "v2", otherVersionId: "v1" } });
+    await fireEvent.click(screen.getByRole("button", { name: "Open the other version", hidden: true }));
+    expect(host.openHistory).toHaveBeenCalledWith("v1");
   });
 
   it("isn't there when the project doesn't back up", () => {

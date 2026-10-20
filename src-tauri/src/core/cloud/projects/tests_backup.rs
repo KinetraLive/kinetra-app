@@ -40,17 +40,17 @@ struct Multi {
 }
 
 #[derive(Default)]
-struct Fake {
+pub(super) struct Fake {
     base: String,
-    blobs: HashMap<String, Vec<u8>>,
+    pub(super) blobs: HashMap<String, Vec<u8>>,
     uploads: HashMap<String, Multi>,
     next_id: u64,
     projects: HashMap<String, String>,
-    head: Option<String>,
-    versions: Vec<Value>,
+    pub(super) head: Option<String>,
+    pub(super) versions: Vec<Value>,
     commits_by_key: HashMap<String, Value>,
     /// Requests: "PUT blob <sha>", "PUT part <n>", "COMMIT", "CHECK".
-    log: Vec<String>,
+    pub(super) log: Vec<String>,
     // Knobs.
     expire_next_puts: u32,
     storage_full: bool,
@@ -61,7 +61,7 @@ struct Fake {
     on_part: Option<Arc<dyn Fn(u32) + Send + Sync>>,
     /// Called before a single PUT's body is read.
     on_put: Option<Arc<dyn Fn() + Send + Sync>>,
-    quota_state: String,
+    pub(super) quota_state: String,
     /// Commits stored but answered with 502 (the answer is lost), this many times.
     lose_commit_answers: u32,
     /// Commits refused with 429.
@@ -75,9 +75,15 @@ struct Fake {
     trashed: bool,
     /// Kept versions allowed per project.
     kept_limit: usize,
+    /// Downloads of a blob served with one byte wrong, this many times (restore).
+    pub(super) corrupt_gets: HashMap<String, u32>,
+    /// Each download waits this long before its body (restore on air).
+    pub(super) get_delay: Duration,
+    /// The `restored_from` of every commit.
+    pub(super) restored: Vec<Value>,
 }
 
-type F = Arc<Mutex<Fake>>;
+pub(super) type F = Arc<Mutex<Fake>>;
 
 fn uuid(n: u64) -> String {
     format!("0199e2a0-{:04x}-7000-8000-{:012x}", n % 0xffff, n)
@@ -320,6 +326,7 @@ async fn handle(
             let base = b["base_version_id"].as_str().map(str::to_string);
             f.reasons
                 .push(b["reason"].as_str().unwrap_or("").to_string());
+            f.restored.push(b["restored_from"].clone());
             let r = version(&mut f, base, &files, 0);
             f.commits_by_key.insert(key, r.clone());
             if f.lose_commit_answers > 0 {
@@ -382,15 +389,62 @@ async fn handle(
         }
         ("GET", ["v1", "cloud", "projects", pid]) => {
             let f = f.lock().unwrap();
-            let conflict = f
-                .versions
+            let app = f
+                .projects
                 .iter()
-                .any(|v| v["conflict"].is_object() && v["conflict"]["resolved_at"].is_null());
+                .find(|(_, id)| id.as_str() == *pid)
+                .map(|(a, _)| a.clone())
+                .unwrap_or_default();
+            ok(200, fake_project(&f, &app, pid))
+        }
+        ("GET", ["v1", "cloud", "projects", _, "versions", vid, "manifest"]) => {
+            let f = f.lock().unwrap();
+            let Some(v) = f.versions.iter().find(|v| v["id"] == *vid) else {
+                return err(404, "not_found", Value::Null);
+            };
+            let files = v["manifest"].clone();
+            let mut version = v.clone();
+            version.as_object_mut().unwrap().remove("manifest");
             ok(
                 200,
-                json!({"id": pid, "app_project_id": "x", "name": "Gala", "head": null,
-                "versions": f.versions.len(), "kept": 0, "conflict": conflict}),
+                json!({"version": version, "manifest": {"format": 1, "files": files}}),
             )
+        }
+        ("POST", ["v1", "cloud", "blobs", "download"]) => {
+            let mut f = f.lock().unwrap();
+            f.log.push("DOWNLOAD URLS".into());
+            let shas = json_body()["sha256s"]
+                .as_array()
+                .cloned()
+                .unwrap_or_default();
+            let (mut urls, mut missing) = (Vec::new(), Vec::new());
+            for s in shas {
+                let sha = s.as_str().unwrap_or("").to_string();
+                if f.blobs.contains_key(&sha) {
+                    urls.push(json!({"sha256": sha,
+                        "url": format!("{}/r2/get/{sha}?X-Amz-Signature=sig", f.base),
+                        "expires_at": "2026-10-15T14:12:00Z"}));
+                } else {
+                    missing.push(sha);
+                }
+            }
+            ok(200, json!({"urls": urls, "missing": missing}))
+        }
+        ("GET", ["r2", "get", sha]) => {
+            let delay = f.lock().unwrap().get_delay;
+            tokio::time::sleep(delay).await;
+            let mut f = f.lock().unwrap();
+            f.log.push(format!("GET blob {sha}"));
+            let Some(mut body) = f.blobs.get(*sha).cloned() else {
+                return StatusCode::NOT_FOUND.into_response();
+            };
+            if let Some(n) = f.corrupt_gets.get_mut(*sha).filter(|n| **n > 0) {
+                *n -= 1;
+                if let Some(b) = body.first_mut() {
+                    *b ^= 0xff;
+                }
+            }
+            (StatusCode::OK, body).into_response()
         }
         ("GET", ["v1", "cloud", "projects", _, "versions"]) => {
             let f = f.lock().unwrap();
@@ -498,15 +552,15 @@ async fn handle(
     }
 }
 
-struct Env {
-    _tmp: tempfile::TempDir,
+pub(super) struct Env {
+    pub(super) _tmp: tempfile::TempDir,
     _rt: tokio::runtime::Runtime,
-    st: AppState,
-    fake: F,
-    dir: PathBuf,
+    pub(super) st: AppState,
+    pub(super) fake: F,
+    pub(super) dir: PathBuf,
 }
 
-fn env() -> Env {
+pub(super) fn env() -> Env {
     let tmp = tempfile::tempdir().unwrap();
     let st = AppState::load_with_debounce(
         tmp.path().join("config"),
@@ -563,21 +617,21 @@ fn env() -> Env {
 }
 
 impl Env {
-    fn write(&self, rel: &str, bytes: &[u8]) {
+    pub(super) fn write(&self, rel: &str, bytes: &[u8]) {
         let p = self.dir.join(rel);
         std::fs::create_dir_all(p.parent().unwrap()).unwrap();
         std::fs::write(p, bytes).unwrap();
     }
 
-    fn rt_block<T>(&self, f: impl std::future::Future<Output = T>) -> T {
+    pub(super) fn rt_block<T>(&self, f: impl std::future::Future<Output = T>) -> T {
         self._rt.block_on(f)
     }
 
-    fn log(&self) -> Vec<String> {
+    pub(super) fn log(&self) -> Vec<String> {
         self.fake.lock().unwrap().log.clone()
     }
 
-    fn clear_log(&self) {
+    pub(super) fn clear_log(&self) {
         self.fake.lock().unwrap().log.clear();
     }
 
@@ -585,12 +639,12 @@ impl Env {
         self.log().iter().filter(|l| l.starts_with("PUT")).count()
     }
 
-    fn view(&self) -> CloudView {
+    pub(super) fn view(&self) -> CloudView {
         self.st.cloud_view()
     }
 
     /// Runs "Back up now" and waits for it to end.
-    fn backup(&self) -> CloudView {
+    pub(super) fn backup(&self) -> CloudView {
         self.st.cloud_backup_now().unwrap();
         self.wait_done();
         self.view()
@@ -620,7 +674,7 @@ impl Env {
     }
 }
 
-fn bytes(n: usize, seed: u8) -> Vec<u8> {
+pub(super) fn bytes(n: usize, seed: u8) -> Vec<u8> {
     (0..n)
         .map(|i| (i as u8).wrapping_mul(31).wrapping_add(seed))
         .collect()

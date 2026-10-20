@@ -10,7 +10,8 @@ describe("release overrides check", () => {
       err("E0425", "cannot find function `load_unchecked_for_tests` in module `preview`"),
       err("E0425", "cannot find function `dev_profile` in module `devprofile`"),
       err("E0425", "cannot find function `extra_trusted_keys` in module `config`"),
-      err(null, "aborting due to 4 previous errors"),
+      err("E0425", "cannot find function `corrupt_downloads` in module `restore`"),
+      err(null, "aborting due to 5 previous errors"),
     ];
     expect(verdict(missing)).toEqual([]);
   });
@@ -23,6 +24,7 @@ describe("release overrides check", () => {
       "load_unchecked_for_tests exists in release builds",
       "dev_profile exists in release builds",
       "extra_trusted_keys exists in release builds",
+      "corrupt_downloads exists in release builds",
     ]);
   });
 
@@ -32,6 +34,7 @@ describe("release overrides check", () => {
       err("E0425", "cannot find function `load_unchecked_for_tests`"),
       err("E0425", "cannot find function `dev_profile`"),
       err("E0425", "cannot find function `extra_trusted_keys`"),
+      err("E0425", "cannot find function `corrupt_downloads`"),
       err("E0432", "unresolved import `kinetra_lib::core::gone`"),
     ];
     expect(verdict(other)).toHaveLength(1);

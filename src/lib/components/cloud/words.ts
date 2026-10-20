@@ -1,6 +1,7 @@
 // What cloud backup's state reads as (CLOUD_PROJECTS.md §2.5): quiet text, never an alarm. Pure.
 
 import type { CloudAnswer, CloudQuestion, CloudRunView, CloudView } from "$lib/types";
+import { restoreWords } from "./restore/words";
 
 /** A size in decimal units (10³, CLOUD_PROJECTS.md §3.2): "7.34 GB", "13.1 MB", "20 KB", "0 MB". */
 export function size(bytes: number): string {
@@ -155,6 +156,8 @@ export function chipWords(view: CloudView | null): ChipWords | null {
   if (!view || view.access !== "available" || !p || !p.backup) return null;
   const say = (text: string, tone: ChipWords["tone"] = "plain", label = text): ChipWords => ({ text, label, tone });
   if (p.question) return say("Cloud backup needs an answer", "warning", questionWords(p.question).text);
+  const r = view.restore;
+  if (r && !r.result) return say(restoreWords(r), r.paused ? "warning" : "plain");
   if (p.run) return say(runWords(p.run), p.run.paused ? "warning" : "plain");
   if (!p.noticeSeen) return { ...say("Backing up to the cloud"), notice: true };
   if (view.offline) return say("Cloud backup: offline", "warning", "Cloud backup: offline, will retry.");

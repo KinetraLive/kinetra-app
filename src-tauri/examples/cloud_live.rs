@@ -13,7 +13,9 @@
 //! the app would), and its `license.json` is copied into a temporary config folder. Checks: a first backup (a 20 MB file in parts, a decomposed name in
 //! NFC), a second with no changes sends nothing, a changed file sends only itself, a multipart
 //! upload stopped halfway resumes, nothing goes up while a Program renderer is connected, and no
-//! URL, signature or hash reaches the log. Then the test project goes to the trash (it counts
+//! URL, signature or hash reaches the log; the history; a restore into a new folder (every file
+//! downloaded and checked; `KINETRA_CORRUPT_DOWNLOADS=1` makes the first download arrive damaged,
+//! so the retry is proven against real storage) and Replace. Then the test project goes to the trash (it counts
 //! toward storage until it's purged after 7 days). Prints only ids, sizes and states.
 
 use std::io::Write;
@@ -313,7 +315,10 @@ fn main() {
     // The history, through the app.
     let page = rt.block_on(st.cloud_versions(None)).unwrap();
     println!("history: {} versions", page.versions.len());
-    check(page.versions.len() >= 4 && page.versions[0].is_head, "the history lists every version, newest first");
+    check(
+        page.versions.len() >= 4 && page.versions[0].is_head,
+        "the history lists every version, newest first",
+    );
     let middle = page.versions[1].id.clone();
     let oldest = page.versions.last().unwrap().id.clone();
     let v = rt.block_on(st.cloud_version_keep(&middle, true)).unwrap();
@@ -321,7 +326,10 @@ fn main() {
     let v = rt
         .block_on(st.cloud_version_label(&middle, Some("Claude live test".into())))
         .unwrap();
-    check(v.label.as_deref() == Some("Claude live test"), "a version can be labeled");
+    check(
+        v.label.as_deref() == Some("Claude live test"),
+        "a version can be labeled",
+    );
     let head = page.versions[0].id.clone();
     check(
         rt.block_on(st.cloud_version_delete(&head)).is_err(),
@@ -341,7 +349,85 @@ fn main() {
     let renamed = rt
         .block_on(st.cloud_project_rename(&pid, "Claude live test (renamed)"))
         .unwrap();
-    check(renamed.name == "Claude live test (renamed)", "a cloud project can be renamed");
+    check(
+        renamed.name == "Claude live test (renamed)",
+        "a cloud project can be renamed",
+    );
+
+    // Restore (slice 10): the newest version into a new folder, every file downloaded (this
+    // computer's hash cache forgotten) and checked; with KINETRA_CORRUPT_DOWNLOADS=1 the first
+    // download arrives damaged and is fetched again.
+    let project_json: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(dir.join("project.json")).unwrap()).unwrap();
+    let cid = project_json["cloudId"].as_str().unwrap().to_string();
+    let _ = std::fs::remove_file(kinetra_lib::core::cloud::projects::scan::HashCache::path(
+        &config_dir,
+        &cid,
+    ));
+    let restored = parent.join("restored");
+    let wait_restore = |st: &AppState| {
+        let t = Instant::now();
+        while st.cloud_restore_running() {
+            if t.elapsed() > Duration::from_secs(600) {
+                check(false, "the restore finished in time");
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        st.cloud_view().restore.and_then(|r| r.result).unwrap()
+    };
+    st.cloud_restore_start(kinetra_lib::core::model::CloudRestoreRequest {
+        project_id: pid.clone(),
+        version_id: None,
+        mode: kinetra_lib::core::model::CloudRestoreMode::NewFolder,
+        folder: Some(restored.to_string_lossy().into_owned()),
+    })
+    .expect("restore starts");
+    let r = wait_restore(&st);
+    println!(
+        "restore: ok={} damaged={} reused={}",
+        r.ok, r.damaged_count, r.reused
+    );
+    check(
+        r.ok && r.damaged_count == 0,
+        "a version restores into a new folder",
+    );
+    check(
+        std::fs::read(restored.join("assets/big.bin")).unwrap() == pseudo(20_000_000, run ^ 2)
+            && std::fs::read(restored.join("assets/small.bin")).unwrap()
+                == std::fs::read(dir.join("assets/small.bin")).unwrap(),
+        "the restored files are the backed-up bytes",
+    );
+    if kinetra_lib::core::cloud::projects::restore::corrupt_downloads() > 0 {
+        let text = String::from_utf8(log.0.lock().unwrap().clone()).unwrap();
+        check(
+            text.contains("a downloaded file didn't match its hash"),
+            "a damaged download is caught and fetched again",
+        );
+    }
+    st.cloud_restore_dismiss();
+    // Replace: a local change, then the newest version over the project (backed up first).
+    let before = std::fs::read(dir.join("assets/small.bin")).unwrap();
+    write(&dir, "assets/small.bin", b"changed after the backup");
+    st.cloud_restore_start(kinetra_lib::core::model::CloudRestoreRequest {
+        project_id: pid.clone(),
+        version_id: Some(head.clone()),
+        mode: kinetra_lib::core::model::CloudRestoreMode::Replace,
+        folder: None,
+    })
+    .expect("replace starts");
+    let r = wait_restore(&st);
+    println!("replace: ok={} copy={:?}", r.ok, r.copy_folder);
+    check(
+        r.ok && std::fs::read(dir.join("assets/small.bin")).unwrap() == before,
+        "Replace puts the version's files back (after backing up the change)",
+    );
+    st.cloud_restore_dismiss();
+    st.cloud_backup_now().expect("backup starts");
+    wait_done(&st, Duration::from_secs(120));
+    check(
+        st.cloud_view().project.is_some_and(|p| p.error.is_none()),
+        "the backup after Replace goes through (with restored_from)",
+    );
 
     // Clean up: the test project goes to the trash (through the app: the open project asks).
     let trashed = rt.block_on(st.cloud_project_trash(&pid)).unwrap();

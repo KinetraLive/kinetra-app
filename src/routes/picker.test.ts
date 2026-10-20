@@ -29,6 +29,15 @@ const h = vi.hoisted(() => {
       revealInExplorer: vi.fn(),
     },
     goto: vi.fn(),
+    cloud: {
+      cloudView: vi.fn(),
+      cloudRefresh: vi.fn(),
+      cloudProjectsList: vi.fn(),
+      cloudRestorePlan: vi.fn(),
+      cloudRestoreStart: vi.fn(),
+      cloudRestoreCancel: vi.fn(),
+      cloudRestoreDismiss: vi.fn(),
+    },
   };
 });
 
@@ -44,6 +53,9 @@ vi.mock("$lib/projectFlow", () => ({
   describeEntries: (n: number) => (n === 1 ? "1 item" : `${n} items`),
 }));
 vi.mock("$app/navigation", () => ({ goto: h.goto }));
+vi.mock("$lib/api/cloud", () => h.cloud);
+vi.mock("$lib/api/cloud-history", () => h.cloud);
+vi.mock("$lib/api/cloud-restore", () => h.cloud);
 
 import Page from "./+page.svelte";
 import { project } from "$lib/stores/project.svelte";
@@ -96,15 +108,70 @@ describe("project picker", () => {
   });
   afterEach(() => cleanup());
 
-  it("renders the three actions; Cloud is aria-disabled", async () => {
+  it("renders the three actions", async () => {
     await renderPage();
     expect(screen.getByRole("button", { name: /new project/i })).toBeTruthy();
     expect(screen.getByRole("button", { name: /open project/i })).toBeTruthy();
-    const cloud = screen.getByRole("button", { name: /cloud/i });
-    expect(cloud.getAttribute("aria-disabled")).toBe("true");
-    expect(screen.getByText("Coming soon")).toBeTruthy();
-    expect(screen.getByRole("tooltip").textContent).toMatch(/aren't available yet/);
+    expect(screen.getByRole("button", { name: /in the cloud/i }).getAttribute("aria-expanded")).toBe("false");
     expect(screen.getByText("Projects you open will appear here.")).toBeTruthy();
+  });
+
+  it("downloads a project from the cloud and opens it", async () => {
+    const view = (restore: unknown = null) => ({
+      access: "available",
+      state: "ok",
+      offline: false,
+      checkedAt: 1,
+      quota: null,
+      settings: { onAir: "pause", limitKbps: 2000, intervalS: 300, newProjects: true },
+      project: null,
+      restore,
+    });
+    h.cloud.cloudView.mockResolvedValue(view());
+    h.cloud.cloudProjectsList.mockResolvedValue([
+      { id: "p1", name: "Gala", versions: 3, kept: 0, conflict: false, lastAt: "2026-10-15T14:02:00Z",
+        lastMachine: "STUDIO-PC", trashedAt: null, purgeAt: null, open: false, here: false },
+    ]);
+    h.cloud.cloudRestorePlan.mockResolvedValue({ folder: "C:\\Shows\\gala", backupFirst: false, copyFolder: null });
+    h.cloud.cloudRestoreStart.mockResolvedValue(view());
+    h.cloud.cloudRestoreDismiss.mockResolvedValue(view());
+    h.flow.openFolder.mockResolvedValue({ status: "opened", project: proj });
+    await renderPage();
+    await fireEvent.click(screen.getByRole("button", { name: /in the cloud/i }));
+    await fireEvent.click(await screen.findByRole("button", { name: "Download" }));
+    expect(await screen.findByText("C:\\Shows\\gala")).toBeTruthy();
+    expect(h.cloud.cloudRestorePlan).toHaveBeenCalledWith("download", "Gala", "2026-10-15T14:02:00Z");
+    await fireEvent.click(screen.getByRole("button", { name: "Download" }));
+    await waitFor(() =>
+      expect(h.cloud.cloudRestoreStart).toHaveBeenCalledWith({
+        projectId: "p1",
+        versionId: null,
+        mode: "download",
+        folder: "C:\\Shows\\gala",
+      }),
+    );
+    // The core reports the finished restore.
+    const result = { ok: true, error: null, damaged: [], damagedCount: 0, copyFolder: null, reused: 0 };
+    h.listeners.get("cloud-changed")?.(
+      view({ mode: "download", versionId: "v1", folder: "C:\\Shows\\gala", phase: "downloading",
+             doneBytes: 1, totalBytes: 1, paused: false, limited: false, result }),
+    );
+    expect(await screen.findByText("Restored into gala.")).toBeTruthy();
+    await fireEvent.click(screen.getByRole("button", { name: "Open project" }));
+    await waitFor(() => expect(h.flow.openFolder).toHaveBeenCalledWith("C:\\Shows\\gala"));
+    await waitFor(() => expect(h.goto).toHaveBeenCalledWith("/dashboard"));
+  });
+
+  it("offers a check for backups without Pro", async () => {
+    h.cloud.cloudView.mockResolvedValue({ access: "free", project: null, restore: null });
+    await renderPage();
+    await fireEvent.click(screen.getByRole("button", { name: /in the cloud/i }));
+    expect(await screen.findByText("Cloud backup is part of Kinetra Pro.")).toBeTruthy();
+    h.cloud.cloudRefresh.mockResolvedValue({ access: "available", project: null, restore: null });
+    h.cloud.cloudProjectsList.mockResolvedValue([]);
+    await fireEvent.click(screen.getByRole("button", { name: "Check for backups" }));
+    expect(await screen.findByText("No projects are backed up to the cloud yet.")).toBeTruthy();
+    expect(h.cloud.cloudRefresh).toHaveBeenCalledWith(true);
   });
 
   it("goes to the dashboard when a project is already open", async () => {

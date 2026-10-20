@@ -63,7 +63,7 @@ pub fn server_name(name: &str) -> String {
 }
 
 /// The cloudId in `dir`'s `project.json`, if readable.
-fn cloud_id_at(dir: &Path) -> Option<String> {
+pub(super) fn cloud_id_at(dir: &Path) -> Option<String> {
     persist::load_strict::<ProjectFile>(dir).ok()?.cloud_id
 }
 
@@ -151,7 +151,7 @@ impl AppState {
         }
     }
 
-    fn cloud_record_folder(&self, cid: &str, dir: &Path) {
+    pub(super) fn cloud_record_folder(&self, cid: &str, dir: &Path) {
         let path = dir.to_string_lossy().into_owned();
         self.cloud_file_update(|f| {
             f.folders.insert(cid.to_string(), path);
@@ -268,6 +268,7 @@ impl AppState {
         Some(CloudProjectView {
             backup: self.cloud_backup_on(),
             registered: record.as_ref().is_some_and(|r| r.server_id.is_some()),
+            server_id: record.as_ref().and_then(|r| r.server_id.clone()),
             notice_seen: record.as_ref().is_some_and(|r| r.notice_seen),
             question,
             issue,
@@ -302,7 +303,7 @@ impl AppState {
 
     /// The last quota allows new backups (ok, warning, full: a full account still commits
     /// versions that add no bytes).
-    fn cloud_writable(&self) -> bool {
+    pub(super) fn cloud_writable(&self) -> bool {
         matches!(
             self.cloud_quota_state(),
             Some(QuotaState::Ok | QuotaState::Warning | QuotaState::Full)
@@ -452,9 +453,11 @@ impl AppState {
         }
     }
 
-    /// The next commit's base (the head this computer knows) and `restored_from` (restore, later).
+    /// The next commit's base (the head this computer knows) and `restored_from` (a version
+    /// restored over the project here since the last backup, CLOUD_PROJECTS.md §7, §10).
     pub(super) fn cloud_commit_base(&self, cloud_id: &str) -> (Option<String>, Option<String>) {
-        (self.cloud_record_of(cloud_id).and_then(|r| r.head), None)
+        let r = self.cloud_record_of(cloud_id).unwrap_or_default();
+        (r.head, r.restored_from)
     }
 
     /// The key of a commit not confirmed yet.
@@ -511,6 +514,7 @@ impl AppState {
                 machine: other.and_then(|o| o.machine_name.clone()),
                 at: other.map(|o| o.created_at.clone()),
                 version_id: v.id.clone(),
+                other_version_id: other_id,
             };
             if let Some(p) = lock(&st.cloud_projects().inner)
                 .project
@@ -573,6 +577,7 @@ impl AppState {
                 .or_default();
             r.head = Some(head.to_string());
             r.last_at = Some(at.to_string());
+            r.restored_from = None;
         });
     }
 

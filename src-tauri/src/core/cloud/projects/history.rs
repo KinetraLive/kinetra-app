@@ -91,7 +91,7 @@ impl AppState {
             .ok_or_else(|| AppError::Invalid("This project has no cloud backup yet.".into()))
     }
 
-    fn cloud_history_access(&self) -> AppResult<()> {
+    pub(super) fn cloud_history_access(&self) -> AppResult<()> {
         match self.cloud_access() {
             CloudAccess::Available => Ok(()),
             CloudAccess::SignedOut => Err(AppError::Cloud {

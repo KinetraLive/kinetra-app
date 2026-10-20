@@ -33,8 +33,13 @@
   $effect(() => cloud.watch());
   /** The version history dialog (opened from the chip and the palette through `openHistory`). */
   let historyOpen = $state(false);
+  /** A version to offer restoring at once ("Open the other version"). */
+  let historyRestore = $state<string | null>(null);
   $effect(() => {
-    setHistoryOpener(() => (historyOpen = true));
+    setHistoryOpener((restore) => {
+      historyRestore = restore ?? null;
+      historyOpen = true;
+    });
     return () => setHistoryOpener(null);
   });
   /** Cloud backup's chip: a lazy chunk, only while the open project backs up. */
@@ -93,7 +98,12 @@
   </div>
 </header>
 {#if historyOpen}
-  {#await loadHistory() then History}<History open={historyOpen} onclose={() => (historyOpen = false)} />{/await}
+  {#await loadHistory() then History}<History
+      open={historyOpen}
+      restore={historyRestore}
+      openable
+      onclose={() => (historyOpen = false)}
+    />{/await}
 {/if}
 
 <style>

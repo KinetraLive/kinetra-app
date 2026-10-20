@@ -295,6 +295,53 @@ export interface CloudView {
   settings: CloudSettingsView;
   /** The open project's backup (none without a project, or signed out). */
   project: CloudProjectView | null;
+  /** A restore running or just finished (one at a time; open project or not). */
+  restore: CloudRestoreView | null;
+}
+
+/** How a version is restored: a separate project in a new folder, the same cloud project in a new
+ * folder (the picker's Download), or over the open project. */
+export type CloudRestoreMode = "newFolder" | "download" | "replace";
+export type CloudRestorePhase = "preparing" | "backingUp" | "copying" | "downloading" | "replacing";
+
+export interface CloudRestoreRequest {
+  projectId: string;
+  /** null = the newest version. */
+  versionId: string | null;
+  mode: CloudRestoreMode;
+  /** The new folder (newFolder, download): must not exist yet, or be empty. */
+  folder: string | null;
+}
+
+/** Where a restore would go; Replace: backed up first, else copied to `copyFolder`. */
+export interface CloudRestorePlan {
+  folder: string;
+  backupFirst: boolean;
+  copyFolder: string | null;
+}
+
+export interface CloudRestoreView {
+  mode: CloudRestoreMode;
+  versionId: string;
+  folder: string;
+  phase: CloudRestorePhase;
+  doneBytes: number;
+  totalBytes: number;
+  paused: boolean;
+  limited: boolean;
+  /** Set once it ended. */
+  result: CloudRestoreResult | null;
+}
+
+export interface CloudRestoreResult {
+  ok: boolean;
+  error: string | null;
+  /** Files that didn't arrive intact (at most 100; `damagedCount` in all). */
+  damaged: string[];
+  damagedCount: number;
+  /** Replace: where the copy of the project as it was went (when it wasn't backed up). */
+  copyFolder: string | null;
+  reused: number;
 }
 
 /** The open project's cloud backup. */
@@ -303,6 +350,8 @@ export interface CloudProjectView {
   backup: boolean;
   /** The server knows this project. */
   registered: boolean;
+  /** The server's id for it (restores of the open project name it). */
+  serverId: string | null;
   noticeSeen: boolean;
   /** A choice waiting for the user: shown quietly, never a modal. */
   question: CloudQuestion | null;
@@ -319,7 +368,8 @@ export interface CloudProjectView {
   /** Why the last backup didn't finish, in plain words. */
   error: string | null;
   /** Another computer backed this project up in between; both are kept. */
-  conflict: { machine: string | null; at: string | null; versionId: string } | null;
+  /** `otherVersionId`: the other computer's version ("Open the other version"). */
+  conflict: { machine: string | null; at: string | null; versionId: string; otherVersionId: string | null } | null;
 }
 
 export type CloudPhase = "scanning" | "hashing" | "uploading" | "committing";

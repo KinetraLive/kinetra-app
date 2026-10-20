@@ -326,10 +326,12 @@ impl AppState {
             .push((dir, task.abort_handle(), cancel));
     }
 
-    /// Whether any backup runs (the open project's or a closed one's).
-    fn cloud_backups_running(&self) -> bool {
+    /// Whether any transfer runs: a backup (the open project's or a closed one's) or a restore.
+    pub(super) fn cloud_backups_running(&self) -> bool {
         let s = lock(&self.cloud_projects().inner);
-        !s.closing.is_empty() || s.project.as_ref().is_some_and(|p| p.backup.task.is_some())
+        !s.closing.is_empty()
+            || s.project.as_ref().is_some_and(|p| p.backup.task.is_some())
+            || s.restore.as_ref().is_some_and(|r| r.task.is_some())
     }
 
     /// Cancels the open project's backup (project closing, app exiting). Uploaded blobs stay;
@@ -1080,6 +1082,7 @@ impl AppState {
                         machine: x.with_version.machine_name,
                         at: Some(x.with_version.created_at),
                         version_id: c.version.id.clone(),
+                        other_version_id: Some(x.with_version.id),
                     });
                     let head = c.version.id.clone();
                     let at = c.version.created_at.clone();
