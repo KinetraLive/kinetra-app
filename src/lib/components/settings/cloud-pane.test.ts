@@ -169,3 +169,24 @@ describe("Cloud backup pane: backing up", () => {
     await waitFor(() => expect(screen.queryByText(/Both versions are kept/)).toBeNull());
   });
 });
+
+describe("Cloud backup pane: cloud projects", () => {
+  it("asks for the list again after each backup of the open project", async () => {
+    await show(base);
+    await waitFor(() => expect(api.cloudProjectsList).toHaveBeenCalledTimes(1));
+    // A backup finished (from any window): the open project's last backup changes.
+    cloud.view = { ...base, project: { ...base.project!, lastBackupAt: "2026-10-21T10:00:00Z" } };
+    await waitFor(() => expect(api.cloudProjectsList).toHaveBeenCalledTimes(2));
+    // Progress alone doesn't ask again.
+    cloud.view = {
+      ...base,
+      project: {
+        ...base.project!,
+        lastBackupAt: "2026-10-21T10:00:00Z",
+        run: { phase: "uploading", doneBytes: 1, totalBytes: 2, paused: false, limited: false },
+      },
+    };
+    await new Promise((r) => setTimeout(r, 50));
+    expect(api.cloudProjectsList).toHaveBeenCalledTimes(2);
+  });
+});

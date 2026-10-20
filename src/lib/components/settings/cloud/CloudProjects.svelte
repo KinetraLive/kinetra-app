@@ -44,6 +44,18 @@
     void load();
   });
 
+  // Again after each backup of the open project (its versions and last backup change) and when
+  // it registers: the list is the server's, so it's asked again rather than patched here. Not
+  // when the mirror first arrives (that's the state the first load already shows).
+  let seen: string | null = null;
+  $effect(() => {
+    const p = cloud.view?.project;
+    if (!p) return;
+    const key = `${p.registered}|${p.lastBackupAt ?? ""}`;
+    if (seen !== null && seen !== key) void load();
+    seen = key;
+  });
+
   async function act(id: string, f: () => Promise<unknown>) {
     if (busy) return;
     busy = id;
