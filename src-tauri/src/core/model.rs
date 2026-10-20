@@ -664,6 +664,8 @@ pub struct CloudView {
     pub project: Option<CloudProjectView>,
     /// A restore running or just finished (one at a time; open project or not).
     pub restore: Option<CloudRestoreView>,
+    /// Today's upload allowance is used: automatic backups continue at this time (RFC 3339).
+    pub held_until: Option<String>,
 }
 
 /// How a version is restored (CLOUD_PROJECTS.md §10 "Restoring").

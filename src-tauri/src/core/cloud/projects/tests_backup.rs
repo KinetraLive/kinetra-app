@@ -54,6 +54,8 @@ pub(super) struct Fake {
     // Knobs.
     expire_next_puts: u32,
     storage_full: bool,
+    /// Checks refused with `daily_upload_limit` (when anything is missing).
+    daily_limit: bool,
     force_missing_once: bool,
     refuse_path: Option<String>,
     put_delay: Duration,
@@ -163,7 +165,8 @@ async fn handle(
                 "limit_bytes": 200_000_000u64, "percent": 0, "warn_percent": 80,
                 "projects": {"used": f.projects.len(), "limit": 100},
                 "max_file_bytes": 5_000_000_000u64, "retention_days": 30, "kept_per_project": 50,
-                "upload_today": {"used_bytes": 0, "limit_bytes": 300_000_000u64},
+                "upload_today": {"used_bytes": 0, "limit_bytes": 300_000_000u64,
+                                 "resets_at": "2099-01-01T00:00:00Z"},
                 "client": {"backup_interval_s": 300, "on_air": "pause", "on_air_limit_kbps": 2000,
                            "multipart_threshold_bytes": THRESHOLD, "part_size_bytes": PART}}),
             )
@@ -198,6 +201,9 @@ async fn handle(
                 }
                 if f.storage_full {
                     return err(403, "storage_full", json!({"quota": {}}));
+                }
+                if f.daily_limit {
+                    return err(403, "daily_upload_limit", json!({"quota": {}}));
                 }
                 let upload = if size <= THRESHOLD {
                     json!({"kind": "put", "url": format!("{}/r2/blob/{sha}?X-Amz-Signature=sig", f.base),
@@ -1362,4 +1368,106 @@ fn the_history_needs_a_backed_up_project() {
     let e = env();
     let er = e.rt_block(e.st.cloud_versions(None)).unwrap_err();
     assert_eq!(er.to_string(), "This project has no cloud backup yet.");
+}
+
+fn commits(e: &Env) -> usize {
+    e.fake.lock().unwrap().versions.len()
+}
+
+#[test]
+fn a_full_account_pauses_automatic_backups_and_back_up_now_still_commits() {
+    let e = env();
+    e.st.set_test_cloud_interval(Some(Duration::from_millis(100)));
+    e.write("a.txt", b"x");
+    e.backup();
+    e.fake.lock().unwrap().quota_state = "full".into();
+    e.rt_block(e.st.cloud_refresh(false)).unwrap();
+    // A change while full: nothing runs by itself (no version every interval).
+    own_write(&e, "screens/x.json", b"{}");
+    std::thread::sleep(Duration::from_millis(500));
+    assert_eq!(commits(&e), 1);
+    assert!(!reasons(&e).contains(&"auto".to_string()));
+    // "Back up now" still commits what storage has, and says why the rest waits.
+    e.fake.lock().unwrap().storage_full = true;
+    e.write("big.bin", &bytes(10_000, 5));
+    let v = e.backup();
+    assert_eq!(commits(&e), 2);
+    assert!(v
+        .project
+        .unwrap()
+        .error
+        .unwrap()
+        .starts_with("Cloud storage is full"));
+    // Room again (versions deleted, or a bigger plan): the waiting changes back up by themselves.
+    {
+        let mut f = e.fake.lock().unwrap();
+        f.storage_full = false;
+        f.quota_state = "ok".into();
+    }
+    e.rt_block(e.st.cloud_refresh(false)).unwrap();
+    wait_until("auto backup", || {
+        reasons(&e).last().map(String::as_str) == Some("auto")
+    });
+    e.wait_done();
+    assert!(e.paths().contains(&"big.bin".to_string()));
+}
+
+#[test]
+fn a_used_up_daily_allowance_holds_automatic_backups_until_it_resets() {
+    let e = env();
+    e.st.set_test_cloud_interval(Some(Duration::from_millis(100)));
+    e.rt_block(e.st.cloud_refresh(false)).unwrap();
+    // The reset comes 800 ms after the refusal here.
+    e.st.cloud_projects()
+        .set_test_retry(Some(Duration::from_millis(800)));
+    e.fake.lock().unwrap().daily_limit = true;
+    own_write(&e, "assets/a.bin", &bytes(1_000, 3));
+    wait_until("held", || e.st.cloud_held());
+    e.wait_done();
+    let autos = |e: &Env| reasons(e).iter().filter(|r| *r == "auto").count();
+    assert_eq!(
+        autos(&e),
+        1,
+        "the refused backup committed what storage had"
+    );
+    assert_eq!(e.view().held_until.as_deref(), Some("2099-01-01T00:00:00Z"));
+    // No retry every interval while held.
+    std::thread::sleep(Duration::from_millis(400));
+    assert_eq!(autos(&e), 1);
+    // A new day: the file goes up by itself.
+    e.fake.lock().unwrap().daily_limit = false;
+    wait_until("released", || !e.st.cloud_held());
+    wait_until("backed up", || autos(&e) == 2);
+    e.wait_done();
+    assert!(e.paths().contains(&"assets/a.bin".to_string()));
+    assert_eq!(e.view().held_until, None);
+}
+
+#[test]
+fn a_lapsed_plan_is_read_only_and_the_history_still_loads() {
+    let e = env();
+    e.st.set_test_cloud_interval(Some(Duration::from_millis(100)));
+    e.write("a.txt", b"x");
+    e.backup();
+    e.fake.lock().unwrap().quota_state = "lapsed".into();
+    e.rt_block(e.st.cloud_refresh(false)).unwrap();
+    // No automatic backup for a change; "Back up now" says why and sends nothing.
+    own_write(&e, "screens/x.json", b"{}");
+    std::thread::sleep(Duration::from_millis(400));
+    assert_eq!(commits(&e), 1);
+    let v = e.backup();
+    assert_eq!(commits(&e), 1);
+    assert!(v
+        .project
+        .unwrap()
+        .error
+        .unwrap()
+        .starts_with("Your plan no longer includes cloud backup"));
+    // Reading still works (and downloads: see tests_restore).
+    let page = e.rt_block(e.st.cloud_versions(None)).unwrap();
+    assert_eq!(page.versions.len(), 1);
+    // The plan is back: the change made meanwhile goes up by itself.
+    e.fake.lock().unwrap().quota_state = "ok".into();
+    e.rt_block(e.st.cloud_refresh(false)).unwrap();
+    wait_until("auto backup", || commits(&e) == 2);
 }

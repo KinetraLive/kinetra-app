@@ -30,6 +30,15 @@ export function stateWords(view: CloudView | null): StateWords | null {
   if (!view || view.access !== "available") return null;
   if (view.offline) return { text: "Cloud backup: offline, will retry.", tone: "plain" };
   const q = view.quota;
+  if (view.heldUntil && view.state !== "lapsed" && view.state !== "full") {
+    const at = when(view.heldUntil);
+    return {
+      text: at
+        ? `Today's cloud upload allowance is used. Backups continue ${at}.`
+        : "Today's cloud upload allowance is used. Backups continue tomorrow.",
+      tone: "plain",
+    };
+  }
   switch (view.state) {
     case "warning":
       return { text: `Cloud storage is ${q?.percent ?? q?.warnPercent ?? 80}% full.`, tone: "warning" };
@@ -57,6 +66,24 @@ export function retentionWords(view: CloudView | null): string | null {
   const q = view?.quota;
   if (!q?.retentionDaysNext || !q.retentionFrom) return null;
   return `Versions older than ${q.retentionDaysNext} days are deleted from ${day(q.retentionFrom)}.`;
+}
+
+/** Lapsed: backups can be listed, downloaded and deleted, nothing else (§10.2). */
+export function readOnly(view: CloudView | null): boolean {
+  return view?.state === "lapsed";
+}
+
+/** What the upgrade offer says, when there is one (lapsed, full, not in the plan). */
+export function upgradeWords(view: CloudView | null): string | null {
+  switch (view?.state) {
+    case "lapsed":
+    case "notInPlan":
+      return "Upgrade to Pro";
+    case "full":
+      return "Get more storage";
+    default:
+      return null;
+  }
 }
 
 export interface Choice {
@@ -148,22 +175,30 @@ export interface ChipWords {
   tone: "plain" | "warning";
   /** The one-time "Backing up to the cloud" notice. */
   notice?: boolean;
+  /** A restore runs (shown even when the project's backup is off). */
+  restore?: boolean;
 }
 
-/** The top bar chip for the open project, or null when cloud backup isn't on for it. */
+/** The top bar chip for the open project: while it backs up, or while a restore runs; null
+ * otherwise (and when the plan has no cloud backup: the offer is in Preferences). */
 export function chipWords(view: CloudView | null): ChipWords | null {
   const p = view?.project;
-  if (!view || view.access !== "available" || !p || !p.backup) return null;
+  if (!view || view.access !== "available" || !p) return null;
   const say = (text: string, tone: ChipWords["tone"] = "plain", label = text): ChipWords => ({ text, label, tone });
-  if (p.question) return say("Cloud backup needs an answer", "warning", questionWords(p.question).text);
+  if (p.backup && p.question) return say("Cloud backup needs an answer", "warning", questionWords(p.question).text);
   const r = view.restore;
-  if (r && !r.result) return say(restoreWords(r), r.paused ? "warning" : "plain");
+  if (r && !r.result) return { ...say(restoreWords(r), r.paused ? "warning" : "plain"), restore: true };
+  if (!p.backup || view.state === "notInPlan") return null;
   if (p.run) return say(runWords(p.run), p.run.paused ? "warning" : "plain");
   if (!p.noticeSeen) return { ...say("Backing up to the cloud"), notice: true };
   if (view.offline) return say("Cloud backup: offline", "warning", "Cloud backup: offline, will retry.");
-  if (p.error) return say("Last backup didn't finish", "warning", p.error);
   const state = stateWords(view);
-  if (state) return say(view.state === "warning" ? "Cloud storage almost full" : "Cloud backup paused", state.tone, state.text);
+  // Paused by the account's state (lapsed, full, today's allowance used): that says more than
+  // the last backup's error, which is what paused it.
+  const paused = view.state === "lapsed" || view.state === "full" || !!view.heldUntil;
+  if (state && paused) return say("Cloud backup paused", state.tone, state.text);
+  if (p.error) return say("Last backup didn't finish", "warning", p.error);
+  if (state) return say("Cloud storage almost full", state.tone, state.text);
   if (p.conflict) return say("Backed up on two computers", "plain", conflictWords(p.conflict));
   const last = lastWords(p.lastBackupAt);
   return last ? say(last) : say("Not backed up yet");

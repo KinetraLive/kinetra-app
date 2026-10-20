@@ -291,6 +291,11 @@ impl AppState {
             });
             st.cloud_backup_finished(&target, result.is_ok());
             st.emit_cloud();
+            // Stopped on the account's state (full, read-only, not in the plan): the quota says
+            // what it is now, and the schedule follows it.
+            if matches!(result, Err(Fail::Message(_))) {
+                st.cloud_refresh_soon();
+            }
         });
         self.cloud_backup_state(&dir, |b| b.task = Some((task.abort_handle(), cancel)));
         self.emit_cloud();
@@ -358,6 +363,16 @@ impl AppState {
             task.abort();
         }
         self.cloud_gate_active(false);
+    }
+
+    /// Storage refused new bytes: today's allowance used (automatic backups wait for tomorrow) or
+    /// the account full (the quota shows it, which pauses them).
+    async fn cloud_refused(&self, code: &str) {
+        if code == "daily_upload_limit" {
+            self.cloud_hold_uploads().await;
+        } else {
+            self.cloud_refresh_soon();
+        }
     }
 
     /// Whether a closed project's backup runs (tests).
@@ -567,7 +582,10 @@ impl AppState {
             b.skipped = skipped;
         });
         match refused {
-            Some(code) => Err(CallError::api(403, &code).into()),
+            Some(code) => {
+                self.cloud_refused(&code).await;
+                Err(CallError::api(403, &code).into())
+            }
             None => Ok(()),
         }
     }
@@ -1119,7 +1137,8 @@ impl AppState {
                     match self.cloud_upload_all(run, &need, report, &mut stored).await {
                         Ok(()) => {}
                         Err(UploadStop::Refused(code)) => {
-                            return Err(CallError::api(403, &code).into())
+                            self.cloud_refused(&code).await;
+                            return Err(CallError::api(403, &code).into());
                         }
                         Err(UploadStop::Fail(f)) => return Err(f),
                     }

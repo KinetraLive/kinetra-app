@@ -3,8 +3,10 @@
   project backs up (a lazy chunk). A cloud icon and quiet words (`chipWords`: a question first,
   then work in progress, the one-time "Backing up to the cloud" notice, problems, then "Last
   backup …"); the popover has the whole sentence, the question's choices, the notice's Turn off /
-  OK, the conflict's Open the other version (the history's restore) and Dismiss, Back up now and a
-  link to Preferences › Cloud backup. Never modal,
+  OK, the conflict's Open the other version (the history's restore) and Dismiss, Back up now, the
+  upgrade offer (lapsed, full) and a link to Preferences › Cloud backup; while a restore runs (also
+  with the project's backup off): its progress and Cancel. Read-only (lapsed): no Back up now or
+  Dismiss (the server refuses them). Never modal,
   never opens by itself.
   Props: none (reads `cloud`, which the top bar watches).
 -->
@@ -13,19 +15,25 @@
   import Button from "$lib/components/Button.svelte";
   import { toAppError } from "$lib/api";
   import { cloudAnswer, cloudBackupNow, cloudConflictDismiss, cloudNoticeSeen, cloudSetBackup } from "$lib/api/cloud-backup";
+  import { cloudLinks } from "$lib/api/license";
+  import { openInBrowser } from "$lib/components/license/open";
   import { preferencesLink } from "$lib/components/settings/open";
   import { toasts } from "$lib/stores/toasts.svelte";
   import type { CloudAnswer } from "$lib/types";
   import { cloud } from "./state.svelte";
   import { openHistory } from "./history/host";
-  import { chipWords, conflictWords, questionWords } from "./words";
+  import { chipWords, conflictWords, questionWords, readOnly, upgradeWords } from "./words";
 
   const id = $props.id();
   let pop: HTMLDivElement | undefined = $state();
   const view = $derived(cloud.view);
   const chip = $derived(chipWords(view));
   const project = $derived(view?.project ?? null);
-  const question = $derived(project?.question ? questionWords(project.question) : null);
+  const question = $derived(project?.question && project.backup ? questionWords(project.question) : null);
+  const locked = $derived(readOnly(view));
+  const upgrade = $derived(upgradeWords(view));
+  /** Cancels the running restore (lazy: the restore API is its own module). */
+  const cancelRestore = () => act(() => import("$lib/api/cloud-restore").then((m) => m.cloudRestoreCancel()));
 
   let busy = $state(false);
   async function act(f: () => Promise<unknown>) {
@@ -63,6 +71,18 @@
           <Button size="sm" variant={c.primary ? "primary" : undefined} disabled={busy} onclick={() => answer(c.answer)}>{c.label}</Button>
         {/each}
       </div>
+    {:else if chip.restore}
+      <div class="row">
+        <Button size="sm" disabled={busy} onclick={cancelRestore}>Cancel restore</Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          onclick={() => {
+            pop?.hidePopover?.();
+            openHistory();
+          }}>Version history…</Button
+        >
+      </div>
     {:else if chip.notice}
       <div class="row">
         <Button size="sm" variant="primary" disabled={busy} onclick={() => act(cloudNoticeSeen)}>OK</Button>
@@ -73,7 +93,9 @@
         <p class="more">{conflictWords(project.conflict)}</p>
       {/if}
       <div class="row">
-        <Button size="sm" disabled={busy || !!project.run} onclick={() => act(cloudBackupNow)}>Back up now</Button>
+        {#if !locked}
+          <Button size="sm" disabled={busy || !!project.run} onclick={() => act(cloudBackupNow)}>Back up now</Button>
+        {/if}
         <Button
           size="sm"
           variant="ghost"
@@ -92,8 +114,13 @@
             }}>Open the other version</Button
           >
         {/if}
-        {#if project.conflict}
+        {#if project.conflict && !locked}
           <Button size="sm" disabled={busy} onclick={() => act(cloudConflictDismiss)}>Dismiss</Button>
+        {/if}
+        {#if upgrade}
+          <Button size="sm" variant="ghost" onclick={() => act(() => cloudLinks().then((l) => openInBrowser(l.pricing)))}
+            >{upgrade}</Button
+          >
         {/if}
       </div>
     {/if}

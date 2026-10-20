@@ -15,6 +15,12 @@ vi.mock("$lib/api/cloud", () => api);
 vi.mock("$lib/api/cloud-backup", () => api);
 vi.mock("$lib/api", () => ({ on: () => () => {}, toAppError: (e: unknown) => ({ message: String(e) }) }));
 vi.mock("$lib/components/settings/open", () => ({ preferencesLink: () => () => {} }));
+const links = vi.hoisted(() => ({ cloudLinks: vi.fn(async () => ({ pricing: "https://kinetra.live/pricing" })) }));
+vi.mock("$lib/api/license", () => links);
+const browser = vi.hoisted(() => ({ openInBrowser: vi.fn(async () => {}) }));
+vi.mock("$lib/components/license/open", () => browser);
+const restoreApi = vi.hoisted(() => ({ cloudRestoreCancel: vi.fn(async () => {}) }));
+vi.mock("$lib/api/cloud-restore", () => restoreApi);
 const host = vi.hoisted(() => ({ openHistory: vi.fn() }));
 vi.mock("./history/host", () => host);
 
@@ -36,7 +42,7 @@ const project: CloudProjectView = {
   conflict: null,
 };
 
-function show(p: Partial<CloudProjectView>) {
+function show(p: Partial<CloudProjectView>, v: Partial<CloudView> = {}) {
   cloud.view = {
     access: "available",
     state: "ok",
@@ -46,6 +52,8 @@ function show(p: Partial<CloudProjectView>) {
     settings: { onAir: "pause", limitKbps: 2000, intervalS: 300, newProjects: true },
     project: { ...project, ...p },
     restore: null,
+    heldUntil: null,
+    ...v,
   } satisfies CloudView;
   render(CloudChip);
 }
@@ -87,6 +95,42 @@ describe("cloud chip", () => {
     show({ conflict: { machine: "STUDIO-PC", at: null, versionId: "v2", otherVersionId: "v1" } });
     await fireEvent.click(screen.getByRole("button", { name: "Open the other version", hidden: true }));
     expect(host.openHistory).toHaveBeenCalledWith("v1");
+  });
+
+  it("read-only (lapsed): no Back up now or Dismiss, the upgrade offer instead", async () => {
+    show(
+      { conflict: { machine: "STUDIO-PC", at: null, versionId: "v2", otherVersionId: "v1" } },
+      { state: "lapsed", quota: null },
+    );
+    expect(screen.getByRole("button", { name: /no longer includes cloud backup/ })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Back up now", hidden: true })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Dismiss", hidden: true })).toBeNull();
+    expect(screen.getByRole("button", { name: "Open the other version", hidden: true })).toBeTruthy();
+    await fireEvent.click(screen.getByRole("button", { name: "Upgrade to Pro", hidden: true }));
+    await waitFor(() => expect(browser.openInBrowser).toHaveBeenCalledWith("https://kinetra.live/pricing"));
+  });
+
+  it("shows a restore with the project's backup off, and cancels it", async () => {
+    show(
+      { backup: false },
+      {
+        restore: {
+          mode: "newFolder",
+          versionId: "v1",
+          folder: "C:\Shows\gala-old",
+          phase: "downloading",
+          doneBytes: 1,
+          totalBytes: 4,
+          paused: false,
+          limited: false,
+          result: null,
+        },
+      },
+    );
+    expect(screen.getByRole("button", { name: "Restoring… 25%" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Back up now", hidden: true })).toBeNull();
+    await fireEvent.click(screen.getByRole("button", { name: "Cancel restore", hidden: true }));
+    await waitFor(() => expect(restoreApi.cloudRestoreCancel).toHaveBeenCalled());
   });
 
   it("isn't there when the project doesn't back up", () => {

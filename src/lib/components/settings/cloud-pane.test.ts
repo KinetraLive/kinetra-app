@@ -57,6 +57,7 @@ const base: CloudView = {
   },
   settings: { onAir: "pause", limitKbps: 2000, intervalS: 300, newProjects: true },
   restore: null,
+  heldUntil: null,
   project: { backup: true, registered: true, serverId: "p1", noticeSeen: true, question: null, issue: null, run: null, lastBackupAt: null, report: [], skipped: 0, error: null, conflict: null },
 };
 

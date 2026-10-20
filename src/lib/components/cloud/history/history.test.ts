@@ -17,6 +17,7 @@ vi.mock("$lib/api", () => ({ on: () => () => {}, toAppError: (e: unknown) => ({ 
 vi.mock("$lib/api/cloud", () => ({ cloudView: vi.fn(() => new Promise(() => {})) }));
 
 import HistoryDialog from "./HistoryDialog.svelte";
+import { cloud } from "../state.svelte";
 
 const v = (id: string, patch: Partial<CloudVersionView> = {}): CloudVersionView => ({
   id,
@@ -46,11 +47,38 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  cloud.view = null;
 });
 
 const rowOf = (text: string) => screen.getByText(text).closest("li") as HTMLElement;
 
 describe("version history", () => {
+  it("read-only (lapsed): says until when, no Keep or Label; a shorter history is announced", async () => {
+    cloud.view = {
+      access: "available",
+      state: "lapsed",
+      offline: false,
+      checkedAt: 1,
+      quota: {
+        plan: null, usedBytes: 0, pendingBytes: 0, limitBytes: 0, percent: 0, warnPercent: 80, projectsUsed: 1,
+        projectsLimit: 0, maxFileBytes: 0, retentionDays: 30, keptPerProject: 0, uploadTodayUsed: 0, uploadTodayLimit: 0,
+        uploadTodayResetsAt: null, purgeAt: "2027-01-18T00:00:00Z", retentionDaysNext: 7, retentionFrom: "2026-11-14T00:00:00Z",
+      },
+      settings: { onAir: "pause", limitKbps: 2000, intervalS: 300, newProjects: true },
+      project: null,
+      restore: null,
+      heldUntil: null,
+    };
+    api.cloudVersions.mockResolvedValue({ versions: [v("a", { isHead: true }), v("b", { label: "Old" })], next: null });
+    render(HistoryDialog, { open: true, onclose: () => {} });
+    const row = rowOf(await screen.findByText("Old").then((e) => e.textContent!));
+    expect(screen.getByText(/can be downloaded until Jan 1[78], 2027/)).toBeTruthy();
+    expect(screen.getByText(/Versions older than 7 days are deleted from Nov 1[34], 2026/)).toBeTruthy();
+    expect(within(row).queryByRole("button", { name: "Keep" })).toBeNull();
+    expect(within(row).queryByRole("button", { name: "Label" })).toBeNull();
+    expect(within(row).getByRole("button", { name: "Delete version" })).toBeTruthy();
+  });
+
   it("lists versions with their marks; the newest can't be deleted", async () => {
     api.cloudVersions.mockResolvedValue({
       versions: [v("a", { isHead: true, label: "After soundcheck" }), v("b", { kept: true, expiresAt: null }), v("c", { expiresAt: "2026-11-14T12:00:00Z" })],

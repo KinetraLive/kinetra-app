@@ -52,6 +52,11 @@ pub(super) struct Svc {
     sent: Option<CloudView>,
     /// The open project (see `identity`).
     pub(super) project: Option<super::identity::OpenProject>,
+    /// Today's upload allowance is used (`daily_upload_limit`): automatic backups wait until this
+    /// time (RFC 3339, the quota's `upload_today.resets_at`), and the sleeping task that ends the
+    /// wait.
+    pub(super) held_until: Option<String>,
+    hold: Option<AbortHandle>,
     /// The restore running or just finished (see `restore`).
     pub(super) restore: Option<super::restore::RestoreState>,
     /// Backups of projects that were closed with changes not in the cloud (folder, task, cancel).
@@ -72,6 +77,9 @@ pub struct CloudProjects {
     pub(super) slot: tokio::sync::Mutex<()>,
     /// Backups may run by themselves now (see `schedule`); read by the change hook.
     pub(super) armed: std::sync::atomic::AtomicBool,
+    /// Changes are recorded (the open project's backup is on for a signed-in account), also while
+    /// automatic backups are paused (full, held, offline, lapsed), so they go up once they may.
+    pub(super) tracking: std::sync::atomic::AtomicBool,
     /// The change hook (registered weakly with `fsx`; kept alive here).
     pub(super) hook: std::sync::OnceLock<std::sync::Arc<crate::core::fsx::ChangeHook>>,
     /// Tests: the wait after the last change instead of the server's interval.
@@ -223,6 +231,7 @@ impl AppState {
             },
             project,
             restore: s.restore.as_ref().map(|r| r.view.clone()),
+            held_until: s.held_until.clone().filter(|_| shown),
         }
     }
 
@@ -349,6 +358,75 @@ impl AppState {
         }
     }
 
+    /// A backup was refused because today's upload allowance is used: automatic backups wait until
+    /// it resets (one sleeping task; the quota says when). A manual backup still commits what
+    /// storage has.
+    pub(super) async fn cloud_hold_uploads(&self) {
+        let _ = self.cloud_refresh(false).await;
+        let until = self
+            .cloud_quota()
+            .and_then(|q| q.upload_today.resets_at)
+            .and_then(|t| {
+                time::OffsetDateTime::parse(&t, &time::format_description::well_known::Rfc3339)
+                    .ok()
+                    .map(|at| (t, at))
+            });
+        // Without a time from the server: an hour.
+        let (text, at) = until.unwrap_or_else(|| {
+            let at = time::OffsetDateTime::now_utc() + time::Duration::hours(1);
+            let text = at
+                .format(&time::format_description::well_known::Rfc3339)
+                .unwrap_or_default();
+            (text, at)
+        });
+        let wait = lock(&self.cloud_projects().test_retry).unwrap_or_else(|| {
+            let left = at - time::OffsetDateTime::now_utc();
+            std::time::Duration::try_from(left).unwrap_or_default()
+        });
+        let Some(rt) = self.live().runtime_handle() else {
+            return;
+        };
+        let weak = self.downgrade();
+        let task = rt.spawn(async move {
+            tokio::time::sleep(wait).await;
+            let Some(st) = weak.upgrade() else { return };
+            {
+                let mut s = lock(&st.cloud_projects().inner);
+                s.held_until = None;
+                s.hold = None;
+            }
+            // A fresh quota (a new day's allowance), then the schedule carries on.
+            let _ = st.cloud_refresh(false).await;
+        });
+        {
+            let mut s = lock(&self.cloud_projects().inner);
+            s.held_until = Some(text);
+            if let Some(old) = s.hold.replace(task.abort_handle()) {
+                old.abort();
+            }
+        }
+        self.emit_cloud();
+    }
+
+    /// Whether automatic backups wait for tomorrow's upload allowance.
+    pub fn cloud_held(&self) -> bool {
+        lock(&self.cloud_projects().inner).held_until.is_some()
+    }
+
+    /// Asks for the quota again in the background (after the account's storage changed: a
+    /// version or project deleted, a backup refused).
+    pub(super) fn cloud_refresh_soon(&self) {
+        let Some(rt) = self.live().runtime_handle() else {
+            return;
+        };
+        let weak = self.downgrade();
+        rt.spawn(async move {
+            if let Some(st) = weak.upgrade() {
+                let _ = st.cloud_refresh(false).await;
+            }
+        });
+    }
+
     /// After a license sync: ask for the quota when signed in and allowed (in the background).
     pub(crate) fn cloud_projects_after_sync(&self, reached: bool) {
         if !reached || self.cloud_access() != CloudAccess::Available {
@@ -383,6 +461,10 @@ impl AppState {
             if let Some(t) = s.retry.take() {
                 t.abort();
             }
+            s.held_until = None;
+            if let Some(t) = s.hold.take() {
+                t.abort();
+            }
         }
         self.emit_cloud();
     }
@@ -391,7 +473,11 @@ impl AppState {
     pub fn cloud_projects_stop(&self) {
         self.cloud_restore_cancel();
         self.cloud_backup_cancel_all();
-        if let Some(t) = lock(&self.cloud_projects().inner).retry.take() {
+        let mut s = lock(&self.cloud_projects().inner);
+        if let Some(t) = s.retry.take() {
+            t.abort();
+        }
+        if let Some(t) = s.hold.take() {
             t.abort();
         }
     }

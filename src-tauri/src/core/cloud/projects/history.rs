@@ -173,7 +173,10 @@ impl AppState {
         let (api, session, _) = self.cloud_session_parts()?;
         api.cloud_delete_version(&session, &pid, version_id)
             .await
-            .map_err(friendly)
+            .map_err(friendly)?;
+        // Storage may have room again (a full account's backups carry on).
+        self.cloud_refresh_soon();
+        Ok(())
     }
 
     // ---- The account's projects ----
@@ -230,6 +233,7 @@ impl AppState {
         self.cloud_history_access()?;
         let (api, session, _) = self.cloud_session_parts()?;
         let p = api.cloud_trash(&session, id).await?;
+        self.cloud_refresh_soon();
         let summary = self.summary(p);
         if summary.open {
             if let Some((dir, _)) = self.project_cloud_id() {

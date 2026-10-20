@@ -13,6 +13,8 @@
   import Button from "$lib/components/Button.svelte";
   import Switch from "$lib/components/Switch.svelte";
   import { projectLine } from "$lib/components/cloud/history/words";
+  import { cloud } from "$lib/components/cloud/state.svelte";
+  import { readOnly } from "$lib/components/cloud/words";
   import { toasts } from "$lib/stores/toasts.svelte";
   import type { CloudProjectSummary } from "$lib/types";
 
@@ -23,6 +25,8 @@
   let renaming = $state<string | null>(null);
   let nameText = $state("");
   let trashing = $state<string | null>(null);
+  /** Lapsed: renaming is refused (§10.2); deleting and downloading still work. */
+  const locked = $derived(readOnly(cloud.view));
 
   const visible = $derived((projects ?? []).filter((p) => showTrash || !p.trashedAt));
 
@@ -111,16 +115,18 @@
             <Button size="sm" variant="primary" disabled={busy === p.id} onclick={() => rename(p)}>Save</Button>
             <Button size="sm" variant="ghost" onclick={() => (renaming = null)}>Cancel</Button>
           {:else}
-            <Button
-              size="sm"
-              variant="ghost"
-              disabled={busy === p.id}
-              onclick={() => {
-                renaming = p.id;
-                nameText = p.name;
-                trashing = null;
-              }}>Rename</Button
-            >
+            {#if !locked}
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={busy === p.id}
+                onclick={() => {
+                  renaming = p.id;
+                  nameText = p.name;
+                  trashing = null;
+                }}>Rename</Button
+              >
+            {/if}
             <Button
               size="sm"
               variant="danger"

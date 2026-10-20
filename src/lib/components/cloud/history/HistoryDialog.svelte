@@ -5,6 +5,8 @@
   elsewhere, Damaged), what it holds, "Deleted on …" when the plan's history length removes it.
   Per version: Keep (retention never deletes it), Label (inline), Delete (inline confirm; not the
   newest), Restore… (a new folder, or replace this project: the lazy RestorePanel under the row).
+  Above the list: the account's state when it limits anything (lapsed: read-only, so no Keep or
+  Label; full) and a coming shorter history (retention change).
   `restore`: a version to offer restoring at once (the conflict notice's "Open the other version").
   Props: open, onclose, restore, openable (the main window: a restored folder can be opened).
 -->
@@ -27,6 +29,7 @@
   import { openFolder } from "$lib/projectFlow";
   import type { CloudVersionView } from "$lib/types";
   import { cloud } from "../state.svelte";
+  import { readOnly, retentionWords, stateWords } from "../words";
   import { byDay, expiresWords, timeLabel, versionBadges, versionFacts } from "./words";
 
   let {
@@ -38,6 +41,13 @@
 
   onMount(() => cloud.watch());
   const serverId = $derived(cloud.view?.project?.serverId ?? null);
+  const locked = $derived(readOnly(cloud.view));
+  const notes = $derived(
+    [
+      cloud.view?.state === "lapsed" || cloud.view?.state === "full" ? stateWords(cloud.view)?.text : null,
+      retentionWords(cloud.view),
+    ].filter((x): x is string => !!x),
+  );
   /** The version whose restore panel is open ("other": the `restore` prop's, at the top). */
   let restoring = $state<string | null>(null);
   const loadPanel = () => import("../restore/RestorePanel.svelte").then((m) => m.default);
@@ -163,6 +173,7 @@
     <IconButton label="Close" onclick={onclose}><X size={16} /></IconButton>
   </header>
   <div class="body">
+    {#each notes as n (n)}<p class="note" role="status">{n}</p>{/each}
     {#if restoring === "other" && restore && serverId}
       <section class="other">
         <h3 class="section-label">The other computer's version</h3>
@@ -241,16 +252,18 @@
               {/if}
             </div>
             <div class="actions">
-              <IconButton
-                label={v.kept ? "Don't keep" : "Keep"}
-                size="sm"
-                pressed={v.kept}
-                pressedFill={false}
-                disabled={busy === v.id}
-                onclick={() => keep(v)}
-              >
-                {#if v.kept}<PinOff size={14} />{:else}<Pin size={14} />{/if}
-              </IconButton>
+              {#if !locked}
+                <IconButton
+                  label={v.kept ? "Don't keep" : "Keep"}
+                  size="sm"
+                  pressed={v.kept}
+                  pressedFill={false}
+                  disabled={busy === v.id}
+                  onclick={() => keep(v)}
+                >
+                  {#if v.kept}<PinOff size={14} />{:else}<Pin size={14} />{/if}
+                </IconButton>
+              {/if}
               <IconButton
                 label="Restore…"
                 size="sm"
@@ -265,9 +278,11 @@
               >
                 <RotateCcw size={14} />
               </IconButton>
-              <IconButton label="Label" size="sm" disabled={busy === v.id} onclick={() => startLabel(v)}>
-                <Tag size={14} />
-              </IconButton>
+              {#if !locked}
+                <IconButton label="Label" size="sm" disabled={busy === v.id} onclick={() => startLabel(v)}>
+                  <Tag size={14} />
+                </IconButton>
+              {/if}
               {#if !v.isHead}
                 <IconButton
                   label="Delete version"
@@ -409,6 +424,11 @@
   }
   .other {
     align-self: stretch;
+  }
+  .note {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: var(--fs-sm);
   }
   @keyframes enter {
     from {

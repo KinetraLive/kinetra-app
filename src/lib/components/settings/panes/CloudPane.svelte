@@ -21,7 +21,7 @@
   import SettingsSection from "$lib/components/SettingsSection.svelte";
   import Switch from "$lib/components/Switch.svelte";
   import { cloud } from "$lib/components/cloud/state.svelte";
-  import { conflictWords, lastWords, questionWords, retentionWords, runWords, size, stateWords } from "$lib/components/cloud/words";
+  import { conflictWords, lastWords, questionWords, readOnly, retentionWords, runWords, size, stateWords, upgradeWords } from "$lib/components/cloud/words";
   import ProLock from "$lib/components/license/ProLock.svelte";
   import CloudProjects from "../cloud/CloudProjects.svelte";
   import { loadHistory } from "$lib/components/cloud/history/host";
@@ -97,6 +97,9 @@
       <p class="status" role="status">
         {#if words}
           <span class:warning={words.tone === "warning"}>{words.text}</span>
+          {#if upgradeWords(view)}
+            <Button size="sm" onclick={() => void cloudLinks().then((l) => openInBrowser(l.pricing))}>{upgradeWords(view)}</Button>
+          {/if}
         {:else if view.state === "notInPlan"}
           <span>Cloud backup is part of Kinetra Pro.</span>
           <Button size="sm" onclick={() => void cloudLinks().then((l) => openInBrowser(l.pricing))}>Upgrade to Pro</Button>
@@ -176,7 +179,7 @@
           <SettingsRow label="Another computer">
             <p class="status">
               <span>{conflictWords(project.conflict)}</span>
-              <Button size="sm" disabled={busy} onclick={dismiss}>Dismiss</Button>
+              {#if !readOnly(view)}<Button size="sm" disabled={busy} onclick={dismiss}>Dismiss</Button>{/if}
             </p>
           </SettingsRow>
         {/if}

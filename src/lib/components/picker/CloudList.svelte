@@ -2,7 +2,8 @@
   The picker's "In the cloud" (a lazy chunk, loaded when the panel opens): the account's cloud
   projects, each with Download (the shared RestorePanel: a new folder that continues the same cloud
   backup). Signed out: a way to sign in; without Pro: "Check for backups" (asks the server once, so
-  a lapsed plan can still download). The core decides access; this only shows what it says.
+  a lapsed plan can still download, and is told until when). The core decides access; this only
+  shows what it says.
   Props: id, onopened(folder) (after Open project).
 -->
 <script lang="ts">
@@ -12,12 +13,15 @@
   import { cloudProjectsList } from "$lib/api/cloud-history";
   import Button from "$lib/components/Button.svelte";
   import { projectLine } from "$lib/components/cloud/history/words";
+  import { stateWords } from "$lib/components/cloud/words";
   import { preferencesLink } from "$lib/components/settings/open";
   import type { CloudAccess, CloudProjectSummary } from "$lib/types";
 
   let { id, onopened }: { id: string; onopened: (folder: string) => void } = $props();
 
   let access = $state<CloudAccess | null>(null);
+  /** Lapsed: until when the backups can be downloaded. */
+  let note = $state<string | null>(null);
   let projects = $state.raw<CloudProjectSummary[] | null>(null);
   let error = $state<string | null>(null);
   let busy = $state(false);
@@ -30,8 +34,10 @@
     error = null;
     try {
       const v = check ? await cloudRefresh(true) : await cloudView();
-      access = v.access;
-      projects = v.access === "available" ? await cloudProjectsList(false) : null;
+      // No cloud backup in the plan and nothing stored: the same offer as without Pro.
+      access = v.access === "available" && v.state === "notInPlan" ? "free" : v.access;
+      note = v.state === "lapsed" ? (stateWords(v)?.text ?? null) : null;
+      projects = access === "available" ? await cloudProjectsList(false) : null;
     } catch (e) {
       error = toAppError(e).message;
     } finally {
@@ -52,6 +58,11 @@
   {:else if access === "free"}
     <p class="msg">Cloud backup is part of Kinetra Pro.</p>
     <div><Button size="sm" disabled={busy} onclick={() => load(true)}>Check for backups</Button></div>
+  {:else if note}
+    <p class="msg">{note}</p>
+  {/if}
+  {#if error || access !== "available"}
+    <!-- said above -->
   {:else if projects && projects.length === 0}
     <p class="msg">No projects are backed up to the cloud yet.</p>
   {:else if projects}

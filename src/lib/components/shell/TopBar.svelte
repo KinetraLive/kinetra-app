@@ -60,7 +60,7 @@
     {#if loadChip && remote.view?.on}
       {#await loadChip() then Chip}<Chip />{/await}
     {/if}
-    {#if cloud.view?.access === "available" && cloud.view.project?.backup}
+    {#if cloud.view?.access === "available" && (cloud.view.project?.backup || (cloud.view.project && cloud.view.restore && !cloud.view.restore.result))}
       {#await loadCloudChip() then CloudChip}<CloudChip />{/await}
     {/if}
     <div class="status" role="status">

@@ -87,16 +87,21 @@ impl AppState {
         let _ = self.cloud_projects().hook.set(hook);
     }
 
-    /// Whether backups may run by themselves now: signed in with cloud backup, a writable state,
-    /// the open project's backup on. Kept in `armed` by every view update (`emit_cloud`).
+    /// Whether backups may run by themselves now: signed in with cloud backup, room in storage
+    /// (`ok` / `warning`: a full account is paused, §2.5, though "Back up now" still commits what
+    /// storage has), today's upload allowance not used up, the open project's backup on. Kept in
+    /// `armed` by every view update (`emit_cloud`).
     pub(super) fn cloud_schedule_follow(&self, view: &crate::core::model::CloudView) {
         let armed = view.access == CloudAccess::Available
-            && matches!(
-                view.state,
-                Some(QuotaState::Ok | QuotaState::Warning | QuotaState::Full)
-            )
+            && matches!(view.state, Some(QuotaState::Ok | QuotaState::Warning))
+            && view.held_until.is_none()
             && !view.offline
             && view.project.as_ref().is_some_and(|p| p.backup);
+        let tracking = view.access == CloudAccess::Available
+            && view.project.as_ref().is_some_and(|p| p.backup);
+        self.cloud_projects()
+            .tracking
+            .store(tracking, Ordering::Relaxed);
         let was = self.cloud_projects().armed.swap(armed, Ordering::Relaxed);
         if armed && !was {
             // Changes waiting from before (an earlier session, or while it was off).
@@ -115,7 +120,7 @@ impl AppState {
     /// The change hook: Kinetra wrote `path`.
     fn cloud_touch_path(&self, path: &Path) {
         let c = self.cloud_projects();
-        if !c.armed.load(Ordering::Relaxed) {
+        if !c.tracking.load(Ordering::Relaxed) {
             return;
         }
         let in_project = {
@@ -130,12 +135,14 @@ impl AppState {
         }
     }
 
-    /// Something in the open project changed (an own write, or an outside edit).
+    /// Something in the open project changed (an own write, or an outside edit). Recorded while
+    /// the project's backup is on; the timer starts only while backups may run (`armed`).
     pub(crate) fn cloud_touch(&self) {
         let c = self.cloud_projects();
-        if !c.armed.load(Ordering::Relaxed) {
+        if !c.tracking.load(Ordering::Relaxed) {
             return;
         }
+        let armed = c.armed.load(Ordering::Relaxed);
         let (mark, arm, cloud_id) = {
             let mut s = lock(&c.inner);
             let Some(p) = s.project.as_mut() else { return };
@@ -143,7 +150,7 @@ impl AppState {
             p.sched.changed_at = Some(Instant::now());
             let mark = !p.sched.marked;
             p.sched.marked = true;
-            (mark, p.sched.timer.is_none(), p.cloud_id.clone())
+            (mark, armed && p.sched.timer.is_none(), p.cloud_id.clone())
         };
         if !(mark || arm) {
             return;
@@ -241,7 +248,9 @@ impl AppState {
                 p.sched.changed_at = None;
                 (true, false)
             } else {
-                (false, p.sched.marked && !waiting)
+                // Paused (full, held, offline…): the change waits, and arming follows the state.
+                let armed = self.cloud_projects().armed.load(Ordering::Relaxed);
+                (false, p.sched.marked && !waiting && armed)
             }
         };
         if clear {

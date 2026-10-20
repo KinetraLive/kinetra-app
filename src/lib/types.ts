@@ -297,6 +297,8 @@ export interface CloudView {
   project: CloudProjectView | null;
   /** A restore running or just finished (one at a time; open project or not). */
   restore: CloudRestoreView | null;
+  /** Today's upload allowance is used: automatic backups continue at this time (RFC 3339). */
+  heldUntil: string | null;
 }
 
 /** How a version is restored: a separate project in a new folder, the same cloud project in a new

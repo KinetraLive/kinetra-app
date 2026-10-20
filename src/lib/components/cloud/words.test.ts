@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CloudView } from "$lib/types";
-import { chipWords, conflictWords, lastWords, questionWords, retentionWords, runWords, size, stateWords } from "./words";
+import { chipWords, conflictWords, lastWords, questionWords, readOnly, retentionWords, runWords, size, stateWords, upgradeWords } from "./words";
 
 const quota = {
   plan: "pro_monthly",
@@ -31,6 +31,7 @@ const view = (patch: Partial<CloudView>): CloudView => ({
   settings: { onAir: "pause", limitKbps: 2000, intervalS: 300, newProjects: true },
   project: null,
   restore: null,
+  heldUntil: null,
   ...patch,
 });
 
@@ -158,5 +159,63 @@ describe("the top bar chip", () => {
     const w = questionWords({ kind: "firstBackup", bytes: 1.5e9 });
     expect(w.text).toBe("This project's first cloud backup is 1.5 GB.");
     expect(w.choices.map((c) => c.answer)).toEqual(["backUp", "turnOff"]);
+  });
+});
+
+describe("slice 11: paused, read-only and restores", () => {
+  const project = {
+    backup: true,
+    registered: true,
+    serverId: "p1",
+    noticeSeen: true,
+    question: null,
+    issue: null,
+    run: null,
+    lastBackupAt: null,
+    report: [],
+    skipped: 0,
+    error: null,
+    conflict: null,
+  };
+  const restore = {
+    mode: "newFolder" as const,
+    versionId: "v1",
+    folder: "C:\Shows\gala-old",
+    phase: "downloading" as const,
+    doneBytes: 1,
+    totalBytes: 2,
+    paused: false,
+    limited: false,
+    result: null,
+  };
+
+  it("says when backups continue after today's allowance is used", () => {
+    const w = stateWords(view({ heldUntil: "2026-10-21T00:00:00Z" }));
+    expect(w?.text).toMatch(/^Today's cloud upload allowance is used. Backups continue Oct 2[01], /);
+    // The paused state says more than the error that paused it.
+    const chip = chipWords(view({ heldUntil: "2026-10-21T00:00:00Z", project: { ...project, error: "Today's…" } }));
+    expect(chip).toMatchObject({ text: "Cloud backup paused" });
+    expect(chipWords(view({ state: "full", project: { ...project, error: "Cloud storage is full." } }))?.text).toBe(
+      "Cloud backup paused",
+    );
+    // An error with room left still shows as the error.
+    expect(chipWords(view({ state: "warning", project: { ...project, error: "x" } }))?.text).toBe("Last backup didn't finish");
+  });
+
+  it("shows a running restore even when the project's backup is off", () => {
+    expect(chipWords(view({ restore, project: { ...project, backup: false } }))).toMatchObject({
+      text: "Restoring… 50%",
+      restore: true,
+    });
+    expect(chipWords(view({ project: { ...project, backup: false } }))).toBeNull();
+  });
+
+  it("has no chip without cloud backup in the plan; offers the upgrade", () => {
+    expect(chipWords(view({ state: "notInPlan", project }))).toBeNull();
+    expect(upgradeWords(view({ state: "lapsed" }))).toBe("Upgrade to Pro");
+    expect(upgradeWords(view({ state: "full" }))).toBe("Get more storage");
+    expect(upgradeWords(view({ state: "ok" }))).toBeNull();
+    expect(readOnly(view({ state: "lapsed" }))).toBe(true);
+    expect(readOnly(view({ state: "full" }))).toBe(false);
   });
 });
