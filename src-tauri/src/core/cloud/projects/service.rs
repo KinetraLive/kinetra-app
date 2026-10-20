@@ -35,7 +35,7 @@ pub const PRO_CLOUD: &str = kinetra_license::entitlements::PRO_CLOUD_SYNC;
 
 #[derive(Default)]
 pub(super) struct Svc {
-    quota: Option<Quota>,
+    pub(super) quota: Option<Quota>,
     /// Unix seconds of the last answer.
     checked_at: Option<i64>,
     /// The last request didn't reach the server.
@@ -52,6 +52,12 @@ pub(super) struct Svc {
     sent: Option<CloudView>,
     /// The open project (see `identity`).
     pub(super) project: Option<super::identity::OpenProject>,
+    /// Backups of projects that were closed with changes not in the cloud (folder, task, cancel).
+    pub(super) closing: Vec<(
+        std::path::PathBuf,
+        AbortHandle,
+        std::sync::Arc<std::sync::atomic::AtomicBool>,
+    )>,
 }
 
 /// Cloud backup's state (held by `AppState`; see the module docs).
@@ -60,6 +66,14 @@ pub struct CloudProjects {
     pub(super) inner: Mutex<Svc>,
     /// On air for transfers (see `gate`).
     pub(super) gate: super::gate::Gate,
+    /// One transfer at a time in the whole app (backups wait for it).
+    pub(super) slot: tokio::sync::Mutex<()>,
+    /// Backups may run by themselves now (see `schedule`); read by the change hook.
+    pub(super) armed: std::sync::atomic::AtomicBool,
+    /// The change hook (registered weakly with `fsx`; kept alive here).
+    pub(super) hook: std::sync::OnceLock<std::sync::Arc<crate::core::fsx::ChangeHook>>,
+    /// Tests: the wait after the last change instead of the server's interval.
+    pub(super) test_interval: Mutex<Option<std::time::Duration>>,
     /// `cloud.json` writes, one at a time.
     save: Mutex<()>,
     /// Tests: the wait before a retry instead of the backoff.
@@ -225,6 +239,7 @@ impl AppState {
     /// Sends `cloud-changed` when the view differs from the last one sent.
     pub(crate) fn emit_cloud(&self) {
         let view = self.cloud_view();
+        self.cloud_schedule_follow(&view);
         // Transfers follow the on-air setting at once (also mid-backup).
         self.cloud_gate()
             .set_policy(view.settings.on_air, view.settings.limit_kbps);
@@ -371,7 +386,7 @@ impl AppState {
 
     /// Stops background work (exit).
     pub fn cloud_projects_stop(&self) {
-        self.cloud_backup_cancel();
+        self.cloud_backup_cancel_all();
         if let Some(t) = lock(&self.cloud_projects().inner).retry.take() {
             t.abort();
         }

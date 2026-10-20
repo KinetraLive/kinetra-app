@@ -738,6 +738,9 @@ pub enum CloudQuestion {
     /// The project's backup is in the trash: Restore / Start a new cloud backup / Turn off.
     #[serde(rename_all = "camelCase")]
     InTrash { purge_at: Option<String> },
+    /// The first automatic backup would upload `bytes` (over 1 GB): Back up / Turn off.
+    #[serde(rename_all = "camelCase")]
+    FirstBackup { bytes: u64 },
     /// Another computer already backs this project up and this one has no record of it:
     /// Continue that backup here / Back up as a separate project / Don't back up here.
     #[serde(rename_all = "camelCase")]
@@ -751,6 +754,8 @@ pub enum CloudQuestion {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum CloudAnswer {
+    /// A large first backup: go ahead.
+    BackUp,
     /// In the trash: restore it and carry on.
     Restore,
     /// In the trash: leave it there and start a new cloud backup.

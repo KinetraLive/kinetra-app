@@ -53,6 +53,11 @@ pub struct ProjectRecord {
     /// RFC 3339 of the last backup that finished here.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_at: Option<String>,
+    /// Changes since the last backup that aren't in the cloud yet (kept across restarts: the next
+    /// open backs them up).
+    pub pending: bool,
+    /// The user OK'd a first backup over 1 GB (asked once, CLOUD_PROJECTS_APP_PLAN decision 5).
+    pub big_ok: bool,
     /// The `Idempotency-Key` of a commit not confirmed yet (reused until it is).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pending_commit: Option<String>,

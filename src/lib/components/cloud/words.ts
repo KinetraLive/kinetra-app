@@ -75,6 +75,15 @@ export function when(rfc3339: string | null | undefined): string {
 
 /** What a waiting question says and offers (never a modal: it sits with the project). */
 export function questionWords(q: CloudQuestion): { text: string; choices: Choice[] } {
+  if (q.kind === "firstBackup") {
+    return {
+      text: `This project's first cloud backup is ${size(q.bytes)}.`,
+      choices: [
+        { answer: "backUp", label: "Back up", primary: true },
+        { answer: "turnOff", label: "Don't back up this project" },
+      ],
+    };
+  }
   if (q.kind === "inTrash") {
     const until = day(q.purgeAt);
     return {
@@ -128,4 +137,31 @@ export function conflictWords(c: { machine: string | null; at: string | null }):
   const time =
     t && !Number.isNaN(t.getTime()) ? ` at ${t.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}` : "";
   return `This project was also backed up from ${c.machine ?? "another computer"}${time}. Both versions are kept.`;
+}
+
+export interface ChipWords {
+  /** Short, for the top bar. */
+  text: string;
+  /** The whole sentence (tooltip and accessible name). */
+  label: string;
+  tone: "plain" | "warning";
+  /** The one-time "Backing up to the cloud" notice. */
+  notice?: boolean;
+}
+
+/** The top bar chip for the open project, or null when cloud backup isn't on for it. */
+export function chipWords(view: CloudView | null): ChipWords | null {
+  const p = view?.project;
+  if (!view || view.access !== "available" || !p || !p.backup) return null;
+  const say = (text: string, tone: ChipWords["tone"] = "plain", label = text): ChipWords => ({ text, label, tone });
+  if (p.question) return say("Cloud backup needs an answer", "warning", questionWords(p.question).text);
+  if (p.run) return say(runWords(p.run), p.run.paused ? "warning" : "plain");
+  if (!p.noticeSeen) return { ...say("Backing up to the cloud"), notice: true };
+  if (view.offline) return say("Cloud backup: offline", "warning", "Cloud backup: offline, will retry.");
+  if (p.error) return say("Last backup didn't finish", "warning", p.error);
+  const state = stateWords(view);
+  if (state) return say(view.state === "warning" ? "Cloud storage almost full" : "Cloud backup paused", state.tone, state.text);
+  if (p.conflict) return say("Backed up on two computers", "plain", conflictWords(p.conflict));
+  const last = lastWords(p.lastBackupAt);
+  return last ? say(last) : say("Not backed up yet");
 }

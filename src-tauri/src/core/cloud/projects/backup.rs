@@ -72,12 +72,31 @@ pub(super) struct BackupState {
     pub conflict: Option<CloudConflictView>,
     /// The running task (abort on close) and its cancel flag (blocking hashing).
     pub task: Option<(tokio::task::AbortHandle, Arc<AtomicBool>)>,
+    /// The open project's change count this backup covers (taken after its flush).
+    pub covers: u64,
     pub last_emit: Option<Instant>,
 }
+
+/// What a backup backs up: a project folder and its cloud id. `open`: the open project (the view
+/// follows it, it registers when needed, its pending writes are flushed first).
+#[derive(Debug, Clone)]
+pub(super) struct Target {
+    pub dir: PathBuf,
+    pub cloud_id: String,
+    pub open: bool,
+}
+
+/// A first automatic backup larger than this asks first (owner decision 5: 1 GB).
+#[cfg(not(test))]
+pub const FIRST_BACKUP_ASK_BYTES: u64 = 1_000_000_000;
+#[cfg(test)]
+pub const FIRST_BACKUP_ASK_BYTES: u64 = 100_000;
 
 /// Why a backup stopped.
 #[derive(Debug)]
 enum Fail {
+    /// A question waits for the user (shown in the view, not as an error).
+    Waiting,
     /// Not now (offline, server busy): the next backup carries on (uploaded blobs stay).
     Offline,
     /// Canceled (project closed, app exiting).
@@ -205,27 +224,33 @@ impl AppState {
         self.cloud_backup_start(Reason::Manual)
     }
 
-    fn cloud_backup_start(&self, reason: Reason) -> AppResult<()> {
+    /// Before quitting ("Back up and quit"): a backup with `reason: close`.
+    pub fn cloud_backup_before_exit(&self) -> AppResult<()> {
+        self.cloud_backup_start(Reason::Close)
+    }
+
+    /// Starts a backup of the open project (`reason`) unless one runs. Returns at once.
+    pub(super) fn cloud_backup_start(&self, reason: Reason) -> AppResult<()> {
         self.require_new_pro_work(PRO_CLOUD)?;
         if !self.cloud_backup_on() {
             return Err(AppError::Invalid(
                 "Cloud backup is off for this project. Turn it on first.".into(),
             ));
         }
-        let (dir, _) = self.project_cloud_id().ok_or(AppError::NoProject)?;
+        let (dir, cloud_id) = self.cloud_ensure_id()?;
         let rt = self
             .live()
             .runtime_handle()
             .ok_or_else(|| AppError::Internal("No runtime".into()))?;
         let cancel = Arc::new(AtomicBool::new(false));
-        let mut started = false;
-        {
+        let started = {
             let mut s = lock(&self.cloud_projects().inner);
             let Some(p) = s.project.as_mut().filter(|p| p.dir == dir) else {
                 return Err(AppError::NoProject);
             };
-            if p.backup.task.is_none() {
-                started = true;
+            if p.backup.task.is_some() {
+                None
+            } else {
                 p.backup.error = None;
                 p.backup.run = Some(CloudRunView {
                     phase: CloudPhase::Scanning,
@@ -234,31 +259,37 @@ impl AppState {
                     paused: false,
                     limited: false,
                 });
+                p.backup.covers = p.sched.changes;
+                Some(())
             }
-        }
-        if !started {
+        };
+        let Some(()) = started else {
             return Ok(());
-        }
+        };
         let weak = self.downgrade();
         let flag = cancel.clone();
-        let d = dir.clone();
+        let target = Target {
+            dir: dir.clone(),
+            cloud_id,
+            open: true,
+        };
         let task = rt.spawn(async move {
             let Some(st) = weak.upgrade() else { return };
             st.cloud_gate_active(true);
-            let result = st.cloud_backup_run(&d, reason, flag.clone()).await;
-            st.cloud_gate_active(false);
-            st.cloud_backup_state(&d, |b| {
+            let result = st.cloud_backup_run(&target, reason, flag.clone()).await;
+            st.cloud_gate_active(st.cloud_backups_running());
+            st.cloud_backup_state(&target.dir, |b| {
                 b.run = None;
                 b.task = None;
                 match &result {
-                    Ok(()) => b.error = None,
+                    Ok(()) | Err(Fail::Waiting) | Err(Fail::Canceled) => b.error = None,
                     Err(Fail::Offline) => {
                         b.error = Some("Cloud backup: offline, will retry.".into())
                     }
-                    Err(Fail::Canceled) => {}
                     Err(Fail::Message(m)) => b.error = Some(m.clone()),
                 }
             });
+            st.cloud_backup_finished(&target, result.is_ok());
             st.emit_cloud();
         });
         self.cloud_backup_state(&dir, |b| b.task = Some((task.abort_handle(), cancel)));
@@ -266,7 +297,43 @@ impl AppState {
         Ok(())
     }
 
-    /// Cancels the open project's backup (project closing, app exiting).
+    /// A project just closed with changes not in the cloud: backs it up in the background
+    /// (`reason: close`; CLOUD_PROJECTS.md §2.1). Only a project already registered; it waits for
+    /// any other backup (one transfer at a time).
+    pub(super) fn cloud_backup_closed(&self, target: Target) {
+        let Some(rt) = self.live().runtime_handle() else {
+            return;
+        };
+        let cancel = Arc::new(AtomicBool::new(false));
+        let weak = self.downgrade();
+        let flag = cancel.clone();
+        let dir = target.dir.clone();
+        let task = rt.spawn(async move {
+            let Some(st) = weak.upgrade() else { return };
+            st.cloud_gate_active(true);
+            let result = st.cloud_backup_run(&target, Reason::Close, flag).await;
+            {
+                let mut s = lock(&st.cloud_projects().inner);
+                s.closing.retain(|c| c.0 != target.dir);
+            }
+            st.cloud_gate_active(st.cloud_backups_running());
+            if result.is_ok() {
+                st.cloud_record_update_of(&target.cloud_id, |r| r.pending = false);
+            }
+        });
+        lock(&self.cloud_projects().inner)
+            .closing
+            .push((dir, task.abort_handle(), cancel));
+    }
+
+    /// Whether any backup runs (the open project's or a closed one's).
+    fn cloud_backups_running(&self) -> bool {
+        let s = lock(&self.cloud_projects().inner);
+        !s.closing.is_empty() || s.project.as_ref().is_some_and(|p| p.backup.task.is_some())
+    }
+
+    /// Cancels the open project's backup (project closing, app exiting). Uploaded blobs stay;
+    /// the next backup carries on.
     pub(crate) fn cloud_backup_cancel(&self) {
         let mut s = lock(&self.cloud_projects().inner);
         if let Some(p) = s.project.as_mut() {
@@ -277,7 +344,23 @@ impl AppState {
             p.backup.run = None;
         }
         drop(s);
+        self.cloud_gate_active(self.cloud_backups_running());
+    }
+
+    /// Cancels every backup, closed projects' too (app exiting).
+    pub(crate) fn cloud_backup_cancel_all(&self) {
+        self.cloud_backup_cancel();
+        let closing = std::mem::take(&mut lock(&self.cloud_projects().inner).closing);
+        for (_, task, flag) in closing {
+            flag.store(true, Ordering::Relaxed);
+            task.abort();
+        }
         self.cloud_gate_active(false);
+    }
+
+    /// Whether a closed project's backup runs (tests).
+    pub fn cloud_closed_backups(&self) -> usize {
+        lock(&self.cloud_projects().inner).closing.len()
     }
 
     /// Whether the open project's registration is running.
@@ -298,10 +381,16 @@ impl AppState {
 
     async fn cloud_backup_run(
         &self,
-        dir: &Path,
+        t: &Target,
         reason: Reason,
         cancel: Arc<AtomicBool>,
     ) -> Result<(), Fail> {
+        // One transfer at a time in the whole app (a closed project's backup, then this one).
+        let _slot = self.cloud_projects().slot.lock().await;
+        if cancel.load(Ordering::Relaxed) {
+            return Err(Fail::Canceled);
+        }
+        let dir = t.dir.as_path();
         // 1. Quota and registration.
         let view = self.cloud_refresh(false).await.map_err(Fail::from)?;
         if view.access != CloudAccess::Available {
@@ -316,32 +405,36 @@ impl AppState {
             QuotaState::Lapsed => return Err(CallError::api(403, "cloud_read_only").into()),
             QuotaState::NotInPlan => return Err(CallError::api(403, "cloud_not_in_plan").into()),
         }
-        if self.cloud_project_record_server_id().is_none() {
-            // A background registration may be running: wait for it (seconds at most).
-            for _ in 0..100 {
-                if !self.cloud_registering() {
-                    break;
+        let server_id_of =
+            |st: &AppState| st.cloud_record_of(&t.cloud_id).and_then(|r| r.server_id);
+        if t.open {
+            if server_id_of(self).is_none() {
+                // A background registration may be running: wait for it (seconds at most).
+                for _ in 0..100 {
+                    if !self.cloud_registering() {
+                        break;
+                    }
+                    tokio::time::sleep(Duration::from_millis(50)).await;
                 }
-                tokio::time::sleep(Duration::from_millis(50)).await;
+                if server_id_of(self).is_none() {
+                    self.cloud_register(IfTrashed::Error).await?;
+                }
             }
-            if self.cloud_project_record_server_id().is_none() {
-                self.cloud_register(IfTrashed::Error).await?;
+            if self
+                .cloud_view()
+                .project
+                .is_some_and(|p| p.question.is_some())
+            {
+                return Err(Fail::Waiting);
             }
         }
-        if self
-            .cloud_view()
-            .project
-            .is_some_and(|p| p.question.is_some())
-        {
-            return Err(Fail::Message(
-                "Cloud backup is waiting for your answer.".into(),
-            ));
-        }
-        let server_id = self.cloud_project_record_server_id().ok_or_else(|| {
+        // A closed project is backed up only when it was registered while open.
+        let server_id = server_id_of(self).ok_or(if t.open {
             Fail::Message("This project isn't registered for cloud backup.".into())
+        } else {
+            Fail::Canceled
         })?;
-        let (_, cloud_id) = self.project_cloud_id().ok_or(Fail::Canceled)?;
-        let cloud_id = cloud_id.ok_or(Fail::Canceled)?;
+        let cloud_id = t.cloud_id.clone();
         let (api, session, _) = self.cloud_session_parts()?;
         let r2 = R2::new().map_err(Fail::Message)?;
         let run = Run {
@@ -361,18 +454,44 @@ impl AppState {
         let st = self.clone();
         let max = Some(quota.max_file_bytes).filter(|m| *m > 0);
         let d = dir.to_path_buf();
+        let open = t.open;
         let listing = tokio::task::spawn_blocking(move || {
-            st.flush_all();
+            if open {
+                st.flush_all();
+            }
             scan::list(&d, max)
         })
         .await
         .map_err(|_| Fail::Canceled)?
         .map_err(|e| Fail::Message(format!("Kinetra can't read the project folder: {e}")))?;
+        // Everything changed so far (the flush's own writes included) is in this backup.
+        if t.open {
+            if let Some(p) = lock(&self.cloud_projects().inner)
+                .project
+                .as_mut()
+                .filter(|p| p.dir == t.dir)
+            {
+                p.backup.covers = p.sched.changes;
+            }
+        }
         if listing.files.len() > scan::MAX_FILES {
             return Err(CallError::api(400, "too_many_files").into());
         }
         let mut report = listing.skipped;
         let total: u64 = listing.files.iter().map(|f| f.size).sum();
+        // The first automatic backup of a large project asks once (owner decision 5); a backup
+        // the user started doesn't.
+        let record = self.cloud_record_of(&cloud_id).unwrap_or_default();
+        if reason != Reason::Manual
+            && record.head.is_none()
+            && !record.big_ok
+            && total > FIRST_BACKUP_ASK_BYTES
+        {
+            if t.open {
+                self.cloud_ask_first_backup(dir, total);
+            }
+            return Err(Fail::Waiting);
+        }
         self.cloud_phase(dir, CloudPhase::Hashing, total, &run);
         let (mut files, unread) = self
             .cloud_hash(
@@ -449,19 +568,6 @@ impl AppState {
             Some(code) => Err(CallError::api(403, &code).into()),
             None => Ok(()),
         }
-    }
-
-    /// The open project's server id, if registered.
-    fn cloud_project_record_server_id(&self) -> Option<String> {
-        let account = self.cloud_account()?;
-        let (_, cid) = self.project_cloud_id()?;
-        self.cloud_file()
-            .accounts
-            .get(&account)?
-            .projects
-            .get(&cid?)?
-            .server_id
-            .clone()
     }
 
     /// Hashes on the blocking pool (large files wait while on air); saves the cache.
@@ -932,11 +1038,13 @@ impl AppState {
         let activation_id = self
             .cloud_activation()
             .ok_or_else(|| Fail::Message("This computer isn't activated. Sign in again.".into()))?;
-        let (base, restored_from) = self.cloud_commit_base();
+        let (base, restored_from) = self.cloud_commit_base(&run.cloud_id);
         // A commit whose answer was lost is retried with its key: the server returns that version
         // instead of a second one (which would look like a conflict with ourselves).
-        let mut key = self.cloud_pending_commit().unwrap_or_else(uuid_v7);
-        self.cloud_set_pending_commit(Some(key.clone()));
+        let mut key = self
+            .cloud_pending_commit(&run.cloud_id)
+            .unwrap_or_else(uuid_v7);
+        self.cloud_set_pending_commit(&run.cloud_id, Some(key.clone()));
         let mut offline = 0u32;
         let mut tries = 0u32;
         while tries < COMMITS {
@@ -967,7 +1075,7 @@ impl AppState {
                 .await
             {
                 Ok(c) => {
-                    self.cloud_set_pending_commit(None);
+                    self.cloud_set_pending_commit(&run.cloud_id, None);
                     let conflict = c.conflict.map(|x| CloudConflictView {
                         machine: x.with_version.machine_name,
                         at: Some(x.with_version.created_at),
@@ -1028,7 +1136,7 @@ impl AppState {
                         reason: "Cloud backup can't store this name.".into(),
                     });
                     key = uuid_v7();
-                    self.cloud_set_pending_commit(Some(key.clone()));
+                    self.cloud_set_pending_commit(&run.cloud_id, Some(key.clone()));
                 }
                 // Not reached / the server is busy: the same key again, a little later.
                 Err(e)

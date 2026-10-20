@@ -68,6 +68,8 @@ struct Fake {
     commits_429: bool,
     /// PATCHes seen (version id → body).
     patches: Vec<(String, Value)>,
+    /// The `reason` of every version committed.
+    reasons: Vec<String>,
 }
 
 type F = Arc<Mutex<Fake>>;
@@ -296,6 +298,8 @@ async fn handle(
                 return err(409, "missing_blobs", json!({"missing": [first]}));
             }
             let base = b["base_version_id"].as_str().map(str::to_string);
+            f.reasons
+                .push(b["reason"].as_str().unwrap_or("").to_string());
             let r = version(&mut f, base, &files, 0);
             f.commits_by_key.insert(key, r.clone());
             if f.lose_commit_answers > 0 {
@@ -981,4 +985,149 @@ fn too_many_commits_says_so_instead_of_offline() {
         v.project.unwrap().error.as_deref(),
         Some("Cloud backup is busy for this account. Kinetra will try again later.")
     );
+}
+
+// ---- Slice 8: by itself ---------------------------------------------------------------------------
+
+fn reasons(e: &Env) -> Vec<String> {
+    e.fake.lock().unwrap().reasons.clone()
+}
+
+/// A change Kinetra makes in the project (through `fsx`, like every save).
+fn own_write(e: &Env, rel: &str, bytes: &[u8]) {
+    std::fs::create_dir_all(e.dir.join(rel).parent().unwrap()).unwrap();
+    crate::core::fsx::write_bytes_atomic(&e.dir.join(rel), bytes).unwrap();
+}
+
+#[test]
+fn a_change_backs_up_after_the_interval_and_nothing_waits_at_rest() {
+    let e = env();
+    e.st.set_test_cloud_interval(Some(Duration::from_millis(150)));
+    // The project opened before the quota arrived: refresh once more so it's armed.
+    e.rt_block(e.st.cloud_refresh(false)).unwrap();
+    assert!(!e.st.cloud_timer_waiting(), "no timer without changes");
+    own_write(&e, "screens/x.json", b"{}");
+    wait_until("timer", || e.st.cloud_timer_waiting());
+    wait_until("auto backup", || reasons(&e) == ["auto"]);
+    e.wait_done();
+    wait_until("nothing waits", || !e.st.cloud_timer_waiting());
+    assert!(!e.st.cloud_record().unwrap().pending);
+    // Excluded paths (our snapshots) aren't changes.
+    own_write(&e, ".backups/x/project.json", b"{}");
+    std::thread::sleep(Duration::from_millis(300));
+    assert_eq!(reasons(&e), ["auto"]);
+    assert!(!e.st.cloud_timer_waiting());
+}
+
+#[test]
+fn many_changes_make_one_backup_after_the_last() {
+    let e = env();
+    e.st.set_test_cloud_interval(Some(Duration::from_millis(300)));
+    e.rt_block(e.st.cloud_refresh(false)).unwrap();
+    for i in 0..5 {
+        own_write(&e, &format!("assets/{i}.txt"), b"x");
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    wait_until("auto backup", || reasons(&e).len() == 1);
+    e.wait_done();
+    std::thread::sleep(Duration::from_millis(400));
+    assert_eq!(reasons(&e), ["auto"], "one backup for the burst");
+    let paths = e.paths();
+    assert!((0..5).all(|i| paths.contains(&format!("assets/{i}.txt"))));
+}
+
+#[test]
+fn an_outside_edit_is_a_change_too() {
+    let e = env();
+    e.st.set_test_cloud_interval(Some(Duration::from_millis(100)));
+    e.rt_block(e.st.cloud_refresh(false)).unwrap();
+    // Written by another program (not through fsx): the watcher reports it.
+    std::fs::create_dir_all(e.dir.join("assets")).unwrap();
+    std::fs::write(e.dir.join("assets/from-outside.png"), b"png").unwrap();
+    wait_until("auto backup", || reasons(&e) == ["auto"]);
+    e.wait_done();
+    assert!(e.paths().contains(&"assets/from-outside.png".to_string()));
+}
+
+#[test]
+fn closing_with_changes_backs_up_the_closed_project() {
+    let e = env();
+    e.st.set_test_cloud_interval(Some(Duration::from_secs(600)));
+    e.rt_block(e.st.cloud_refresh(false)).unwrap();
+    e.backup(); // registered, a first version
+    own_write(&e, "assets/late.txt", b"made just before closing");
+    wait_until("pending", || e.st.cloud_record().is_some_and(|r| r.pending));
+    let cid = e.st.project_cloud_id().unwrap().1.unwrap();
+    e.st.close_project();
+    wait_until("close backup", || reasons(&e).len() == 2);
+    wait_until("done", || e.st.cloud_closed_backups() == 0);
+    assert_eq!(reasons(&e)[1], "close");
+    assert!(e.paths().contains(&"assets/late.txt".to_string()));
+    assert!(!e.st.cloud_record_of(&cid).unwrap().pending);
+}
+
+#[test]
+fn changes_left_when_backup_was_off_go_up_once_it_is_on_again() {
+    let e = env();
+    e.st.set_test_cloud_interval(Some(Duration::from_millis(100)));
+    e.rt_block(e.st.cloud_refresh(false)).unwrap();
+    e.backup();
+    e.st.set_test_cloud_interval(Some(Duration::from_secs(600)));
+    own_write(&e, "assets/waiting.txt", b"x");
+    wait_until("pending", || e.st.cloud_record().is_some_and(|r| r.pending));
+    // Off, closed and opened again (a later session): nothing runs while off.
+    e.st.cloud_set_backup(false).unwrap();
+    e.st.close_project();
+    e.st.open_project(&e.dir).unwrap();
+    assert!(e.st.cloud_record().unwrap().pending, "remembered");
+    std::thread::sleep(Duration::from_millis(200));
+    assert_eq!(reasons(&e).len(), 1);
+    // On again: the waiting changes go up.
+    e.st.set_test_cloud_interval(Some(Duration::from_millis(100)));
+    e.st.cloud_set_backup(true).unwrap();
+    wait_until("auto backup", || reasons(&e).len() == 2);
+    e.wait_done();
+    assert!(e.paths().contains(&"assets/waiting.txt".to_string()));
+}
+
+#[test]
+fn a_large_first_automatic_backup_asks_once() {
+    let e = env();
+    e.st.set_test_cloud_interval(Some(Duration::from_millis(100)));
+    e.rt_block(e.st.cloud_refresh(false)).unwrap();
+    // Over the (test) threshold of 100 KB.
+    own_write(&e, "assets/big.mov", &bytes(150_000, 9));
+    wait_until("asked", || {
+        e.view().project.is_some_and(|p| {
+            matches!(p.question, Some(crate::core::model::CloudQuestion::FirstBackup { bytes }) if bytes >= 150_000)
+        })
+    });
+    assert!(reasons(&e).is_empty(), "nothing uploaded before the answer");
+    assert_eq!(e.puts(), 0);
+    e.rt_block(e.st.cloud_answer(crate::core::model::CloudAnswer::BackUp))
+        .unwrap();
+    wait_until("backed up", || reasons(&e) == ["auto"]);
+    e.wait_done();
+    assert!(e.st.cloud_record().unwrap().big_ok);
+    assert!(e.view().project.unwrap().question.is_none());
+}
+
+#[test]
+fn quitting_asks_only_with_changes_and_nothing_on_air() {
+    let e = env();
+    e.st.set_test_cloud_interval(Some(Duration::from_secs(600)));
+    e.rt_block(e.st.cloud_refresh(false)).unwrap();
+    e.backup();
+    assert!(!e.st.cloud_exit_should_ask(), "everything is in the cloud");
+    own_write(&e, "assets/new.txt", b"x");
+    wait_until("pending", || e.st.cloud_record().is_some_and(|r| r.pending));
+    assert!(e.st.cloud_exit_should_ask());
+    let obs = e.st.live().renderer_attach("main", true);
+    assert!(!e.st.cloud_exit_should_ask(), "never while on air");
+    drop(obs);
+    // "Back up and quit".
+    e.st.cloud_backup_before_exit().unwrap();
+    e.wait_done();
+    assert_eq!(reasons(&e).last().map(String::as_str), Some("close"));
+    assert!(!e.st.cloud_exit_should_ask());
 }

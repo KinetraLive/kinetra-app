@@ -308,6 +308,8 @@ pub fn run() {
             commands::cloud::cloud_answer,
             commands::cloud::cloud_backup_now,
             commands::cloud::cloud_conflict_dismiss,
+            commands::cloud::cloud_exit_should_ask,
+            commands::cloud::cloud_backup_before_exit,
             commands::polls::polls_quota,
             commands::polls::list_polls,
             commands::polls::create_poll,

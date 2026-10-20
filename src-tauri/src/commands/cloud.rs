@@ -68,3 +68,21 @@ pub async fn cloud_conflict_dismiss(state: State<'_, AppState>) -> AppResult<Clo
     state.cloud_conflict_dismiss().await?;
     Ok(state.cloud_view())
 }
+
+/// Whether to ask "Back up before quitting?": changes not in the cloud and nothing on air.
+#[tauri::command]
+pub async fn cloud_exit_should_ask(state: State<'_, AppState>) -> AppResult<bool> {
+    let state = state.inner().clone();
+    blocking(move || Ok(state.cloud_exit_should_ask())).await
+}
+
+/// "Back up and quit": a backup with `reason: close` (follow it on `cloud-changed`).
+#[tauri::command]
+pub async fn cloud_backup_before_exit(state: State<'_, AppState>) -> AppResult<CloudView> {
+    let state = state.inner().clone();
+    blocking(move || {
+        state.cloud_backup_before_exit()?;
+        Ok(state.cloud_view())
+    })
+    .await
+}

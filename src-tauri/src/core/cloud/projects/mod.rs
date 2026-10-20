@@ -21,6 +21,7 @@ pub mod local;
 pub mod paths;
 pub mod r2;
 pub mod scan;
+pub mod schedule;
 pub mod service;
 pub mod wire;
 

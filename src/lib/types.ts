@@ -340,10 +340,11 @@ export interface CloudSkipped {
 }
 
 export type CloudQuestion =
+  | { kind: "firstBackup"; bytes: number }
   | { kind: "inTrash"; purgeAt: string | null }
   | { kind: "otherComputer"; machine: string | null; at: string | null };
 
-export type CloudAnswer = "restore" | "startNew" | "continueHere" | "separate" | "turnOff";
+export type CloudAnswer = "restore" | "startNew" | "continueHere" | "separate" | "turnOff" | "backUp";
 
 export interface ControlApiPrefs {
   enabled: boolean;

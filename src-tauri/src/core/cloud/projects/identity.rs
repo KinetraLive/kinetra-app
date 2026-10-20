@@ -45,6 +45,10 @@ pub(super) struct OpenProject {
     pub registering: bool,
     /// The backup running now, and how the last one ended (see `backup`).
     pub backup: super::backup::BackupState,
+    /// Its cloud id (when it has one), for the change hook (which can't read `project.json`).
+    pub cloud_id: Option<String>,
+    /// When the next automatic backup runs (see `schedule`).
+    pub sched: super::schedule::Sched,
 }
 
 /// A project name as the server takes it: no control characters, 1–200 characters.
@@ -81,10 +85,27 @@ impl AppState {
         let Some((dir, cid)) = self.project_cloud_id() else {
             return;
         };
-        self.cloud_open().project = Some(OpenProject {
-            dir: dir.clone(),
-            ..Default::default()
-        });
+        // Another project was open (switching without a close): it closes now.
+        let other = self
+            .cloud_open()
+            .project
+            .as_ref()
+            .is_some_and(|p| p.dir != dir);
+        if other {
+            self.cloud_schedule_closing();
+        }
+        // A reload of the same project keeps its running backup and schedule.
+        let same = self
+            .cloud_open()
+            .project
+            .as_ref()
+            .is_some_and(|p| p.dir == dir);
+        if !same {
+            self.cloud_open().project = Some(OpenProject {
+                dir: dir.clone(),
+                ..Default::default()
+            });
+        }
         if let Some(cid) = cid {
             let recorded = self.cloud_file().folders.get(&cid).map(PathBuf::from);
             match identity(recorded.as_deref(), &dir, &cid, cloud_id_at) {
@@ -97,14 +118,22 @@ impl AppState {
                 }
             }
         }
+        let cid = self.project_cloud_id().and_then(|(_, c)| c);
+        if let Some(p) = self.cloud_open().project.as_mut() {
+            p.cloud_id = cid;
+        }
         self.emit_cloud();
         self.cloud_maybe_register();
         self.cloud_load_conflict();
+        if !same {
+            self.cloud_schedule_opened();
+        }
     }
 
-    /// The project closed: its backup stops (uploaded blobs stay; the next one carries on).
+    /// The project closed: its backup stops (uploaded blobs stay); with changes not in the cloud
+    /// a background backup of the folder starts (`schedule`).
     pub(crate) fn cloud_project_closed(&self) {
-        self.cloud_backup_cancel();
+        self.cloud_schedule_closing();
         self.cloud_open().project = None;
         self.emit_cloud();
     }
@@ -134,15 +163,21 @@ impl AppState {
         let id = uuid_v7();
         self.set_project_cloud_id(dir, id.clone())?;
         self.cloud_record_folder(&id, dir);
+        if let Some(p) = self.cloud_open().project.as_mut().filter(|p| p.dir == dir) {
+            p.cloud_id = Some(id.clone());
+        }
         Ok(id)
     }
 
     /// The open project's cloudId, made (and written) when it has none.
-    fn cloud_ensure_id(&self) -> AppResult<(PathBuf, String)> {
+    pub(super) fn cloud_ensure_id(&self) -> AppResult<(PathBuf, String)> {
         let (dir, _) = self.project_cloud_id().ok_or(AppError::NoProject)?;
         let (id, made) = self.ensure_project_cloud_id(&dir, uuid_v7())?;
         if made {
             self.cloud_record_folder(&id, &dir);
+            if let Some(p) = self.cloud_open().project.as_mut().filter(|p| p.dir == dir) {
+                p.cloud_id = Some(id.clone());
+            }
         }
         Ok((dir, id))
     }
@@ -150,7 +185,7 @@ impl AppState {
     // ---- Records ----
 
     /// This account's record of the open project, if any.
-    fn cloud_record(&self) -> Option<ProjectRecord> {
+    pub(super) fn cloud_record(&self) -> Option<ProjectRecord> {
         let account = self.cloud_account()?;
         let (_, cid) = self.project_cloud_id()?;
         self.cloud_file()
@@ -159,6 +194,37 @@ impl AppState {
             .projects
             .get(&cid?)
             .cloned()
+    }
+
+    /// This account's record of project `cloud_id` (open or not).
+    pub(super) fn cloud_record_of(&self, cloud_id: &str) -> Option<ProjectRecord> {
+        let account = self.cloud_account()?;
+        self.cloud_file()
+            .accounts
+            .get(&account)?
+            .projects
+            .get(cloud_id)
+            .cloned()
+    }
+
+    /// Changes this account's record of project `cloud_id` (no-op signed out).
+    pub(super) fn cloud_record_update_of(
+        &self,
+        cloud_id: &str,
+        f: impl FnOnce(&mut ProjectRecord),
+    ) {
+        let Some(account) = self.cloud_account() else {
+            return;
+        };
+        self.cloud_file_update(|file| {
+            f(file
+                .accounts
+                .entry(account)
+                .or_default()
+                .projects
+                .entry(cloud_id.to_string())
+                .or_default());
+        });
     }
 
     /// Changes this account's record of the open project (making the cloudId if needed).
@@ -375,17 +441,18 @@ impl AppState {
     }
 
     /// The next commit's base (the head this computer knows) and `restored_from` (restore, later).
-    pub(super) fn cloud_commit_base(&self) -> (Option<String>, Option<String>) {
-        (self.cloud_record().and_then(|r| r.head), None)
+    pub(super) fn cloud_commit_base(&self, cloud_id: &str) -> (Option<String>, Option<String>) {
+        (self.cloud_record_of(cloud_id).and_then(|r| r.head), None)
     }
 
     /// The key of a commit not confirmed yet.
-    pub(super) fn cloud_pending_commit(&self) -> Option<String> {
-        self.cloud_record().and_then(|r| r.pending_commit)
+    pub(super) fn cloud_pending_commit(&self, cloud_id: &str) -> Option<String> {
+        self.cloud_record_of(cloud_id)
+            .and_then(|r| r.pending_commit)
     }
 
-    pub(super) fn cloud_set_pending_commit(&self, key: Option<String>) {
-        let _ = self.cloud_record_update(|r| r.pending_commit = key);
+    pub(super) fn cloud_set_pending_commit(&self, cloud_id: &str, key: Option<String>) {
+        self.cloud_record_update_of(cloud_id, |r| r.pending_commit = key);
     }
 
     /// Reads an unresolved conflict of the open project from the server (once per open; quiet when
@@ -551,6 +618,12 @@ impl AppState {
                 self.cloud_set_question(&dir, None, None);
                 self.emit_cloud();
                 Ok(())
+            }
+            (CloudQuestion::FirstBackup { .. }, CloudAnswer::BackUp) => {
+                self.cloud_record_update(|r| r.big_ok = true)?;
+                self.cloud_set_question(&dir, None, None);
+                self.emit_cloud();
+                self.cloud_backup_start(super::wire::Reason::Auto)
             }
             (CloudQuestion::OtherComputer { .. }, CloudAnswer::Separate) => {
                 self.cloud_set_question(&dir, None, None);

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CloudView } from "$lib/types";
-import { conflictWords, lastWords, questionWords, retentionWords, runWords, size, stateWords } from "./words";
+import { chipWords, conflictWords, lastWords, questionWords, retentionWords, runWords, size, stateWords } from "./words";
 
 const quota = {
   plan: "pro_monthly",
@@ -97,5 +97,49 @@ describe("backup words", () => {
     expect(conflictWords({ machine: null, at: null })).toBe(
       "This project was also backed up from another computer. Both versions are kept.",
     );
+  });
+});
+
+describe("the top bar chip", () => {
+  const project = {
+    backup: true,
+    registered: true,
+    noticeSeen: true,
+    question: null,
+    issue: null,
+    run: null,
+    lastBackupAt: null,
+    report: [],
+    skipped: 0,
+    error: null,
+    conflict: null,
+  };
+
+  it("is there only when the open project backs up", () => {
+    expect(chipWords(view({ project: null }))).toBeNull();
+    expect(chipWords(view({ project: { ...project, backup: false } }))).toBeNull();
+    expect(chipWords(view({ access: "free", project }))).toBeNull();
+    expect(chipWords(view({ project }))?.text).toBe("Not backed up yet");
+  });
+
+  it("puts what needs the operator first, then work, then quiet facts", () => {
+    const firstBackup = { kind: "firstBackup" as const, bytes: 2.4e9 };
+    expect(chipWords(view({ project: { ...project, question: firstBackup } }))).toMatchObject({
+      text: "Cloud backup needs an answer",
+      label: "This project's first cloud backup is 2.4 GB.",
+      tone: "warning",
+    });
+    const run = { phase: "uploading" as const, doneBytes: 1, totalBytes: 2, paused: true, limited: false };
+    expect(chipWords(view({ project: { ...project, run } }))).toMatchObject({ text: "Paused while on air", tone: "warning" });
+    expect(chipWords(view({ project: { ...project, noticeSeen: false } }))).toMatchObject({ text: "Backing up to the cloud", notice: true });
+    expect(chipWords(view({ offline: true, project }))?.label).toBe("Cloud backup: offline, will retry.");
+    expect(chipWords(view({ state: "full", project }))?.text).toBe("Cloud backup paused");
+    expect(chipWords(view({ project: { ...project, lastBackupAt: "2026-10-15T12:02:00Z" } }))?.text).toMatch(/^Last backup Oct 15/);
+  });
+
+  it("words the large first backup question", () => {
+    const w = questionWords({ kind: "firstBackup", bytes: 1.5e9 });
+    expect(w.text).toBe("This project's first cloud backup is 1.5 GB.");
+    expect(w.choices.map((c) => c.answer)).toEqual(["backUp", "turnOff"]);
   });
 });

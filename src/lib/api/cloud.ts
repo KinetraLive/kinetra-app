@@ -17,3 +17,7 @@ export const cloudAnswer = (answer: CloudAnswer) => call<CloudView>("cloud_answe
 export const cloudBackupNow = () => call<CloudView>("cloud_backup_now");
 /** "Dismiss" on the conflict notice: both versions stay; the server marks it resolved. */
 export const cloudConflictDismiss = () => call<CloudView>("cloud_conflict_dismiss");
+/** Whether to ask "Back up before quitting?" (changes not in the cloud, nothing on air). */
+export const cloudExitShouldAsk = () => call<boolean>("cloud_exit_should_ask");
+/** "Back up and quit": a backup with reason "close"; follow it on `cloud-changed`. */
+export const cloudBackupBeforeExit = () => call<CloudView>("cloud_backup_before_exit");

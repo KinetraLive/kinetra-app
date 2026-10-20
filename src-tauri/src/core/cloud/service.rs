@@ -577,6 +577,8 @@ impl AppState {
         }));
         // Cloud backup pauses while anything is on air.
         self.cloud_gate_init();
+        // Backups run by themselves after changes.
+        self.cloud_schedule_init();
     }
 
     /// Starts the background loop (keys, revocations, beta, refresh). No-op without a runtime.

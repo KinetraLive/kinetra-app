@@ -853,6 +853,10 @@ impl AppState {
     /// applies it by the live rules, then emits `project-files-changed`. An invalid file keeps the
     /// last good live state (it is not set aside: the user may be in the middle of editing it).
     pub fn handle_file_changes(&self, dir: &Path, batch: Vec<(FileKind, String)>) {
+        // An outside edit is a change for cloud backup too.
+        if !batch.is_empty() && self.project_dir().ok().as_deref() == Some(dir) {
+            self.cloud_touch();
+        }
         for (kind, id) in batch {
             if self.project_dir().ok().as_deref() != Some(dir) {
                 return;

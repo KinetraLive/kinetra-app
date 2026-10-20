@@ -129,6 +129,10 @@ async function exit() {
       cancelLabel: t("Cancel"),
     });
     if (!ok) return;
+  } else {
+    // Cloud backup may ask first (only with changes not in the cloud; never while on air).
+    const { backUpBeforeQuit } = await import("$lib/components/cloud/exit");
+    if (await backUpBeforeQuit(exitApp)) return;
   }
   await exitApp();
 }
