@@ -250,7 +250,8 @@ export type CloudState = "ok" | "warning" | "full" | "lapsed" | "notInPlan";
 
 /** signedOut: nothing is asked. free: no Pro and no backups known here (no request; "Check for
  * backups" asks once). available: the server is asked. */
-export type CloudAccess = "signedOut" | "free" | "available";
+/** "unavailable": this build has no cloud backup (KINETRA_CLOUD; its UI isn't in the build either). */
+export type CloudAccess = "unavailable" | "signedOut" | "free" | "available";
 
 /** Sizes in bytes (GB = 10⁹ for display), times RFC 3339. */
 export interface CloudQuotaView {

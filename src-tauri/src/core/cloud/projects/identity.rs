@@ -82,6 +82,10 @@ impl AppState {
     /// moved folders update the record), then register in the background when due. Touches
     /// the disk: call from a blocking context.
     pub(crate) fn cloud_project_opened(&self) {
+        // A build without cloud backup leaves project.json's cloudId and cloud.json alone.
+        if !self.cloud_available() {
+            return;
+        }
         let Some((dir, cid)) = self.project_cloud_id() else {
             return;
         };
@@ -256,7 +260,7 @@ impl AppState {
 
     /// The open project's part of the view.
     pub(super) fn cloud_project_view(&self, access: CloudAccess) -> Option<CloudProjectView> {
-        if access == CloudAccess::SignedOut {
+        if matches!(access, CloudAccess::SignedOut | CloudAccess::Unavailable) {
             return None;
         }
         let (question, issue, b) = {
@@ -529,6 +533,7 @@ impl AppState {
 
     /// "Dismiss" on the conflict notice: both versions stay; the conflict is resolved (§9).
     pub async fn cloud_conflict_dismiss(&self) -> AppResult<()> {
+        self.cloud_build_check()?;
         let (dir, version_id) = {
             let s = self.cloud_open();
             let p = s.project.as_ref().ok_or(AppError::NoProject)?;
@@ -585,6 +590,7 @@ impl AppState {
 
     /// Backup on / off for the open project (its own switch; on registers when due).
     pub fn cloud_set_backup(&self, on: bool) -> AppResult<()> {
+        self.cloud_build_check()?;
         self.cloud_record_update(|r| r.backup = Some(on))?;
         if !on {
             if let Some(p) = self.cloud_open().project.as_mut() {
@@ -600,6 +606,7 @@ impl AppState {
 
     /// The one-time notice was shown.
     pub fn cloud_notice_seen(&self) -> AppResult<()> {
+        self.cloud_build_check()?;
         self.cloud_record_update(|r| r.notice_seen = true)?;
         self.emit_cloud();
         Ok(())
@@ -607,6 +614,7 @@ impl AppState {
 
     /// The user's answer to the open project's question.
     pub async fn cloud_answer(&self, answer: CloudAnswer) -> AppResult<()> {
+        self.cloud_build_check()?;
         let (dir, question, pending) = {
             let s = self.cloud_open();
             let p = s.project.as_ref().ok_or(AppError::NoProject)?;

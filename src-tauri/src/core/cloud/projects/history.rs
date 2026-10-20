@@ -94,6 +94,7 @@ impl AppState {
     pub(super) fn cloud_history_access(&self) -> AppResult<()> {
         match self.cloud_access() {
             CloudAccess::Available => Ok(()),
+            CloudAccess::Unavailable => self.cloud_build_check(),
             CloudAccess::SignedOut => Err(AppError::Cloud {
                 api_code: "unauthorized".into(),
                 message: "Sign in first.".into(),

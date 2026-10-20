@@ -12,6 +12,13 @@
 //! 4. File bytes go to storage only.
 //! 5. Every downloaded file is SHA-256 checked before use.
 
+/// Whether this build has cloud backup (`KINETRA_CLOUD`, see `build.rs`): on in debug builds and
+/// where the variable is 1; CI release builds leave it off until the production API has cloud
+/// projects switched on. Without it nothing here asks the server or runs in the background, the
+/// commands refuse, and the UI isn't in the frontend build (`$cloud`,
+/// `scripts/check-cloud-build.mjs`).
+pub const CLOUD_BUILD: bool = cfg!(kinetra_cloud);
+
 pub mod api;
 pub mod backoff;
 pub mod backup;

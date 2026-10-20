@@ -602,6 +602,9 @@ pub use crate::core::cloud::projects::wire::QuotaState as CloudState;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum CloudAccess {
+    /// This build has no cloud backup (`KINETRA_CLOUD`, `CLOUD_BUILD`): nothing is asked, nothing
+    /// runs, and the UI isn't in the build.
+    Unavailable,
     /// Not signed in: nothing is asked.
     SignedOut,
     /// No `pro.cloud_sync` and no backups known on this computer: no request is made (the UI

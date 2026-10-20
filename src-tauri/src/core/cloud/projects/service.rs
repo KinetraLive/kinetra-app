@@ -28,7 +28,7 @@ use crate::core::events::names;
 use crate::core::model::{CloudAccess, CloudQuotaView, CloudSettingsView, CloudView};
 use crate::core::persist;
 use crate::core::state::AppState;
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
 
 /// The entitlement cloud backup needs (`kinetra_license::entitlements::PRO_CLOUD_SYNC`).
 pub const PRO_CLOUD: &str = kinetra_license::entitlements::PRO_CLOUD_SYNC;
@@ -88,6 +88,8 @@ pub struct CloudProjects {
     save: Mutex<()>,
     /// Tests: the wait before a retry instead of the backoff.
     test_retry: Mutex<Option<std::time::Duration>>,
+    /// Tests: act as a build without cloud backup.
+    test_unavailable: std::sync::atomic::AtomicBool,
 }
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -103,6 +105,12 @@ impl CloudProjects {
     #[doc(hidden)]
     pub fn set_test_retry(&self, wait: Option<std::time::Duration>) {
         *lock(&self.test_retry) = wait;
+    }
+
+    #[doc(hidden)]
+    pub fn set_test_unavailable(&self, on: bool) {
+        self.test_unavailable
+            .store(on, std::sync::atomic::Ordering::Relaxed);
     }
 }
 
@@ -193,9 +201,31 @@ impl AppState {
             .is_some_and(|id| self.cloud_file().accounts.get(&id).is_some_and(|a| a.known))
     }
 
+    /// Whether this build has cloud backup ([`super::CLOUD_BUILD`]; tests can pretend not).
+    pub fn cloud_available(&self) -> bool {
+        super::CLOUD_BUILD
+            && !self
+                .cloud_projects()
+                .test_unavailable
+                .load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    /// An error for commands that act on cloud backup in a build without it.
+    pub(crate) fn cloud_build_check(&self) -> AppResult<()> {
+        if self.cloud_available() {
+            Ok(())
+        } else {
+            Err(AppError::Invalid(
+                "Cloud backup isn't in this version of Kinetra.".into(),
+            ))
+        }
+    }
+
     /// What the app may do with cloud backup now (see the module docs).
     pub fn cloud_access(&self) -> CloudAccess {
-        if !self.cloud_signed_in() {
+        if !self.cloud_available() {
+            CloudAccess::Unavailable
+        } else if !self.cloud_signed_in() {
             CloudAccess::SignedOut
         } else if self.require(PRO_CLOUD).is_ok() || self.cloud_known() {
             CloudAccess::Available
@@ -216,7 +246,7 @@ impl AppState {
             .as_ref()
             .map(|q| q.client.clone())
             .unwrap_or_default();
-        let shown = access != CloudAccess::SignedOut;
+        let shown = !matches!(access, CloudAccess::SignedOut | CloudAccess::Unavailable);
         CloudView {
             access,
             state: s.quota.as_ref().filter(|_| shown).map(|q| q.state),
@@ -285,7 +315,9 @@ impl AppState {
     /// returns the view. Offline answers keep the last quota, show "offline" and retry later.
     pub async fn cloud_refresh(&self, on_demand: bool) -> AppResult<CloudView> {
         let access = self.cloud_access();
-        if access == CloudAccess::SignedOut || (access == CloudAccess::Free && !on_demand) {
+        if matches!(access, CloudAccess::Unavailable | CloudAccess::SignedOut)
+            || (access == CloudAccess::Free && !on_demand)
+        {
             self.emit_cloud();
             return Ok(self.cloud_view());
         }

@@ -188,6 +188,10 @@ jobs:
           # variable KINETRA_REMOTE to 1 then (Settings › Secrets and variables › Actions ›
           # Variables). Unset = 0 = no remote control in the app or its UI.
           KINETRA_REMOTE: ${{ vars.KINETRA_REMOTE || '0' }}
+          # Cloud backup ships only once the production API has cloud projects switched on: set
+          # the repository variable KINETRA_CLOUD to 1 then (same place). Unset = 0 = no cloud
+          # backup in the app or its UI.
+          KINETRA_CLOUD: ${{ vars.KINETRA_CLOUD || '0' }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
@@ -203,6 +207,11 @@ jobs:
         env:
           KINETRA_REMOTE: ${{ vars.KINETRA_REMOTE || '0' }}
         run: node scripts/check-remote-build.mjs build --remote "$KINETRA_REMOTE"
+      - name: Cloud backup check (its UI only in builds with KINETRA_CLOUD=1)
+        shell: bash
+        env:
+          KINETRA_CLOUD: ${{ vars.KINETRA_CLOUD || '0' }}
+        run: node scripts/check-cloud-build.mjs build --cloud "$KINETRA_CLOUD"
       - name: Release overrides check (no test overrides in release builds)
         shell: bash
         run: node scripts/check-release-overrides.mjs
@@ -263,6 +272,10 @@ jobs:
           # variable KINETRA_REMOTE to 1 then (Settings › Secrets and variables › Actions ›
           # Variables). Unset = 0 = no remote control in the app or its UI.
           KINETRA_REMOTE: ${{ vars.KINETRA_REMOTE || '0' }}
+          # Cloud backup ships only once the production API has cloud projects switched on: set
+          # the repository variable KINETRA_CLOUD to 1 then (same place). Unset = 0 = no cloud
+          # backup in the app or its UI.
+          KINETRA_CLOUD: ${{ vars.KINETRA_CLOUD || '0' }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
@@ -285,6 +298,11 @@ jobs:
         env:
           KINETRA_REMOTE: ${{ vars.KINETRA_REMOTE || '0' }}
         run: node scripts/check-remote-build.mjs build --remote "$KINETRA_REMOTE"
+      - name: Cloud backup check (its UI only in builds with KINETRA_CLOUD=1)
+        shell: bash
+        env:
+          KINETRA_CLOUD: ${{ vars.KINETRA_CLOUD || '0' }}
+        run: node scripts/check-cloud-build.mjs build --cloud "$KINETRA_CLOUD"
       - name: Release overrides check (no test overrides in release builds)
         shell: bash
         run: node scripts/check-release-overrides.mjs

@@ -28,6 +28,7 @@
 //   help.about          About Kinetra          Preferences › About
 
 import { goto } from "$app/navigation";
+import { loadQuitCheck } from "$cloud";
 import { openPreferences, toAppError } from "$lib/api";
 import { clearRecents, exitApp, setZoom, toggleFullscreen } from "$lib/api/app";
 import { listScreens } from "$lib/api/live";
@@ -130,9 +131,12 @@ async function exit() {
     });
     if (!ok) return;
   } else {
-    // Cloud backup may ask first (only with changes not in the cloud; never while on air).
-    const { backUpBeforeQuit } = await import("$lib/components/cloud/exit");
-    if (await backUpBeforeQuit(exitApp)) return;
+    // Cloud backup may ask first (only with changes not in the cloud; never while on air; only in
+    // builds with cloud backup).
+    if (loadQuitCheck) {
+      const backUpBeforeQuit = await loadQuitCheck();
+      if (await backUpBeforeQuit(exitApp)) return;
+    }
   }
   await exitApp();
 }

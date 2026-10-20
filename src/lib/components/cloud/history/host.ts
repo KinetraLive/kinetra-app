@@ -4,6 +4,17 @@
 
 type Opener = (restore?: string) => void;
 let opener: Opener | null = null;
+let ready = false;
+
+/** The top bar's cloud part says whether the open project has a backup to show. */
+export function setHistoryReady(on: boolean): void {
+  ready = on;
+}
+
+/** Whether "Version history" has anything to show (the palette asks). */
+export function historyReady(): boolean {
+  return ready;
+}
 
 /** The top bar registers its opener (null on teardown). */
 export function setHistoryOpener(open: Opener | null): void {

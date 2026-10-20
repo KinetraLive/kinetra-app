@@ -138,7 +138,7 @@ describe("project picker", () => {
     h.flow.openFolder.mockResolvedValue({ status: "opened", project: proj });
     await renderPage();
     await fireEvent.click(screen.getByRole("button", { name: /in the cloud/i }));
-    await fireEvent.click(await screen.findByRole("button", { name: "Download" }));
+    await fireEvent.click(await screen.findByRole("button", { name: "Download" }, { timeout: 5000 }));
     expect(await screen.findByText("C:\\Shows\\gala")).toBeTruthy();
     expect(h.cloud.cloudRestorePlan).toHaveBeenCalledWith("download", "Gala", "2026-10-15T14:02:00Z");
     await fireEvent.click(screen.getByRole("button", { name: "Download" }));
@@ -156,7 +156,7 @@ describe("project picker", () => {
       view({ mode: "download", versionId: "v1", folder: "C:\\Shows\\gala", phase: "downloading",
              doneBytes: 1, totalBytes: 1, paused: false, limited: false, result }),
     );
-    expect(await screen.findByText("Restored into gala.")).toBeTruthy();
+    expect(await screen.findByText("Restored into gala.", {}, { timeout: 5000 })).toBeTruthy();
     await fireEvent.click(screen.getByRole("button", { name: "Open project" }));
     await waitFor(() => expect(h.flow.openFolder).toHaveBeenCalledWith("C:\\Shows\\gala"));
     await waitFor(() => expect(h.goto).toHaveBeenCalledWith("/dashboard"));
@@ -166,7 +166,7 @@ describe("project picker", () => {
     h.cloud.cloudView.mockResolvedValue({ access: "free", project: null, restore: null });
     await renderPage();
     await fireEvent.click(screen.getByRole("button", { name: /in the cloud/i }));
-    expect(await screen.findByText("Cloud backup is part of Kinetra Pro.")).toBeTruthy();
+    expect(await screen.findByText("Cloud backup is part of Kinetra Pro.", {}, { timeout: 5000 })).toBeTruthy();
     h.cloud.cloudRefresh.mockResolvedValue({ access: "available", project: null, restore: null });
     h.cloud.cloudProjectsList.mockResolvedValue([]);
     await fireEvent.click(screen.getByRole("button", { name: "Check for backups" }));

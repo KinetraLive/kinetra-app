@@ -46,6 +46,20 @@ fn build_info() {
         println!("cargo:rustc-cfg=kinetra_remote");
     }
 
+    // Cloud backup (core::cloud::projects) likewise ships only where KINETRA_CLOUD=1: CI release
+    // builds leave it off until the production API has cloud projects switched on. Same rules.
+    println!("cargo:rerun-if-env-changed=KINETRA_CLOUD");
+    println!("cargo:rustc-check-cfg=cfg(kinetra_cloud)");
+    let cloud = match std::env::var("KINETRA_CLOUD").unwrap_or_default().trim() {
+        "" => debug,
+        "1" => true,
+        "0" => false,
+        other => panic!("KINETRA_CLOUD must be \"1\" or \"0\", not {other:?}"),
+    };
+    if cloud {
+        println!("cargo:rustc-cfg=kinetra_cloud");
+    }
+
     let commit = std::process::Command::new("git")
         .args(["rev-parse", "--short", "HEAD"])
         .output()

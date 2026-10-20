@@ -157,7 +157,8 @@ async fn handle(
     match (method.as_str(), seg.as_slice()) {
         ("GET", ["v1", "me"]) => ok(200, json!({"id": ACCOUNT, "email": "a@b.c"})),
         ("GET", ["v1", "cloud", "quota"]) => {
-            let f = f.lock().unwrap();
+            let mut f = f.lock().unwrap();
+            f.log.push("QUOTA".into());
             let used: u64 = f.blobs.values().map(|b| b.len() as u64).sum();
             ok(
                 200,
@@ -1470,4 +1471,43 @@ fn a_lapsed_plan_is_read_only_and_the_history_still_loads() {
     e.fake.lock().unwrap().quota_state = "ok".into();
     e.rt_block(e.st.cloud_refresh(false)).unwrap();
     wait_until("auto backup", || commits(&e) == 2);
+}
+
+#[test]
+fn a_build_without_cloud_backup_asks_nothing_and_runs_nothing() {
+    // Debug builds and tests have it (KINETRA_CLOUD unset = on in debug).
+    const { assert!(super::CLOUD_BUILD) };
+    let e = env();
+    e.st.set_test_cloud_interval(Some(Duration::from_millis(100)));
+    e.st.cloud_projects().set_test_unavailable(true);
+    e.clear_log();
+    let v = e.rt_block(e.st.cloud_refresh(true)).unwrap();
+    assert_eq!(v.access, crate::core::model::CloudAccess::Unavailable);
+    assert!(v.project.is_none() && v.quota.is_none());
+    // A change: nothing is recorded or scheduled; actions refuse.
+    own_write(&e, "screens/x.json", b"{}");
+    std::thread::sleep(Duration::from_millis(300));
+    assert!(!e.st.cloud_timer_waiting());
+    assert!(e.st.cloud_backup_now().is_err());
+    assert!(e.st.cloud_set_backup(false).is_err());
+    assert!(e.rt_block(e.st.cloud_versions(None)).is_err());
+    assert!(e.rt_block(e.st.cloud_projects_list(false)).is_err());
+    assert!(e
+        .st
+        .cloud_restore_start(crate::core::model::CloudRestoreRequest {
+            project_id: "0199e2a0-0001-7000-8000-000000000001".into(),
+            version_id: None,
+            mode: crate::core::model::CloudRestoreMode::NewFolder,
+            folder: Some(
+                e.dir
+                    .parent()
+                    .unwrap()
+                    .join("x")
+                    .to_string_lossy()
+                    .into_owned()
+            ),
+        })
+        .is_err());
+    // Not a single request.
+    assert!(e.log().is_empty(), "{:?}", e.log());
 }

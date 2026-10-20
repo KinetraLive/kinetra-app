@@ -8,6 +8,7 @@
 import type { Component } from "svelte";
 import type { PreferenceSectionId } from "$lib/types";
 import { REMOTE_BUILD } from "$remote";
+import { CLOUD_BUILD, loadPane as loadCloudPane } from "$cloud";
 
 export interface PreferenceSection {
   id: PreferenceSectionId;
@@ -24,7 +25,8 @@ export const PREFERENCE_SECTIONS: readonly PreferenceSection[] = [
   { id: "outputs", title: "Outputs", load: () => import("./panes/OutputsPane.svelte") },
   { id: "network", title: "Network & API", load: () => import("./panes/NetworkPane.svelte") },
   { id: "license", title: "License", load: () => import("./panes/LicensePane.svelte") },
-  { id: "cloud", title: "Cloud backup", load: () => import("./panes/CloudPane.svelte") },
+  // Only in builds with cloud backup (`$cloud`).
+  ...(loadCloudPane ? [{ id: "cloud" as const, title: "Cloud backup", load: loadCloudPane }] : []),
   { id: "shortcuts", title: "Shortcuts", load: () => import("./ShortcutsSection.svelte") },
   { id: "advanced", title: "Advanced", load: () => import("./panes/AdvancedPane.svelte") },
   { id: "about", title: "About", load: () => import("./AboutSection.svelte") },
@@ -100,7 +102,7 @@ export const PREFERENCE_ENTRIES: readonly { id: string; title: string }[] = [
   { id: "advanced", title: "Advanced" },
   { id: "location", title: "Project location" },
   { id: "backups", title: "Backups" },
-  { id: "cloud", title: "Cloud backup" },
+  ...(CLOUD_BUILD ? [{ id: "cloud", title: "Cloud backup" }] : []),
   { id: "settings-file", title: "Settings file" },
   { id: "reset", title: "Reset" },
   { id: "about", title: "About" },

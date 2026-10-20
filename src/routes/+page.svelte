@@ -11,7 +11,6 @@
   import BrandLogo from "$lib/components/brand/BrandLogo.svelte";
   import { onMount } from "svelte";
   import { goto } from "$app/navigation";
-  import Cloud from "lucide-svelte/icons/cloud";
   import FolderOpen from "lucide-svelte/icons/folder-open";
   import FolderPlus from "lucide-svelte/icons/folder-plus";
   import { toAppError } from "$lib/api";
@@ -22,7 +21,7 @@
   import { describeError, parentDir } from "$lib/components/picker/format";
   import { openFolder, pickFolder } from "$lib/projectFlow";
   import type InitFolderPanelComponent from "$lib/components/picker/InitFolderPanel.svelte";
-  import type CloudListComponent from "$lib/components/picker/CloudList.svelte";
+  import PickerCloud from "$cloud-picker";
   import { project } from "$lib/stores/project.svelte";
 
   let newOpen = $state(false);
@@ -51,17 +50,7 @@
       void import("$lib/components/picker/InitFolderPanel.svelte").then((m) => (InitFolderPanel = m.default));
     }
   });
-  // The account's cloud projects: a lazy chunk, loaded like the form (pointer or focus on its card).
-  let cloudOpen = $state(false);
-  let CloudList = $state.raw<typeof CloudListComponent | null>(null);
-  let cloudLoading: Promise<void> | null = null;
-  function loadCloud() {
-    cloudLoading ??= import("$lib/components/picker/CloudList.svelte").then((m) => {
-      CloudList = m.default;
-    });
-    return cloudLoading;
-  }
-  /** A downloaded project: open it. */
+  /** A downloaded project (In the cloud, only in builds with cloud backup: `$cloud`): open it. */
   async function openDownloaded(path: string) {
     openError = null;
     try {
@@ -259,29 +248,7 @@
           />
         {/if}
 
-        <Card
-          interactive
-          padding="none"
-          class="action"
-          selected={cloudOpen}
-          aria-expanded={cloudOpen}
-          aria-controls="cloud-projects"
-          onpointerenter={loadCloud}
-          onfocus={loadCloud}
-          onclick={() => {
-            void loadCloud();
-            cloudOpen = !cloudOpen;
-          }}
-        >
-          <span class="icon" class:on={cloudOpen} aria-hidden="true"><Cloud size={18} /></span>
-          <span class="text">
-            <span class="title">In the cloud</span>
-            <span class="desc">Download a project from your cloud backup.</span>
-          </span>
-        </Card>
-        {#if cloudOpen && CloudList}
-          <CloudList id="cloud-projects" onopened={openDownloaded} />
-        {/if}
+        <PickerCloud onopened={openDownloaded} />
       </div>
 
       <RecentList onopened={toDashboard} loadError={recentsError} />

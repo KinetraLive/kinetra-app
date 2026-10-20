@@ -231,6 +231,7 @@ impl AppState {
 
     /// Starts a backup of the open project (`reason`) unless one runs. Returns at once.
     pub(super) fn cloud_backup_start(&self, reason: Reason) -> AppResult<()> {
+        self.cloud_build_check()?;
         self.require_new_pro_work(PRO_CLOUD)?;
         if !self.cloud_backup_on() {
             return Err(AppError::Invalid(
