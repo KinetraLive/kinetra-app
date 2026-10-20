@@ -26,11 +26,17 @@
   import { remote } from "$lib/components/remote/state.svelte";
   import { loadChip } from "$remote";
   import { cloud } from "$lib/components/cloud/state.svelte";
-  import { history, loadHistory } from "$lib/components/cloud/history/open.svelte";
+  import { loadHistory, setHistoryOpener } from "$lib/components/cloud/history/host";
 
   $effect(() => server.watch());
   $effect(() => remote.watch());
   $effect(() => cloud.watch());
+  /** The version history dialog (opened from the chip and the palette through `openHistory`). */
+  let historyOpen = $state(false);
+  $effect(() => {
+    setHistoryOpener(() => (historyOpen = true));
+    return () => setHistoryOpener(null);
+  });
   /** Cloud backup's chip: a lazy chunk, only while the open project backs up. */
   const loadCloudChip = () => import("$lib/components/cloud/CloudChip.svelte").then((m) => m.default);
 
@@ -86,8 +92,8 @@
     <ThemeToggle />
   </div>
 </header>
-{#if history.open}
-  {#await loadHistory() then History}<History open={history.open} onclose={history.close} />{/await}
+{#if historyOpen}
+  {#await loadHistory() then History}<History open={historyOpen} onclose={() => (historyOpen = false)} />{/await}
 {/if}
 
 <style>

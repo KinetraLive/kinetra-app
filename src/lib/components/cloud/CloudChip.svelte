@@ -11,12 +11,12 @@
   import CloudIcon from "lucide-svelte/icons/cloud";
   import Button from "$lib/components/Button.svelte";
   import { toAppError } from "$lib/api";
-  import { cloudAnswer, cloudBackupNow, cloudConflictDismiss, cloudNoticeSeen, cloudSetBackup } from "$lib/api/cloud";
+  import { cloudAnswer, cloudBackupNow, cloudConflictDismiss, cloudNoticeSeen, cloudSetBackup } from "$lib/api/cloud-backup";
   import { preferencesLink } from "$lib/components/settings/open";
   import { toasts } from "$lib/stores/toasts.svelte";
   import type { CloudAnswer } from "$lib/types";
   import { cloud } from "./state.svelte";
-  import { history } from "./history/open.svelte";
+  import { openHistory } from "./history/host";
   import { chipWords, conflictWords, questionWords } from "./words";
 
   const id = $props.id();
@@ -79,7 +79,7 @@
           disabled={!project.registered}
           onclick={() => {
             pop?.hidePopover();
-            history.show();
+            openHistory();
           }}>Version history…</Button
         >
         {#if project.conflict}

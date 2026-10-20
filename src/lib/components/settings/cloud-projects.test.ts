@@ -10,7 +10,7 @@ const api = vi.hoisted(() => ({
   cloudProjectTrash: vi.fn(async () => null),
   cloudProjectUntrash: vi.fn(async () => null),
 }));
-vi.mock("$lib/api/cloud", () => api);
+vi.mock("$lib/api/cloud-history", () => api);
 vi.mock("$lib/api", () => ({ toAppError: (e: unknown) => ({ message: String(e) }) }));
 
 import CloudProjects from "./cloud/CloudProjects.svelte";

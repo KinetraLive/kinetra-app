@@ -12,6 +12,7 @@ const api = vi.hoisted(() => ({
   cloudSetBackup: vi.fn(async () => null),
 }));
 vi.mock("$lib/api/cloud", () => api);
+vi.mock("$lib/api/cloud-backup", () => api);
 vi.mock("$lib/api", () => ({ on: () => () => {}, toAppError: (e: unknown) => ({ message: String(e) }) }));
 vi.mock("$lib/components/settings/open", () => ({ preferencesLink: () => () => {} }));
 

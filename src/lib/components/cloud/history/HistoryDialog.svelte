@@ -14,7 +14,8 @@
   import Tag from "lucide-svelte/icons/tag";
   import X from "lucide-svelte/icons/x";
   import { toAppError } from "$lib/api";
-  import { cloudBackupNow, cloudVersionDelete, cloudVersionKeep, cloudVersionLabel, cloudVersions } from "$lib/api/cloud";
+  import { cloudBackupNow } from "$lib/api/cloud-backup";
+  import { cloudVersionDelete, cloudVersionKeep, cloudVersionLabel, cloudVersions } from "$lib/api/cloud-history";
   import Badge from "$lib/components/Badge.svelte";
   import Button from "$lib/components/Button.svelte";
   import IconButton from "$lib/components/IconButton.svelte";

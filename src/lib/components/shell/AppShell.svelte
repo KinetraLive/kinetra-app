@@ -47,7 +47,7 @@
   import { remote } from "$lib/components/remote/state.svelte";
   import { setRemote } from "$remote";
   import { cloud } from "$lib/components/cloud/state.svelte";
-  import { history } from "$lib/components/cloud/history/open.svelte";
+  import { openHistory } from "$lib/components/cloud/history/host";
 
   let { children }: { children?: Snippet } = $props();
 
@@ -141,7 +141,7 @@
         automationOff: () => automationOff,
         toggleRemote: setRemote ? () => void toggleRemote() : undefined,
         remoteOn: () => remote.view?.on ?? false,
-        openHistory: history.show,
+        openHistory,
         historyReady: () => !!cloud.view?.project?.registered,
       }),
     ),

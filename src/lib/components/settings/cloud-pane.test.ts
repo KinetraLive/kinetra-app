@@ -16,6 +16,8 @@ const api = vi.hoisted(() => ({
 }));
 const license = vi.hoisted(() => ({ signIn: vi.fn(), start: vi.fn(), view: null }));
 vi.mock("$lib/api/cloud", () => api);
+vi.mock("$lib/api/cloud-backup", () => api);
+vi.mock("$lib/api/cloud-history", () => api);
 vi.mock("$lib/api/license", () => ({ cloudLinks: vi.fn(async () => ({ pricing: "https://kinetra.live/pricing" })) }));
 vi.mock("$lib/components/license/state.svelte", () => ({ license }));
 vi.mock("$lib/api", () => ({

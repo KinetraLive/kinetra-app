@@ -11,7 +11,8 @@ const api = vi.hoisted(() => ({
   cloudVersionDelete: vi.fn(async () => {}),
   cloudBackupNow: vi.fn(async () => null),
 }));
-vi.mock("$lib/api/cloud", () => api);
+vi.mock("$lib/api/cloud-history", () => api);
+vi.mock("$lib/api/cloud-backup", () => api);
 vi.mock("$lib/api", () => ({ toAppError: (e: unknown) => ({ message: String(e) }) }));
 
 import HistoryDialog from "./HistoryDialog.svelte";

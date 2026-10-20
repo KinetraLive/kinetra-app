@@ -8,7 +8,7 @@
 -->
 <script lang="ts">
   import { toAppError } from "$lib/api";
-  import { cloudProjectRename, cloudProjectsList, cloudProjectTrash, cloudProjectUntrash } from "$lib/api/cloud";
+  import { cloudProjectRename, cloudProjectsList, cloudProjectTrash, cloudProjectUntrash } from "$lib/api/cloud-history";
   import Badge from "$lib/components/Badge.svelte";
   import Button from "$lib/components/Button.svelte";
   import Switch from "$lib/components/Switch.svelte";

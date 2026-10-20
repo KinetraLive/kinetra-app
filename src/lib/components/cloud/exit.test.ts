@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const events = vi.hoisted(() => ({ handlers: new Map<string, (p: unknown) => void>() }));
 const api = vi.hoisted(() => ({ cloudExitShouldAsk: vi.fn(), cloudBackupBeforeExit: vi.fn() }));
 const dialog = vi.hoisted(() => ({ message: vi.fn() }));
-vi.mock("$lib/api/cloud", () => api);
+vi.mock("$lib/api/cloud-backup", () => api);
 vi.mock("@tauri-apps/plugin-dialog", () => dialog);
 vi.mock("$lib/api", () => ({
   on: (name: string, h: (p: unknown) => void) => {

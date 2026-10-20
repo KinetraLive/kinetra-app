@@ -11,7 +11,8 @@
 
 <script lang="ts">
   import { toAppError } from "$lib/api";
-  import { cloudAnswer, cloudBackupNow, cloudConflictDismiss, cloudRefresh, cloudSetBackup } from "$lib/api/cloud";
+  import { cloudRefresh } from "$lib/api/cloud";
+  import { cloudAnswer, cloudBackupNow, cloudConflictDismiss, cloudSetBackup } from "$lib/api/cloud-backup";
   import Button from "$lib/components/Button.svelte";
   import NumberInput from "$lib/components/NumberInput.svelte";
   import ProgressBar from "$lib/components/ProgressBar.svelte";
@@ -23,7 +24,7 @@
   import { conflictWords, lastWords, questionWords, retentionWords, runWords, size, stateWords } from "$lib/components/cloud/words";
   import ProLock from "$lib/components/license/ProLock.svelte";
   import CloudProjects from "../cloud/CloudProjects.svelte";
-  import { loadHistory } from "$lib/components/cloud/history/open.svelte";
+  import { loadHistory } from "$lib/components/cloud/history/host";
   import { license } from "$lib/components/license/state.svelte";
   import { cloudLinks } from "$lib/api/license";
   import { openInBrowser } from "$lib/components/license/open";

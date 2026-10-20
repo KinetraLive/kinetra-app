@@ -4,7 +4,7 @@
 // with a sticky toast offering "Quit now". Loaded lazily by the exit command.
 
 import { on } from "$lib/api";
-import { cloudBackupBeforeExit, cloudExitShouldAsk } from "$lib/api/cloud";
+import { cloudBackupBeforeExit, cloudExitShouldAsk } from "$lib/api/cloud-backup";
 import { t } from "$lib/i18n";
 import { toasts } from "$lib/stores/toasts.svelte";
 
