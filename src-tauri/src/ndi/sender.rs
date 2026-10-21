@@ -131,6 +131,7 @@ impl NdiSender {
         let stop = Arc::new(AtomicBool::new(false));
         let job = Job {
             runtime,
+            name: name.to_string(),
             inst: Instance(inst),
             inbox: inbox.clone(),
             stats: stats.clone(),
@@ -164,6 +165,7 @@ impl Drop for NdiSender {
 
 struct Job {
     runtime: Arc<Runtime>,
+    name: String,
     inst: Instance,
     inbox: Arc<dyn FrameInbox>,
     stats: Arc<SenderStats>,
@@ -258,6 +260,11 @@ impl Job {
             }
             let now = self.snapshot();
             if now != shown {
+                if now.0 != shown.0 && now.0 >= 0 {
+                    // The count NDI reports (one receiver has read as 2): for checking it against
+                    // vMix and Studio Monitor before the UI shows a number.
+                    tracing::info!("NDI source {}: {} connection(s)", self.name, now.0);
+                }
                 shown = now;
                 if let Some(f) = &self.on_change {
                     f();

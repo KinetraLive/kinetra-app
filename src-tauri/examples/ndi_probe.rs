@@ -265,6 +265,19 @@ mod probe {
         }
     }
 
+    /// (idle, kernel + user) time of the whole system, 100 ns units.
+    fn system_times() -> (u64, u64) {
+        let (mut i, mut k, mut u) = (
+            FILETIME::default(),
+            FILETIME::default(),
+            FILETIME::default(),
+        );
+        unsafe {
+            let _ = GetSystemTimes(Some(&mut i), Some(&mut k), Some(&mut u));
+        }
+        (ft(i), ft(k) + ft(u))
+    }
+
     /// `root` and all its descendants.
     fn process_tree(root: u32) -> Vec<u32> {
         let mut pairs = Vec::new();
@@ -650,6 +663,23 @@ mod probe {
         let mut last_web: u64 = tree.iter().filter_map(|p| cpu_100ns(*p)).sum();
         let mut last_t = Instant::now();
         let end = Instant::now() + Duration::from_secs(secs);
+        // --timeline FILE: one CSV line per second (CPU of this process, of the capture's WebView2
+        // and of the whole system; frames sent and dropped; late and missed ticks; memory).
+        let mut timeline = match arg(args, "--timeline") {
+            Some(p) => {
+                let mut f = std::fs::File::create(&p).map_err(|e| format!("{p}: {e}"))?;
+                writeln!(
+                    f,
+                    "second,probe_cores,webview2_cores,system_busy_pct,sent,dropped_before_send,late,missed,receivers,private_mb,webview2_mb"
+                )
+                .map_err(|e| e.to_string())?;
+                Some(f)
+            }
+            None => None,
+        };
+        let (mut last_sys, mut last_c, mut last_sent, mut last_dropped) =
+            (system_times(), source.counters(), sent0, dropped0);
+        let mut second = 0u64;
         while Instant::now() < end {
             std::thread::sleep(Duration::from_secs(1));
             let dt = last_t.elapsed().as_secs_f64();
@@ -659,6 +689,34 @@ mod probe {
             own.push((o - last_own) as f64 / 1e7 / dt);
             web.push(wv.saturating_sub(last_web) as f64 / 1e7 / dt);
             (last_own, last_web) = (o, wv);
+            if let Some(f) = timeline.as_mut() {
+                second += 1;
+                let sys = system_times();
+                let (idle, total) = (sys.0 - last_sys.0, sys.1 - last_sys.1);
+                let busy = if total > 0 {
+                    100.0 * (1.0 - idle as f64 / total as f64)
+                } else {
+                    0.0
+                };
+                last_sys = sys;
+                let c = source.counters();
+                let sent = sender.stats.sent.load(Ordering::Relaxed);
+                let dropped = outlet.dropped.load(Ordering::Relaxed);
+                let _ = writeln!(
+                    f,
+                    "{second},{:.3},{:.3},{busy:.1},{},{},{},{},{},{:.1},{:.1}",
+                    own.last().copied().unwrap_or(0.0),
+                    web.last().copied().unwrap_or(0.0),
+                    sent - last_sent,
+                    dropped - last_dropped,
+                    c.late - last_c.late,
+                    c.missed - last_c.missed,
+                    sender.stats.receivers.load(Ordering::Relaxed),
+                    private_mb(),
+                    tree.iter().map(|p| private_mb_of(*p)).sum::<f64>(),
+                );
+                (last_c, last_sent, last_dropped) = (c, sent, dropped);
+            }
         }
         spin.store(false, Ordering::Relaxed);
         for s in spinners {
