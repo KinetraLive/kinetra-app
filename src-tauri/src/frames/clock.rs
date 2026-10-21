@@ -34,6 +34,39 @@ pub fn now_us() -> i64 {
     (i128::from(c) * 1_000_000 / i128::from(qpc_frequency())) as i64
 }
 
+/// The calling thread in the Multimedia Class Scheduler's "Playback" class while this lives
+/// (output clock and senders: scheduled ahead of ordinary work without starving it); where MMCSS
+/// isn't available, above-normal priority instead.
+pub struct Boost(Option<HANDLE>);
+
+pub fn boost_thread() -> Boost {
+    use windows::core::w;
+    use windows::Win32::System::Threading::{
+        AvSetMmThreadCharacteristicsW, GetCurrentThread, SetThreadPriority,
+        THREAD_PRIORITY_ABOVE_NORMAL,
+    };
+    let mut task = 0u32;
+    match unsafe { AvSetMmThreadCharacteristicsW(w!("Playback"), &mut task) } {
+        Ok(h) => Boost(Some(h)),
+        Err(_) => {
+            unsafe {
+                let _ = SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL);
+            }
+            Boost(None)
+        }
+    }
+}
+
+impl Drop for Boost {
+    fn drop(&mut self) {
+        if let Some(h) = self.0.take() {
+            unsafe {
+                let _ = windows::Win32::System::Threading::AvRevertMmThreadCharacteristics(h);
+            }
+        }
+    }
+}
+
 /// Ticks at a [`FrameRate`] from the moment it's created.
 pub struct Ticker {
     timer: HANDLE,

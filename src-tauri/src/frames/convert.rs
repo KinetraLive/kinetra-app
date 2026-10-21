@@ -23,8 +23,10 @@ use super::gpu::texture;
 use super::FrameError;
 use crate::core::frame_out::{AlphaMode, PixelFormat};
 
-/// Staging slots: one being written by the GPU, one finished, one spare.
-pub const SLOTS: usize = 3;
+/// Staging slots: one being written by the GPU, one being read (the GPU finishes a 1080p frame in
+/// ~1–2 ms, well inside a tick). Each is 5.9 MB of system memory at 1080p UYVA, created on first
+/// use and released while the source is idle ([`Converter::release_staging`]).
+pub const SLOTS: usize = 2;
 
 const HLSL: &str = r#"
 Texture2D<float4> src : register(t0);
@@ -91,6 +93,7 @@ pub struct Converter {
     passes: Vec<Pass>,
     slots: Vec<Slot>,
     seq: u64,
+    device: ID3D11Device,
 }
 
 // SAFETY: D3D11 objects are free-threaded; every context call goes through the multithread-
@@ -211,24 +214,12 @@ impl Converter {
                 4,
             )?],
         };
-        let mut slots = Vec::with_capacity(SLOTS);
-        for _ in 0..SLOTS {
-            let staging = passes
-                .iter()
-                .map(|p| {
-                    let fmt = unsafe {
-                        let mut d = D3D11_TEXTURE2D_DESC::default();
-                        p.target.GetDesc(&mut d);
-                        d.Format
-                    };
-                    texture(device, p.w, p.h, fmt, D3D11_BIND_FLAG(0), true)
-                })
-                .collect::<Result<Vec<_>, _>>()?;
-            slots.push(Slot {
-                staging,
+        let slots = (0..SLOTS)
+            .map(|_| Slot {
+                staging: Vec::new(),
                 pending: None,
-            });
-        }
+            })
+            .collect();
         let mut srv = None;
         unsafe { device.CreateShaderResourceView(src, None, Some(&mut srv)) }.map_err(gpu)?;
         // Constants: bg (float4), mode (uint), padding.
@@ -265,12 +256,42 @@ impl Converter {
             passes,
             slots,
             seq: 0,
+            device: device.clone(),
         })
     }
 
     /// Bytes of one read-back frame.
     pub fn frame_bytes(&self) -> usize {
         self.format.frame_bytes(self.w, self.h)
+    }
+
+    /// The sequence number of the last submit (0 = none yet).
+    pub fn last_seq(&self) -> u64 {
+        self.seq
+    }
+
+    /// One slot's staging textures (one per pass).
+    fn staging(&self) -> Result<Vec<ID3D11Texture2D>, FrameError> {
+        self.passes
+            .iter()
+            .map(|p| {
+                let fmt = unsafe {
+                    let mut d = D3D11_TEXTURE2D_DESC::default();
+                    p.target.GetDesc(&mut d);
+                    d.Format
+                };
+                texture(&self.device, p.w, p.h, fmt, D3D11_BIND_FLAG(0), true)
+            })
+            .collect()
+    }
+
+    /// Frees the staging textures and forgets pending conversions (the source went idle; the
+    /// GPU keeps a texture alive until its copy is done). Recreated by the next `submit`.
+    pub fn release_staging(&mut self) {
+        for s in &mut self.slots {
+            s.staging.clear();
+            s.pending = None;
+        }
     }
 
     /// True while a slot is free for [`submit`](Self::submit).
@@ -282,6 +303,15 @@ impl Converter {
     /// flushed; returns at once). `None` when every slot is still owned by the GPU.
     pub fn submit(&mut self, ctx: &ID3D11DeviceContext) -> Option<u64> {
         let slot = self.slots.iter().position(|s| s.pending.is_none())?;
+        if self.slots[slot].staging.is_empty() {
+            match self.staging() {
+                Ok(s) => self.slots[slot].staging = s,
+                Err(e) => {
+                    tracing::warn!("frames: staging: {e}");
+                    return None;
+                }
+            }
+        }
         self.seq += 1;
         unsafe {
             ctx.IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
@@ -588,6 +618,51 @@ mod tests {
         );
         assert_eq!(half_red[1], 63);
         assert_eq!(&half_red[4..], &[128, 128]);
+    }
+
+    #[test]
+    fn staging_is_released_while_idle_and_made_again() {
+        let g = gpu::create(Adapter::Warp).unwrap();
+        let src = texture(
+            &g.device,
+            16,
+            4,
+            DXGI_FORMAT_B8G8R8A8_UNORM,
+            D3D11_BIND_SHADER_RESOURCE,
+            false,
+        )
+        .unwrap();
+        let mut c = Converter::new(
+            &g.device,
+            &src,
+            16,
+            4,
+            PixelFormat::Uyva,
+            AlphaMode::Straight,
+            [0; 3],
+        )
+        .unwrap();
+        assert!(
+            c.slots.iter().all(|s| s.staging.is_empty()),
+            "nothing allocated before use"
+        );
+        let mut out = vec![0u8; c.frame_bytes()];
+        c.convert_blocking(&g.context, &mut out).unwrap();
+        assert!(c.slots.iter().any(|s| !s.staging.is_empty()));
+        c.submit(&g.context);
+        c.release_staging();
+        assert!(c
+            .slots
+            .iter()
+            .all(|s| s.staging.is_empty() && s.pending.is_none()));
+        assert_eq!(c.collect(&g.context, &mut out).unwrap(), Collected::Idle);
+        // Awake again: made on the next submit, and the result is right (clear → alpha 0).
+        out.fill(9);
+        c.convert_blocking(&g.context, &mut out).unwrap();
+        assert!(
+            out[16 / 2 * 4 * 4..].iter().all(|&a| a == 0),
+            "the alpha plane of a clear source"
+        );
     }
 
     #[test]

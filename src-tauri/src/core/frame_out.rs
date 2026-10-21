@@ -141,6 +141,13 @@ impl Pool {
         }
     }
 
+    /// Frees the buffers waiting to be reused (the source went idle).
+    pub fn trim(&self) {
+        if let Ok(mut f) = self.free.lock() {
+            *f = Vec::new();
+        }
+    }
+
     /// Buffers waiting to be reused (tests).
     pub fn idle(&self) -> usize {
         self.free.lock().map(|f| f.len()).unwrap_or(0)
@@ -277,6 +284,8 @@ pub struct FrameCounters {
     pub late: AtomicU64,
     /// Ticks whose clock woke more than one frame late (the machine was busy).
     pub missed: AtomicU64,
+    /// Ticks skipped because no sender wanted frames (no receiver).
+    pub idle: AtomicU64,
 }
 
 /// A snapshot of [`FrameCounters`].
@@ -287,6 +296,7 @@ pub struct FrameCountersView {
     pub repeated: u64,
     pub late: u64,
     pub missed: u64,
+    pub idle: u64,
 }
 
 impl FrameCounters {
@@ -298,6 +308,7 @@ impl FrameCounters {
             repeated: g(&self.repeated),
             late: g(&self.late),
             missed: g(&self.missed),
+            idle: g(&self.idle),
         }
     }
 }
@@ -394,6 +405,8 @@ mod tests {
         assert_eq!(pool.idle(), 2);
         let d = pool.take();
         assert_eq!(pool.idle(), 1);
+        pool.trim();
+        assert_eq!(pool.idle(), 0);
         drop(pool);
         drop(d); // the pool is gone: the buffer is just freed
     }

@@ -15,14 +15,14 @@
 //! turns off Chromium's occlusion detection and background throttling; without them a hidden page
 //! would stop drawing.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
 use std::sync::Arc;
 
 use webview2_com::Microsoft::Web::WebView2::Win32::*;
 use webview2_com::{
     CoreWebView2EnvironmentOptions, CreateCoreWebView2CompositionControllerCompletedHandler,
-    CreateCoreWebView2EnvironmentCompletedHandler,
+    CreateCoreWebView2EnvironmentCompletedHandler, ProcessFailedEventHandler,
 };
 use windows::core::{Interface, Ref, HSTRING, PCWSTR};
 use windows::Foundation::{TimeSpan, TypedEventHandler};
@@ -86,16 +86,29 @@ struct SendBox<T>(T);
 // SAFETY: moves COM pointers of free-threaded D3D11 objects to the capture thread.
 unsafe impl<T> Send for SendBox<T> {}
 
+/// Called (on the capture's UI thread) when the page's render or browser process failed: the page
+/// shows nothing new until the capture is started again.
+pub type OnFailed = Arc<dyn Fn() + Send + Sync>;
+
+/// What a capture shows and how.
+#[derive(Clone)]
+pub struct CaptureOptions {
+    pub page: Page,
+    /// CSS px (= physical px).
+    pub width: u32,
+    pub height: u32,
+    /// The WebView2 user data folder.
+    pub data_dir: PathBuf,
+    /// Capture every frame the page draws (`MinUpdateInterval` 1 ms, Windows 11 24H2+); off =
+    /// the system's ~60 Hz default (what older Windows always does; measurements only).
+    pub follow_page: bool,
+    pub on_failed: Option<OnFailed>,
+}
+
 impl Capture {
-    /// Starts a capture of `page` at `w`×`h` CSS px (= physical px) on `gpu`'s device, with the
-    /// WebView2 user data in `data_dir`. Returns once the page is navigating and capture runs.
-    pub fn start(
-        gpu: &Gpu,
-        page: Page,
-        w: u32,
-        h: u32,
-        data_dir: &Path,
-    ) -> Result<Self, FrameError> {
+    /// Starts a capture on `gpu`'s device. Returns once the page is navigating and capture runs.
+    pub fn start(gpu: &Gpu, opts: CaptureOptions) -> Result<Self, FrameError> {
+        let (w, h) = (opts.width, opts.height);
         let texture = texture(
             &gpu.device,
             w,
@@ -108,16 +121,13 @@ impl Capture {
         let latest_us = Arc::new(AtomicI64::new(0));
         let (tx, rx) = std::sync::mpsc::channel::<Result<(u32, u32), FrameError>>();
         let shared = SendBox((gpu.device.clone(), gpu.context.clone(), texture.clone()));
-        let (data, counters) = (
-            data_dir.to_path_buf(),
-            (captured.clone(), latest_us.clone()),
-        );
+        let counters = (captured.clone(), latest_us.clone());
         let thread = std::thread::Builder::new()
             .name("frames-capture".into())
             .spawn(move || {
                 let shared = shared;
                 let (device, context, target) = shared.0;
-                let r = ui_thread(&device, &context, &target, page, w, h, data, counters, &tx);
+                let r = ui_thread(&device, &context, &target, opts, counters, &tx);
                 if let Err(e) = r {
                     tx.send(Err(e)).ok();
                 }
@@ -163,18 +173,22 @@ fn win(e: windows::core::Error) -> FrameError {
     FrameError::WebView(e.to_string())
 }
 
-#[allow(clippy::too_many_arguments)]
 fn ui_thread(
     device: &ID3D11Device,
     context: &ID3D11DeviceContext,
     target: &ID3D11Texture2D,
-    page: Page,
-    w: u32,
-    h: u32,
-    data: PathBuf,
+    opts: CaptureOptions,
     (captured, latest_us): (Arc<AtomicU64>, Arc<AtomicI64>),
     ready: &std::sync::mpsc::Sender<Result<(u32, u32), FrameError>>,
 ) -> Result<(), FrameError> {
+    let CaptureOptions {
+        page,
+        width: w,
+        height: h,
+        data_dir: data,
+        follow_page,
+        on_failed,
+    } = opts;
     unsafe {
         CoInitializeEx(None, COINIT_APARTMENTTHREADED)
             .ok()
@@ -278,6 +292,27 @@ fn ui_thread(
             controller.SetIsVisible(true).map_err(win)?;
             let core = controller.CoreWebView2().map_err(win)?;
             core.BrowserProcessId(&mut browser_pid).map_err(win)?;
+            if let Some(f) = on_failed {
+                // A dead or hung page draws nothing more: the owner starts the capture again.
+                let handler = ProcessFailedEventHandler::create(Box::new(move |_, args| {
+                    let mut kind = COREWEBVIEW2_PROCESS_FAILED_KIND::default();
+                    if let Some(args) = args {
+                        args.ProcessFailedKind(&mut kind)?;
+                    }
+                    if matches!(
+                        kind,
+                        COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED
+                            | COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_EXITED
+                            | COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_UNRESPONSIVE
+                    ) {
+                        tracing::warn!("NDI capture page failed ({kind:?})");
+                        f();
+                    }
+                    Ok(())
+                }));
+                let mut token = 0i64;
+                core.add_ProcessFailed(&handler, &mut token).map_err(win)?;
+            }
             match &page {
                 Page::Url(u) => core.Navigate(&HSTRING::from(u.as_str())).map_err(win)?,
                 Page::Html(html) => core
@@ -304,7 +339,9 @@ fn ui_thread(
         // these; capture works without them.
         let _ = session.SetIsBorderRequired(false);
         let _ = session.SetIsCursorCaptureEnabled(false);
-        let _ = session.SetMinUpdateInterval(TimeSpan { Duration: 10_000 });
+        if follow_page {
+            let _ = session.SetMinUpdateInterval(TimeSpan { Duration: 10_000 });
+        }
         let (ctx, tgt) = (context.clone(), target.clone());
         pool.FrameArrived(&TypedEventHandler::new(
             move |p: Ref<Direct3D11CaptureFramePool>, _| -> windows::core::Result<()> {

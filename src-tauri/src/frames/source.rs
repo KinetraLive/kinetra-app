@@ -13,12 +13,8 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
-use windows::Win32::System::Threading::{
-    GetCurrentThread, SetThreadPriority, THREAD_PRIORITY_ABOVE_NORMAL,
-};
-
-use super::capture::{Capture, Page};
-use super::clock::Ticker;
+use super::capture::{Capture, CaptureOptions, OnFailed, Page};
+use super::clock::{boost_thread, Ticker};
 use super::convert::{Collected, Converter};
 use super::gpu::{self, Adapter, Gpu};
 use super::FrameError;
@@ -40,14 +36,28 @@ pub struct SourceConfig {
     /// The WebView2 user data folder for captures.
     pub data_dir: PathBuf,
     pub adapter: Adapter,
+    /// Capture every frame the page draws (see `CaptureOptions::follow_page`); true in the app.
+    pub follow_page: bool,
 }
 
 /// Where one sender takes its frames from.
-#[derive(Default)]
 pub struct Outlet {
     pub mailbox: Mailbox<Arc<Frame>>,
     /// Frames replaced before this outlet's sender took them.
     pub dropped: AtomicU64,
+    /// The sender wants frames (an NDI sender: a receiver is connected). While no outlet wants
+    /// any, the source skips the GPU conversion and read-back and hands out nothing.
+    pub wanted: AtomicBool,
+}
+
+impl Default for Outlet {
+    fn default() -> Self {
+        Self {
+            mailbox: Mailbox::default(),
+            dropped: AtomicU64::new(0),
+            wanted: AtomicBool::new(true),
+        }
+    }
 }
 
 pub struct FrameSource {
@@ -66,14 +76,20 @@ pub struct FrameSource {
 }
 
 impl FrameSource {
-    pub fn start(config: SourceConfig) -> Result<Self, FrameError> {
-        let gpu = Arc::new(gpu::create(config.adapter)?);
+    /// Starts capturing and ticking. `on_failed`: the page's process failed (see
+    /// [`CaptureOptions::on_failed`]).
+    pub fn start(config: SourceConfig, on_failed: Option<OnFailed>) -> Result<Self, FrameError> {
+        let gpu = gpu::shared(config.adapter)?;
         let capture = Capture::start(
             &gpu,
-            config.page.clone(),
-            config.width,
-            config.height,
-            &config.data_dir,
+            CaptureOptions {
+                page: config.page.clone(),
+                width: config.width,
+                height: config.height,
+                data_dir: config.data_dir.clone(),
+                follow_page: config.follow_page,
+                on_failed,
+            },
         )?;
         let converter = Converter::new(
             &gpu.device,
@@ -169,13 +185,14 @@ struct ClockJob {
 
 impl ClockJob {
     fn run(mut self) {
-        unsafe {
-            let _ = SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL);
-        }
+        let _boost = boost_thread();
         let period_us = self.config.rate.period_ns() / 1000;
         let mut seen = 0u64;
         let mut last: Option<Arc<Frame>> = None;
         let mut submitted_at: Option<i64> = None;
+        // Conversions submitted before the source went idle are stale when it wakes.
+        let mut stale_upto = 0u64;
+        let mut idle = false;
         while !self.stop.load(Ordering::Relaxed) {
             let tick = self.ticker.wait();
             let c = &self.counters;
@@ -185,6 +202,30 @@ impl ClockJob {
             }
             let now_captured = self.captured.load(Ordering::Relaxed);
             c.captured.store(now_captured, Ordering::Relaxed);
+            let wanted = self
+                .outlets
+                .lock()
+                .map(|o| o.iter().any(|o| o.wanted.load(Ordering::Relaxed)))
+                .unwrap_or(true);
+            if !wanted {
+                // Nobody receives: no GPU work, nothing handed out (a stale frame never reaches
+                // the next receiver).
+                if !idle {
+                    idle = true;
+                    stale_upto = self.converter.last_seq();
+                    self.converter.release_staging();
+                    self.pool.trim();
+                    last = None;
+                    submitted_at = None;
+                }
+                c.idle.fetch_add(1, Ordering::Relaxed);
+                continue;
+            }
+            if idle {
+                // Awake: convert what the page shows now, even if it drew nothing new.
+                idle = false;
+                seen = u64::MAX;
+            }
             let fresh = now_captured != seen;
             if fresh && self.converter.can_submit() {
                 seen = now_captured;
@@ -194,6 +235,7 @@ impl ClockJob {
             }
             let mut buf = self.pool.take();
             let frame = match self.converter.collect(&self.gpu.context, &mut buf) {
+                Ok(Collected::Frame(seq)) if seq <= stale_upto => None,
                 Ok(Collected::Frame(_)) => {
                     submitted_at = None;
                     Some(Arc::new(Frame {

@@ -16,6 +16,8 @@ use super::FrameError;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Adapter {
     HighPerformance,
+    /// DXGI adapter 0: the one driving the primary display (measurements: hybrid laptops).
+    Primary,
     Warp,
 }
 
@@ -38,11 +40,15 @@ pub fn create(adapter: Adapter) -> Result<Gpu, FrameError> {
     let name;
     unsafe {
         match adapter {
-            Adapter::HighPerformance => {
+            Adapter::HighPerformance | Adapter::Primary => {
                 let factory: IDXGIFactory6 = CreateDXGIFactory1().map_err(gpu)?;
-                let a: IDXGIAdapter1 = factory
-                    .EnumAdapterByGpuPreference(0, DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE)
-                    .map_err(gpu)?;
+                let a: IDXGIAdapter1 = if adapter == Adapter::Primary {
+                    factory.EnumAdapters1(0).map_err(gpu)?
+                } else {
+                    factory
+                        .EnumAdapterByGpuPreference(0, DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE)
+                        .map_err(gpu)?
+                };
                 let desc = a.GetDesc1().map_err(gpu)?;
                 name = String::from_utf16_lossy(&desc.Description)
                     .trim_end_matches('\0')
@@ -90,6 +96,28 @@ pub fn create(adapter: Adapter) -> Result<Gpu, FrameError> {
         context,
         name,
     })
+}
+
+/// The process's device for `adapter`, shared by every frame source while any holds it (each
+/// device costs the driver ~50 MB; a second output measured +53 MB with its own). Created on
+/// first use, released with the last holder.
+pub fn shared(adapter: Adapter) -> Result<std::sync::Arc<Gpu>, FrameError> {
+    use std::sync::{Arc, Mutex, Weak};
+    static DEVICES: Mutex<Vec<(Adapter, Weak<Gpu>)>> = Mutex::new(Vec::new());
+    let mut devices = DEVICES
+        .lock()
+        .map_err(|_| FrameError::Gpu("poisoned".into()))?;
+    devices.retain(|(_, w)| w.strong_count() > 0);
+    if let Some(g) = devices
+        .iter()
+        .find(|(a, _)| *a == adapter)
+        .and_then(|(_, w)| w.upgrade())
+    {
+        return Ok(g);
+    }
+    let g = Arc::new(create(adapter)?);
+    devices.push((adapter, Arc::downgrade(&g)));
+    Ok(g)
 }
 
 /// A 2D texture: GPU-only with `bind` flags, or a CPU-readable staging copy.

@@ -200,7 +200,13 @@ pub fn run() {
                         st.outputs_ndi_changed();
                     }
                 });
-                state.set_ndi_host(Some(ndi::host::NdiOutputs::new(data, notify)));
+                let weak = state.downgrade();
+                let restart: ndi::sender::OnChange = Arc::new(move || {
+                    if let Some(st) = weak.upgrade() {
+                        st.outputs_host_changed();
+                    }
+                });
+                state.set_ndi_host(Some(ndi::host::NdiOutputs::new(data, notify, restart)));
             }
             app.manage(server);
             // OSC control: no task or socket until a project enables it.

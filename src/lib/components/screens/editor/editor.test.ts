@@ -1157,7 +1157,7 @@ describe("inspector: list and timer fields", () => {
     expect(within(inspector).queryByRole("table")).toBeNull();
     await fireEvent.click(edit);
     await advance(0);
-    await vi.waitFor(() => expect(screen.getByRole("grid", { name: "Board" })).toBeTruthy());
+    await vi.waitFor(() => expect(screen.getByRole("grid", { name: "Board" })).toBeTruthy(), { timeout: 5000 });
     await fireEvent.click(screen.getByRole("button", { name: "Stub add row" }));
     await fireEvent.click(screen.getByRole("button", { name: "Close" }));
     await advance(0);

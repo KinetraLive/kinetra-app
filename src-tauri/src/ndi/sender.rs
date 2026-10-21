@@ -70,6 +70,8 @@ pub trait FrameInbox: Send + Sync {
     fn dropped(&self) -> u64 {
         0
     }
+    /// Whether the sender wants frames now (an outlet passes it to its source).
+    fn set_wanted(&self, _wanted: bool) {}
 }
 
 impl FrameInbox for Mailbox<Arc<Frame>> {
@@ -85,6 +87,9 @@ impl FrameInbox for crate::frames::Outlet {
     }
     fn dropped(&self) -> u64 {
         self.dropped.load(Ordering::Relaxed)
+    }
+    fn set_wanted(&self, wanted: bool) {
+        self.wanted.store(wanted, Ordering::Relaxed);
     }
 }
 
@@ -190,19 +195,25 @@ impl Job {
         let mut shown = self.snapshot();
         // (dropped, sent) at the last poll, for the dropping rate.
         let mut counts = (self.inbox.dropped(), 0u64);
+        #[cfg(windows)]
+        let _boost = crate::frames::clock::boost_thread();
         while !self.stop.load(Ordering::Relaxed) {
-            let mut frame = self.inbox.mailbox().take(Duration::from_millis(500));
             // NDI encodes every frame it's given, receivers or not (measured: 2.2 ms a 1080p
-            // frame either way). With nobody connected, ask again on each frame and skip it, so
-            // a new receiver gets a picture on the next tick.
-            if frame.is_some() && self.stats.receivers.load(Ordering::Relaxed) <= 0 {
+            // frame either way). With nobody connected the outlet is told it isn't wanted (the
+            // source then does no GPU work and hands out nothing) and the receiver count is asked
+            // every 20 ms instead, so a new receiver gets a picture within a few ticks.
+            let idle = self.stats.receivers.load(Ordering::Relaxed) <= 0;
+            let wait = Duration::from_millis(if idle { 20 } else { 500 });
+            let mut frame = self.inbox.mailbox().take(wait);
+            if idle {
                 let n: c_int = unsafe { (api.send_get_no_connections)(inst, 0) };
                 self.stats.receivers.store(n, Ordering::Relaxed);
-                if n <= 0 {
-                    frame = None;
+                if n <= 0 && frame.take().is_some() {
                     self.stats.skipped.fetch_add(1, Ordering::Relaxed);
                 }
             }
+            self.inbox
+                .set_wanted(self.stats.receivers.load(Ordering::Relaxed) > 0);
             if let Some(f) = frame {
                 let v = video_frame(&f);
                 let t0 = Instant::now();
@@ -531,6 +542,45 @@ mod tests {
         inbox.put(frame(&pool, 3));
         wait_until(|| s.stats.sent.load(Ordering::Relaxed) == 1);
         assert_eq!(s.stats.receivers.load(Ordering::Relaxed), 1);
+        drop(s);
+        CONNECTIONS.store(2, Ordering::Relaxed);
+    }
+
+    /// An inbox that records whether the sender wants frames (like the frame source's outlet).
+    #[derive(Default)]
+    struct WantInbox {
+        mailbox: Mailbox<Arc<Frame>>,
+        wanted: AtomicBool,
+    }
+
+    impl FrameInbox for WantInbox {
+        fn mailbox(&self) -> &Mailbox<Arc<Frame>> {
+            &self.mailbox
+        }
+        fn set_wanted(&self, wanted: bool) {
+            self.wanted.store(wanted, Ordering::Relaxed);
+        }
+    }
+
+    #[test]
+    fn the_source_is_told_to_rest_while_nobody_receives() {
+        let _g = SERIAL.lock().unwrap();
+        *SEEN.lock().unwrap() = None;
+        CONNECTIONS.store(0, Ordering::Relaxed);
+        let rt = Arc::new(Runtime::start(&FAKE).unwrap());
+        let inbox = Arc::new(WantInbox {
+            wanted: AtomicBool::new(true),
+            ..Default::default()
+        });
+        let s = NdiSender::start(rt, "Rest", None, inbox.clone(), SendMode::Sync, None).unwrap();
+        // No frame arrives (the source rests), yet the count is asked every 20 ms.
+        wait_until(|| !inbox.wanted.load(Ordering::Relaxed));
+        let polls = seen().polls;
+        wait_until(|| seen().polls >= polls + 3);
+        // A receiver connects: wanted again, without any frame having been sent.
+        CONNECTIONS.store(1, Ordering::Relaxed);
+        wait_until(|| inbox.wanted.load(Ordering::Relaxed));
+        assert_eq!(s.stats.sent.load(Ordering::Relaxed), 0);
         drop(s);
         CONNECTIONS.store(2, Ordering::Relaxed);
     }
