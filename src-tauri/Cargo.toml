@@ -48,7 +48,7 @@ unicode-normalization = { version = "0.1", default-features = false }
 # Secrets in the OS keychain: Windows Credential Manager here, the macOS Keychain below.
 keyring = { version = "3.6.3", default-features = false, features = ["windows-native"] }
 # Licensing (verification only: no "sign" feature); tags are license-vX.Y.Z.
-kinetra-license = { git = "https://github.com/KinetraLive/kinetra-license", tag = "license-v0.3.0" }
+kinetra-license = { git = "https://github.com/KinetraLive/kinetra-license", tag = "license-v0.3.1" }
 # OS randomness for license request nonces (already compiled through other crates).
 getrandom = "0.3"
 # Live polls: QR codes for the voting link, made locally (Nayuki's encoder; MIT, no
@@ -123,7 +123,7 @@ notify = { version = "8.2.0", default-features = false, features = ["macos_fseve
 
 [dev-dependencies]
 # Tests sign license tokens with throwaway keys; the app itself never signs.
-kinetra-license = { git = "https://github.com/KinetraLive/kinetra-license", tag = "license-v0.3.0", features = ["sign"] }
+kinetra-license = { git = "https://github.com/KinetraLive/kinetra-license", tag = "license-v0.3.1", features = ["sign"] }
 # Test signing keys (the version kinetra-license already compiles).
 ed25519-dalek = { version = "3.0.0", default-features = false, features = ["fast", "zeroize"] }
 tempfile = "3"
