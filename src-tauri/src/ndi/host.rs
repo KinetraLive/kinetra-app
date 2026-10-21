@@ -67,10 +67,29 @@ impl Drop for Running {
     }
 }
 
+/// The app's own WebView2 environment, to run capture pages in its browser process. The
+/// arguments and language must equal what wry gives the app's windows ([`APP_BROWSER_ARGS`]:
+/// wry 0.57 with Tauri's autoplay on; the language is the system UI language).
+#[derive(Debug, Clone)]
+pub struct AppEnvironment {
+    /// The app's WebView2 user data folder (Tauri: the app's local data folder).
+    pub data_dir: PathBuf,
+    pub browser_args: String,
+    pub language: String,
+}
+
+/// What wry passes to WebView2 for Tauri's windows (its defaults plus autoplay).
+pub const APP_BROWSER_ARGS: &str =
+    "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --autoplay-policy=no-user-gesture-required";
+
 pub struct NdiOutputs {
     me: Weak<Self>,
     /// The capture pages' WebView2 user data folder.
     data_dir: PathBuf,
+    /// Share the app's browser process when possible.
+    app_env: Option<AppEnvironment>,
+    /// Sharing was refused once: own environment from then on.
+    own_env: std::sync::atomic::AtomicBool,
     notify: OnChange,
     /// Asks the core for a reconcile (a capture page failed). Never blocks.
     restart: OnChange,
@@ -87,10 +106,19 @@ pub struct NdiOutputs {
 }
 
 impl NdiOutputs {
-    pub fn new(data_dir: PathBuf, notify: OnChange, restart: OnChange) -> Arc<Self> {
+    /// `data_dir`: the capture pages' own WebView2 folder (used when they can't share the app's,
+    /// `app_env`).
+    pub fn new(
+        data_dir: PathBuf,
+        app_env: Option<AppEnvironment>,
+        notify: OnChange,
+        restart: OnChange,
+    ) -> Arc<Self> {
         Arc::new_cyclic(|me| Self {
             me: me.clone(),
             data_dir,
+            app_env,
+            own_env: std::sync::atomic::AtomicBool::new(false),
             notify,
             restart,
             running: Mutex::new(HashMap::new()),
@@ -113,21 +141,42 @@ impl NdiOutputs {
                 (me.restart)();
             }
         });
-        let source = FrameSource::start(
-            SourceConfig {
-                page: Page::Url(plan.url.clone()),
-                width: plan.width,
-                height: plan.height,
-                rate: plan.rate,
-                format: plan.format,
-                alpha: plan.alpha,
-                background: plan.background,
-                data_dir: self.data_dir.clone(),
-                adapter: Adapter::Primary,
-                follow_page: true,
+        let config = |env: Option<&AppEnvironment>| SourceConfig {
+            page: Page::Url(plan.url.clone()),
+            width: plan.width,
+            height: plan.height,
+            rate: plan.rate,
+            format: plan.format,
+            alpha: plan.alpha,
+            background: plan.background,
+            data_dir: env.map_or_else(|| self.data_dir.clone(), |e| e.data_dir.clone()),
+            adapter: Adapter::Primary,
+            follow_page: true,
+            browser_args: env.map(|e| e.browser_args.clone()),
+            language: env.map(|e| e.language.clone()),
+        };
+        // The app's own WebView2 browser and GPU processes when its options can be matched (a
+        // capture then adds one renderer process, ~57 MB, instead of a whole browser, ~170 MB);
+        // WebView2 refuses mismatched options at once, and from then on the capture pages use
+        // their own environment.
+        let shared = self
+            .app_env
+            .as_ref()
+            .filter(|_| !self.own_env.load(std::sync::atomic::Ordering::Relaxed));
+        let source = match shared {
+            Some(env) => match FrameSource::start(config(Some(env)), Some(on_failed.clone())) {
+                Ok(s) => Ok(s),
+                Err(e) => {
+                    tracing::warn!(
+                        "NDI capture can't share the app's WebView2 ({e}); using its own"
+                    );
+                    self.own_env
+                        .store(true, std::sync::atomic::Ordering::Relaxed);
+                    FrameSource::start(config(None), Some(on_failed))
+                }
             },
-            Some(on_failed),
-        )
+            None => FrameSource::start(config(None), Some(on_failed)),
+        }
         .map_err(|e| format!("Couldn't start: {e}"))?;
         let outlet = source.subscribe();
         let sender = NdiSender::start(

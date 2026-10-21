@@ -38,6 +38,10 @@ pub struct SourceConfig {
     pub adapter: Adapter,
     /// Capture every frame the page draws (see `CaptureOptions::follow_page`); true in the app.
     pub follow_page: bool,
+    /// The capture environment's browser arguments; `None` = the capture defaults.
+    pub browser_args: Option<String>,
+    /// The capture environment's language; `None` = WebView2's default.
+    pub language: Option<String>,
 }
 
 /// Where one sender takes its frames from.
@@ -89,6 +93,8 @@ impl FrameSource {
                 data_dir: config.data_dir.clone(),
                 follow_page: config.follow_page,
                 on_failed,
+                browser_args: config.browser_args.clone(),
+                language: config.language.clone(),
             },
         )?;
         let converter = Converter::new(

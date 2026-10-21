@@ -206,7 +206,19 @@ pub fn run() {
                         st.outputs_host_changed();
                     }
                 });
-                state.set_ndi_host(Some(ndi::host::NdiOutputs::new(data, notify, restart)));
+                // Capture pages share the app's WebView2 browser process (its folder, wry's
+                // arguments and language), else their own `ndi-capture` folder.
+                let app_env = ndi::host::AppEnvironment {
+                    data_dir: app.path().app_local_data_dir()?,
+                    browser_args: ndi::host::APP_BROWSER_ARGS.to_string(),
+                    language: frames::capture::system_language(),
+                };
+                state.set_ndi_host(Some(ndi::host::NdiOutputs::new(
+                    data,
+                    Some(app_env),
+                    notify,
+                    restart,
+                )));
             }
             app.manage(server);
             // OSC control: no task or socket until a project enables it.

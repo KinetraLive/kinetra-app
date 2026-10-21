@@ -52,7 +52,7 @@ use super::gpu::{texture, Gpu};
 use super::FrameError;
 
 /// Chromium switches for a page that must keep drawing while nobody can see it.
-const BROWSER_ARGS: &str = "--disable-features=CalculateNativeWinOcclusion \
+pub const BROWSER_ARGS: &str = "--disable-features=CalculateNativeWinOcclusion \
      --disable-backgrounding-occluded-windows --disable-renderer-backgrounding \
      --disable-background-timer-throttling";
 
@@ -103,6 +103,26 @@ pub struct CaptureOptions {
     /// the system's ~60 Hz default (what older Windows always does; measurements only).
     pub follow_page: bool,
     pub on_failed: Option<OnFailed>,
+    /// The environment's browser arguments; `None` = [`BROWSER_ARGS`].
+    pub browser_args: Option<String>,
+    /// The environment's language (wry sets the system UI language; an environment can share
+    /// the app's browser process only with identical options).
+    pub language: Option<String>,
+}
+
+/// The system UI language as wry passes it to WebView2 ("en-US").
+pub fn system_language() -> String {
+    use windows::Win32::Globalization::{
+        GetUserDefaultUILanguage, LCIDToLocaleName, LOCALE_ALLOW_NEUTRAL_NAMES,
+    };
+    // LOCALE_NAME_MAX_LENGTH.
+    let mut lang = [0u16; 85];
+    unsafe {
+        let lcid = GetUserDefaultUILanguage();
+        LCIDToLocaleName(u32::from(lcid), Some(&mut lang), LOCALE_ALLOW_NEUTRAL_NAMES);
+    }
+    let n = lang.iter().position(|&c| c == 0).unwrap_or(lang.len());
+    String::from_utf16_lossy(&lang[..n])
 }
 
 impl Capture {
@@ -188,6 +208,8 @@ fn ui_thread(
         data_dir: data,
         follow_page,
         on_failed,
+        browser_args,
+        language,
     } = opts;
     unsafe {
         CoInitializeEx(None, COINIT_APARTMENTTHREADED)
@@ -212,7 +234,11 @@ fn ui_thread(
         };
 
         let options = CoreWebView2EnvironmentOptions::default();
-        unsafe { options.set_additional_browser_arguments(BROWSER_ARGS.to_string()) };
+        let args = browser_args.unwrap_or_else(|| BROWSER_ARGS.to_string());
+        unsafe { options.set_additional_browser_arguments(args) };
+        if let Some(lang) = language {
+            unsafe { options.set_language(lang) };
+        }
         let options: ICoreWebView2EnvironmentOptions = options.into();
         let data = HSTRING::from(data.as_os_str());
         let (etx, erx) = std::sync::mpsc::channel();

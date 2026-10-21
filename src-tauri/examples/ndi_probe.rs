@@ -63,6 +63,8 @@ mod probe {
             host(&args)
         } else if args.iter().any(|a| a == "--memory") {
             memory()
+        } else if args.iter().any(|a| a == "--share-test") {
+            share_test()
         } else {
             probe(&args)
         };
@@ -475,6 +477,12 @@ mod probe {
         };
         // --no-follow: the capture's ~60 Hz default (Windows 10 / Windows 11 before 24H2).
         let follow_page = !args.iter().any(|a| a == "--no-follow");
+        // --wry-args: only wry's default browser arguments (what the app's own environment has; no
+        // occlusion / background-throttling switches): does a hidden page still draw?
+        let browser_args = args
+            .iter()
+            .any(|a| a == "--wry-args")
+            .then(|| "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection".to_string());
         let secs: u64 = arg(args, "--secs")
             .and_then(|s| s.parse().ok())
             .unwrap_or(30);
@@ -516,6 +524,8 @@ mod probe {
                     data_dir: data_dir.clone(),
                     adapter,
                     follow_page,
+                    browser_args: browser_args.clone(),
+                    language: None,
                 },
                 None,
             )
@@ -556,6 +566,8 @@ mod probe {
                 data_dir,
                 adapter,
                 follow_page,
+                browser_args: browser_args.clone(),
+                language: None,
             },
             None,
         )
@@ -724,6 +736,62 @@ mod probe {
         d[y * stride + (x / 2) * 4 + if x.is_multiple_of(2) { 1 } else { 3 }]
     }
 
+    /// `--share-test`: can a capture share a WebView2 browser process with the app? In a test
+    /// folder (never the running app's): a first page with the app's exact environment options
+    /// stands in for the app; a capture with the same options joins it; one with its own
+    /// environment for comparison; one with other arguments in the shared folder must fail.
+    fn share_test() -> Result<(), String> {
+        use kinetra_lib::frames::capture::{system_language, BROWSER_ARGS};
+        const APP_ARGS: &str = "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --autoplay-policy=no-user-gesture-required";
+        let shared_dir = std::env::temp_dir().join("kinetra-share-test-app");
+        let own_dir = std::env::temp_dir().join("kinetra-share-test-own");
+        let cfg = |dir: &std::path::Path, args: &str, lang: Option<String>| SourceConfig {
+            page: Page::Html(test_page(FrameRate::R50)),
+            width: 1920,
+            height: 1080,
+            rate: FrameRate::R50,
+            format: PixelFormat::Uyva,
+            alpha: AlphaMode::Straight,
+            background: [0, 0, 0],
+            data_dir: dir.to_path_buf(),
+            adapter: Adapter::Primary,
+            follow_page: true,
+            browser_args: Some(args.to_string()),
+            language: lang,
+        };
+        let tree_mb = |pid: u32| -> (usize, f64) {
+            let t = process_tree(pid);
+            (t.len(), t.iter().map(|p| private_mb_of(*p)).sum())
+        };
+        let lang = system_language();
+        let app = FrameSource::start(cfg(&shared_dir, APP_ARGS, Some(lang.clone())), None)
+            .map_err(|e| e.to_string())?;
+        std::thread::sleep(Duration::from_secs(4));
+        let (app_procs, app_mb) = tree_mb(app.browser_pid);
+        let shared = FrameSource::start(cfg(&shared_dir, APP_ARGS, Some(lang.clone())), None)
+            .map_err(|e| e.to_string())?;
+        let c0 = shared.counters().captured;
+        std::thread::sleep(Duration::from_secs(4));
+        let shared_captured = shared.counters().captured - c0;
+        let (both_procs, both_mb) = tree_mb(app.browser_pid);
+        let mismatch =
+            FrameSource::start(cfg(&shared_dir, BROWSER_ARGS, Some(lang.clone())), None).err();
+        let own = FrameSource::start(cfg(&own_dir, BROWSER_ARGS, None), None)
+            .map_err(|e| e.to_string())?;
+        std::thread::sleep(Duration::from_secs(4));
+        let (own_procs, own_mb) = tree_mb(own.browser_pid);
+        println!(
+            r#"{{"language":"{lang}","appStandIn":{{"processes":{app_procs},"privateMb":{app_mb:.1}}},"sharedCapture":{{"sameBrowserProcess":{},"captured4s":{shared_captured},"addedProcesses":{},"addedMb":{:.1}}},"ownEnvironmentCapture":{{"processes":{own_procs},"privateMb":{own_mb:.1}}},"mismatchedOptionsInSharedFolder":"{}"}}"#,
+            shared.browser_pid == app.browser_pid,
+            both_procs as i64 - app_procs as i64,
+            both_mb - app_mb,
+            mismatch.map_or("started (not refused!)".to_string(), |e| e
+                .to_string()
+                .replace('"', "'")),
+        );
+        Ok(())
+    }
+
     /// `--memory`: this process's private memory after each step of one 1080p50 UYVA output (the
     /// test page), with a receiver connected for the last steps.
     fn memory() -> Result<(), String> {
@@ -742,6 +810,8 @@ mod probe {
                 data_dir: std::env::temp_dir().join("kinetra-ndi-probe-webview"),
                 adapter: Adapter::Primary,
                 follow_page: true,
+                browser_args: None,
+                language: None,
             },
             None,
         )
@@ -798,6 +868,8 @@ mod probe {
                 data_dir: std::env::temp_dir().join("kinetra-ndi-probe-webview"),
                 adapter: Adapter::Primary,
                 follow_page: true,
+                browser_args: None,
+                language: None,
             },
             None,
         )
@@ -849,6 +921,14 @@ mod probe {
         let r = restart_asked.clone();
         let host = NdiOutputs::new(
             std::env::temp_dir().join("kinetra-ndi-probe-host"),
+            // --share: run the capture in an "app" environment (a test folder with the app's options).
+            args.iter()
+                .any(|a| a == "--share")
+                .then(|| kinetra_lib::ndi::host::AppEnvironment {
+                    data_dir: std::env::temp_dir().join("kinetra-share-test-app"),
+                    browser_args: kinetra_lib::ndi::host::APP_BROWSER_ARGS.to_string(),
+                    language: kinetra_lib::frames::capture::system_language(),
+                }),
             Arc::new(move || {
                 c.fetch_add(1, Ordering::Relaxed);
             }),
