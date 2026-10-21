@@ -58,11 +58,19 @@
       (s) => (status = s),
       () => {},
     );
-    ndiInfo().then(
-      (i) => (ndi = i),
-      () => {},
-    );
+    const askNdi = () =>
+      ndiInfo().then(
+        (i) => (ndi = i),
+        () => {},
+      );
+    void askNdi();
+    // Back from installing the NDI® Runtime: asking again also starts outputs that waited for it.
+    const onFocus = () => {
+      if (ndi && !ndi.installed) void askNdi();
+    };
+    window.addEventListener("focus", onFocus);
     return () => {
+      window.removeEventListener("focus", onFocus);
       offDisplays();
       offStatus();
       void watchDisplays(false).catch(() => {});

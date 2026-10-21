@@ -1040,6 +1040,17 @@ impl AppState {
         }
     }
 
+    /// The NDI Runtime is installed (Preferences found its file): outputs that couldn't start
+    /// without it start now, so installing it needs no restart.
+    pub fn outputs_ndi_runtime_found(&self) {
+        let missing = lock(&self.outputs_rt().statuses)
+            .iter()
+            .any(|s| s.state == OutputState::NdiMissing);
+        if missing {
+            self.outputs_request();
+        }
+    }
+
     /// The host's windows changed outside a reconcile (an output page crashed too often and the
     /// host gave up on it): the next reconcile hands it every window again, so it can report
     /// the failure.

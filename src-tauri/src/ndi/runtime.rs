@@ -1,6 +1,7 @@
 //! The user's installed NDI® Runtime, loaded at run time. Kinetra ships no NDI binary (plan §1.2):
 //! the runtime comes from NDI Tools or the NDI Runtime installer (ndi.link/NDIRedistV6), which set
-//! `NDI_RUNTIME_DIR_V6` (and `_V5`) to its folder.
+//! `NDI_RUNTIME_DIR_V6` (and `_V5`) to its folder. A Kinetra started before the install doesn't see
+//! that variable, so the installers' default folders are looked at too.
 //!
 //! Every function is looked up by its exported name (the runtime exports them all, alongside
 //! `NDIlib_v5_load`), so a newer runtime's longer function table can't shift anything. The library
@@ -47,13 +48,36 @@ pub struct Api {
     pub recv_get_performance: RecvGetPerformance,
 }
 
+/// The installers' default folders under `%ProgramFiles%`: NDI 6 Tools, the NDI 6 Runtime, then
+/// their NDI 5 versions.
+#[cfg(windows)]
+const DEFAULT_DIRS: [&str; 4] = [
+    r"NDI\NDI 6 Tools\Runtime",
+    r"NDI\NDI 6 Runtime\v6",
+    r"NDI\NDI 5 Tools\Runtime",
+    r"NDI\NDI 5 Runtime\v5",
+];
+
 /// Where to look for the runtime, best first: the folders NDI's installers put in
-/// `NDI_RUNTIME_DIR_V6` / `_V5`.
+/// `NDI_RUNTIME_DIR_V6` / `_V5`, then (Windows) their default install folders under
+/// `%ProgramFiles%`, so a runtime installed while Kinetra runs is found without a restart.
 pub fn candidates(env: impl Fn(&str) -> Option<OsString>) -> Vec<PathBuf> {
     let mut out: Vec<PathBuf> = Vec::new();
     for var in ["NDI_RUNTIME_DIR_V6", "NDI_RUNTIME_DIR_V5"] {
         if let Some(dir) = env(var).filter(|d| !d.is_empty()) {
             let p = PathBuf::from(dir).join(LIBRARY);
+            if !out.contains(&p) {
+                out.push(p);
+            }
+        }
+    }
+    #[cfg(windows)]
+    {
+        let pf = env("ProgramFiles")
+            .filter(|d| !d.is_empty())
+            .unwrap_or_else(|| OsString::from(r"C:\Program Files"));
+        for dir in DEFAULT_DIRS {
+            let p = PathBuf::from(&pf).join(dir).join(LIBRARY);
             if !out.contains(&p) {
                 out.push(p);
             }
@@ -212,5 +236,33 @@ mod tests {
         assert_eq!(c.iter().filter(|p| p.starts_with(r"C:\NDI\6")).count(), 1);
         let none = candidates(|_| Some(OsString::new()));
         assert!(none.iter().all(|p| !p.starts_with(r"C:\NDI")));
+    }
+
+    /// A runtime installed while Kinetra runs: the variable isn't in Kinetra's environment, the
+    /// default folders are; the variable's folder still comes first, and no folder twice.
+    #[cfg(windows)]
+    #[test]
+    fn candidates_fall_back_to_the_default_install_folders() {
+        let none = candidates(|v| (v == "ProgramFiles").then(|| OsString::from(r"D:\Apps")));
+        let lib = |d: &str| PathBuf::from(d).join(LIBRARY);
+        assert_eq!(
+            none,
+            [
+                lib(r"D:\Apps\NDI\NDI 6 Tools\Runtime"),
+                lib(r"D:\Apps\NDI\NDI 6 Runtime\v6"),
+                lib(r"D:\Apps\NDI\NDI 5 Tools\Runtime"),
+                lib(r"D:\Apps\NDI\NDI 5 Runtime\v5"),
+            ]
+        );
+        assert_eq!(
+            candidates(|_| None)[0],
+            lib(r"C:\Program Files\NDI\NDI 6 Tools\Runtime")
+        );
+        let set = candidates(|v| match v {
+            "NDI_RUNTIME_DIR_V6" => Some(OsString::from(r"C:\Program Files\NDI\NDI 6 Runtime\v6")),
+            _ => None,
+        });
+        assert_eq!(set[0], lib(r"C:\Program Files\NDI\NDI 6 Runtime\v6"));
+        assert_eq!(set.len(), 4);
     }
 }

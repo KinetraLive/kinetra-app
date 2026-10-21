@@ -149,6 +149,16 @@ describe("Preferences › Outputs", () => {
     await flush();
     expect(within(row).getByRole("status").textContent).toContain("NDI® Runtime not installed");
     expect(within(row).getByRole("link", { name: /Download/ }).getAttribute("href")).toBe("https://ndi.link/NDIRedistV6");
+    // Back from installing it: the window's focus asks again (which starts waiting outputs), once installed no more.
+    const asked = out.ndiInfo.mock.calls.length;
+    out.ndiInfo.mockResolvedValue({ available: true, installed: true, downloadUrl: "https://ndi.link/NDIRedistV6", defaultRate: "59.94" });
+    window.dispatchEvent(new Event("focus"));
+    await flush();
+    expect(out.ndiInfo.mock.calls.length).toBe(asked + 1);
+    expect(screen.queryByText(/need the free NDI® Runtime/)).toBeNull();
+    window.dispatchEvent(new Event("focus"));
+    await flush();
+    expect(out.ndiInfo.mock.calls.length).toBe(asked + 1);
   });
 
   it("shows status, switches, and test patterns pressed while showing", async () => {

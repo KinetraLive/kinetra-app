@@ -1532,13 +1532,18 @@ fn ndi_outputs_run_through_the_host_and_count_on_air_with_receivers() {
     assert!(!e.st.any_output_showing());
     let n = fake.count();
     fake.fail.lock().unwrap().clear();
-    e.st.outputs_reconcile_now();
+    // Installed meanwhile: Preferences finding the runtime is what retries it.
+    e.st.outputs_ndi_runtime_found();
+    assert_eq!(e.st.list_outputs()[0].state, OutputState::Showing);
     assert_eq!(
         fake.count(),
         n + 1,
-        "a failure is retried on the next reconcile"
+        "a failure is retried once the runtime is found"
     );
-    assert_eq!(e.st.list_outputs()[0].state, OutputState::Showing);
+    // Nothing missing: finding the runtime again asks for no reconcile.
+    e.st.outputs_ndi_runtime_found();
+    e.st.list_outputs();
+    assert_eq!(fake.count(), n + 1);
 
     // Off: the host stops it.
     e.st.all_outputs_off();
