@@ -978,9 +978,90 @@ pub const OUTPUT_NAME_MAX: usize = 40;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum OutputKind {
-    /// A borderless window on a connected display. (NDI / DeckLink later.)
+    /// A borderless window on a connected display.
     #[default]
     Display,
+    /// An NDI® source on the network (`OutputConfig.ndi`; Windows). Its source name is the
+    /// output's name.
+    Ndi,
+}
+
+/// The frame rates an NDI output can send.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum NdiRate {
+    #[serde(rename = "25")]
+    R25,
+    #[serde(rename = "29.97")]
+    R29_97,
+    #[serde(rename = "30")]
+    R30,
+    #[default]
+    #[serde(rename = "50")]
+    R50,
+    #[serde(rename = "59.94")]
+    R59_94,
+    #[serde(rename = "60")]
+    R60,
+}
+
+/// Which bus an NDI output sends.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum NdiBus {
+    #[default]
+    Program,
+    /// Studio mode's Preview (Advanced).
+    Preview,
+}
+
+/// An NDI output's settings (see `types.ts` `NdiOutputSettings`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NdiOutputSettings {
+    #[serde(default)]
+    pub rate: NdiRate,
+    /// Send transparency (UYVA); off = composited over `OutputConfig.background` (UYVY).
+    #[serde(default = "default_true")]
+    pub alpha: bool,
+    /// Color multiplied by alpha (Advanced; some receivers want it). Off = straight alpha.
+    #[serde(default)]
+    pub premultiplied: bool,
+    /// NDI groups, comma-separated (Advanced); `None` = NDI's default group.
+    #[serde(default)]
+    pub groups: Option<String>,
+    #[serde(default)]
+    pub bus: NdiBus,
+}
+
+impl Default for NdiOutputSettings {
+    fn default() -> Self {
+        Self {
+            rate: NdiRate::default(),
+            alpha: true,
+            premultiplied: false,
+            groups: None,
+            bus: NdiBus::Program,
+        }
+    }
+}
+
+/// Most NDI outputs per machine (within [`OUTPUTS_MAX`]).
+pub const NDI_OUTPUTS_MAX: usize = 4;
+/// Longest NDI groups text.
+pub const NDI_GROUPS_MAX: usize = 128;
+
+/// What an NDI output's receivers do right now (in [`OutputStatus::ndi`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NdiLive {
+    /// NDI connections to the source.
+    pub receivers: u32,
+    /// A receiver has it on program (tally).
+    pub program: bool,
+    /// A receiver has it on preview (tally).
+    pub preview: bool,
+    /// More than 1 % of frames were dropped in the last second.
+    pub dropping: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -1032,6 +1113,9 @@ pub struct OutputConfig {
     /// default device. Clamped by `outputs::clamp_outputs`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub audio: Option<OutputAudio>,
+    /// NDI outputs' settings (`Some` for `kind: ndi` after `clamp_outputs`, else `None`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ndi: Option<NdiOutputSettings>,
 }
 
 /// Where an output's media audio plays (see `types.ts` `OutputConfig.audio`).
@@ -1057,6 +1141,8 @@ pub enum OutputState {
     NoProject,
     ScreenMissing,
     Failed,
+    /// An NDI output, but the NDI Runtime isn't installed.
+    NdiMissing,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -1089,6 +1175,9 @@ pub struct OutputStatus {
     pub frame_locked: Option<bool>,
     pub pattern: Option<TestPattern>,
     pub message: Option<String>,
+    /// NDI outputs that are sending: receivers and tally.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ndi: Option<NdiLive>,
 }
 
 // `zoom` is the only float: JSON has no NaN and `clamp_prefs` keeps it finite, so equality is

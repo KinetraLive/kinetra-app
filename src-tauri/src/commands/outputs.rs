@@ -54,6 +54,13 @@ pub async fn identify_displays(state: State<'_, AppState>) -> AppResult<()> {
     blocking(move || state.identify_displays()).await
 }
 
+/// Whether NDI outputs can run here, whether the NDI Runtime is installed (a file check; nothing
+/// is loaded), its download link and a new output's frame rate for the system's region.
+#[tauri::command]
+pub async fn ndi_info() -> AppResult<crate::ndi::NdiInfo> {
+    blocking(move || Ok(crate::ndi::info())).await
+}
+
 /// Turns every output off (Output › All outputs off).
 #[tauri::command]
 pub async fn all_outputs_off(state: State<'_, AppState>) -> AppResult<()> {

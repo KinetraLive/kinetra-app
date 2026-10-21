@@ -59,6 +59,8 @@ mod probe {
         let args: Vec<String> = std::env::args().collect();
         let r = if let Some(name) = arg(&args, "--receive") {
             receive(&name, &args)
+        } else if args.iter().any(|a| a == "--host") {
+            host(&args)
         } else {
             probe(&args)
         };
@@ -451,6 +453,7 @@ mod probe {
                 None,
                 o.clone(),
                 mode,
+                None,
             )
             .map_err(|e| e.to_string())?;
             std::thread::sleep(Duration::from_secs(2));
@@ -481,7 +484,7 @@ mod probe {
         let runtime = Runtime::acquire().map_err(|e| e.to_string())?;
         let name = format!("Kinetra probe {}", std::process::id());
         let outlet = source.subscribe();
-        let sender = NdiSender::start(runtime.clone(), &name, None, outlet.clone(), mode)
+        let sender = NdiSender::start(runtime.clone(), &name, None, outlet.clone(), mode, None)
             .map_err(|e| e.to_string())?;
 
         let total = warmup + secs;
@@ -616,6 +619,104 @@ mod probe {
     /// Y of pixel (x, y) in a UYVY/UYVA frame.
     fn y_at(d: &[u8], stride: usize, x: usize, y: usize) -> u8 {
         d[y * stride + (x / 2) * 4 + if x.is_multiple_of(2) { 1 } else { 3 }]
+    }
+
+    /// `--host`: the app's own NDI host (`ndi::host::NdiOutputs`, what a reconcile drives) with
+    /// the fixture server's renderer, into a receiver process: plans apply, the receiver count and
+    /// tally reach `live()` through the change callback, and turning it off stops everything.
+    fn host(args: &[String]) -> Result<(), String> {
+        use kinetra_lib::core::outputs::{NdiHost, NdiPlan};
+        use kinetra_lib::ndi::host::NdiOutputs;
+        use std::sync::atomic::AtomicU64;
+        use std::sync::Arc;
+        let secs: u64 = arg(args, "--secs")
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(10);
+        let threads_before = thread_count();
+        let mut fx = Fixture::start()?;
+        let url = fx.scene()?.replace("?audio=0", "?audio=0&cap=1");
+        let changes = Arc::new(AtomicU64::new(0));
+        let c = changes.clone();
+        let host = NdiOutputs::new(
+            std::env::temp_dir().join("kinetra-ndi-probe-host"),
+            Arc::new(move || {
+                c.fetch_add(1, Ordering::Relaxed);
+            }),
+        );
+        let name = format!("Kinetra host probe {}", std::process::id());
+        let plan = NdiPlan {
+            id: "probe".into(),
+            name: name.clone(),
+            url,
+            width: 1920,
+            height: 1080,
+            rate: FrameRate::R50,
+            format: PixelFormat::Uyva,
+            alpha: AlphaMode::Straight,
+            background: [0, 0, 0],
+            groups: None,
+        };
+        let failures = host.apply(std::slice::from_ref(&plan));
+        let before_receiver = host.live();
+        let mut child = Command::new(std::env::current_exe().map_err(|e| e.to_string())?)
+            .args([
+                "--receive",
+                &name,
+                "--no-checks",
+                "--secs",
+                &secs.to_string(),
+                "--warmup",
+                "2",
+            ])
+            .stdout(Stdio::piped())
+            .spawn()
+            .map_err(|e| e.to_string())?;
+        // The most receivers `live()` reported while the receiver ran (sampled every 200 ms).
+        let out = child.stdout.take();
+        let reader = std::thread::spawn(move || {
+            let mut s = String::new();
+            if let Some(out) = out {
+                BufReader::new(out).read_line(&mut s).ok();
+            }
+            s
+        });
+        let mut with_receiver = None;
+        while !reader.is_finished() {
+            if let Some(l) = host.live().get("probe").copied() {
+                if with_receiver
+                    .is_none_or(|w: kinetra_lib::core::model::NdiLive| l.receivers > w.receivers)
+                {
+                    with_receiver = Some(l);
+                }
+            }
+            std::thread::sleep(Duration::from_millis(200));
+        }
+        let received = reader.join().unwrap_or_default();
+        let _ = child.wait();
+        std::thread::sleep(Duration::from_millis(1500));
+        let after_receiver = host.live();
+        let unchanged = host.apply(std::slice::from_ref(&plan));
+        let off = host.apply(&[]);
+        drop(fx);
+        std::thread::sleep(Duration::from_millis(500));
+        println!(
+            r#"{{"failures":{:?},"unchangedApplyFailures":{:?},"offFailures":{:?},"live":{{"beforeReceiver":"{:?}","withReceiver":"{:?}","afterReceiver":"{:?}","afterOff":"{:?}"}},"changeCallbacks":{},"threads":{{"before":{threads_before},"after":{}}},"received":{}}}"#,
+            failures,
+            unchanged,
+            off,
+            before_receiver.get("probe"),
+            with_receiver,
+            after_receiver.get("probe"),
+            host.live().get("probe"),
+            changes.load(Ordering::Relaxed),
+            thread_count(),
+            if received.trim().is_empty() {
+                "null"
+            } else {
+                received.trim()
+            },
+        );
+        Ok(())
     }
 
     fn receive(name: &str, args: &[String]) -> Result<(), String> {

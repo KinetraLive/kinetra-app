@@ -14,6 +14,8 @@
 // Items (ids are stable; they never contain display names):
 //   screen.edit:<screenId>              Go to {screen}                    @  Project items
 //   screen.control:<screenId>           Open {screen} in Control          @  Project items
+//   screen.ndi:<screenId>               Send {screen} over NDI® / Stop sending {screen} over NDI®  @
+//                                       (Windows; turns the screen's NDI output on or off, making one)
 //   template.edit:<templateId>          Edit {template}                   #  Project items
 //   template.update:<templateId>        Update {template} to the latest look   #  Edit (an outdated
 //                                       preset template; the template editor registers its own)
@@ -27,6 +29,7 @@
 // Live items rank +10 000 in Control. Every live item calls the same api action Control uses
 // (runFlow, stepSource, scheduleAction); none has logic of its own.
 
+import Cast from "lucide-svelte/icons/cast";
 import Database from "lucide-svelte/icons/database";
 import LayoutTemplate from "lucide-svelte/icons/layout-template";
 import Monitor from "lucide-svelte/icons/monitor";
@@ -42,9 +45,11 @@ import { scheduleAction, scheduleView } from "$lib/api/recipes";
 import { listSources, stepSource } from "$lib/api/sources";
 import { listTemplates } from "$lib/api/templates";
 import { cueText } from "$lib/components/flows/cue";
+import { sendingOverNdi, setScreenNdi } from "$lib/components/outputs/ndi-screen";
 import { showPreferences } from "$lib/components/settings/open";
 import { PREFERENCE_ENTRIES } from "$lib/components/settings/sections";
 import { t } from "$lib/i18n";
+import { isMac } from "$lib/platform";
 import { isAdvanced } from "$lib/stores/mode.svelte";
 import { project, uiState } from "$lib/stores/project.svelte";
 import {
@@ -211,6 +216,20 @@ const screens: CommandProvider = {
           run: () => openInControl(id),
         },
       );
+      // NDI® output per screen (Windows): its NDI output on (made when there is none) or off.
+      if (!isMac()) {
+        const sending = sendingOverNdi(id);
+        out.push({
+          id: `screen.ndi:${id}`,
+          title: sending ? "Stop sending {screen} over NDI®" : "Send {screen} over NDI®",
+          params,
+          section: "items",
+          scope: "screen",
+          icon: Cast,
+          keywords: ["NDI", t("Output")],
+          run: () => setScreenNdi({ id, name: v.screen.name }, !sending),
+        });
+      }
     }
     return out;
   },

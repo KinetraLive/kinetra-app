@@ -1695,6 +1695,35 @@ const OUTPUTS: OutputConfig[] = [
   },
 ];
 
+const NDI_OUTPUTS: OutputConfig[] = [
+  {
+    id: "ndi1main00",
+    kind: "ndi",
+    name: "Kinetra Main program",
+    enabled: true,
+    display: { id: "", name: "", edidKey: "", width: 0, height: 0 },
+    screenId: "s1main01ab",
+    mode: "fill",
+    background: { kind: "black" },
+    keyOf: null,
+    alwaysOnTop: false,
+    ndi: { rate: "50", alpha: true, premultiplied: false, groups: null, bus: "program" },
+  },
+  {
+    id: "ndi2conf00",
+    kind: "ndi",
+    name: "Kinetra Confidence",
+    enabled: true,
+    display: { id: "", name: "", edidKey: "", width: 0, height: 0 },
+    screenId: "s4confid01",
+    mode: "fill",
+    background: { kind: "color", color: "#1f2a44" },
+    keyOf: null,
+    alwaysOnTop: false,
+    ndi: { rate: "59.94", alpha: false, premultiplied: false, groups: "Studio A", bus: "preview" },
+  },
+];
+
 for (const theme of ["dark", "light"] as const) {
   test.describe(`${theme}, display outputs`, () => {
     test.beforeEach(async ({ page, context, server }) => {
@@ -1705,7 +1734,7 @@ for (const theme of ["dark", "light"] as const) {
       await page.setViewportSize({ width: 1100, height: 1000 });
       await open(page, "/preferences?section=outputs", { ...screensScenario(theme), displays: DISPLAYS() });
       await expect(page.getByRole("list", { name: "Displays" })).toBeVisible();
-      await expect(page.getByText("Show a screen on a display, as fill or key.")).toBeVisible();
+      await expect(page.getByText("Show a screen on a display, as fill or key, or send it over NDI®.")).toBeVisible();
       await page.mouse.move(2, 2);
       await shot(page, `${theme}-100-outputs-empty`);
 
@@ -1733,6 +1762,24 @@ for (const theme of ["dark", "light"] as const) {
       await expect(fill.getByRole("status")).toHaveText(/Test pattern/);
       await page.mouse.move(2, 2);
       await shot(page, `${theme}-102-outputs-pattern-not-locked`);
+    });
+
+    test("preferences: NDI® outputs (on program, no receiver)", async ({ page }) => {
+      await page.setViewportSize({ width: 1100, height: 1000 });
+      await open(page, "/preferences?section=outputs", {
+        ...screensScenario(theme),
+        displays: DISPLAYS(),
+        outputs: [OUTPUTS[0], ...NDI_OUTPUTS],
+        outputStatus: {
+          ndi1main00: { ndi: { receivers: 2, program: true, preview: false, dropping: false } },
+        },
+      });
+      const outs = page.getByRole("list", { name: "Outputs" });
+      await expect(outs.locator('li[data-output="ndi1main00"]').getByRole("status")).toHaveText(/On program/);
+      await expect(outs.locator('li[data-output="ndi2conf00"]').getByRole("status")).toHaveText(/Ready · no receiver/);
+      await expect(page.getByText("NDI® is a registered trademark of Vizrt NDI AB.")).toBeVisible();
+      await page.mouse.move(2, 2);
+      await shot(page, `${theme}-104-outputs-ndi`);
     });
 
     test("control: outputs strip with a disconnected display", async ({ page }) => {

@@ -11,7 +11,7 @@ use serde_json::Value;
 use super::*;
 use crate::core::displays::TestBackend;
 use crate::core::events::EventSink;
-use crate::core::model::{NewScreen, OutputDisplayRef, OutputKind, Prefs};
+use crate::core::model::{NdiOutputSettings, NewScreen, OutputDisplayRef, OutputKind, Prefs};
 use crate::core::state::clamp_prefs;
 
 // ---- Helpers ---------------------------------------------------------------------------------
@@ -50,6 +50,7 @@ fn fill(id: &str, d: &DisplayInfo, screen: &str) -> OutputConfig {
         key_of: None,
         always_on_top: false,
         audio: None,
+        ndi: None,
     }
 }
 
@@ -180,7 +181,7 @@ fn prefs_keep_outputs_and_drop_bad_entries() {
         {"id":"o1","kind":"display","name":"Program","enabled":true,
          "display":{"id":"\\\\?\\DISPLAY#DEL1#1","name":"DELL","edidKey":"DEL-0001-00000001","width":1920,"height":1080},
          "screenId":"main","mode":"fill","background":{"kind":"green"},"keyOf":null,"alwaysOnTop":true},
-        {"id":"o2","kind":"ndi","name":"Later"},
+        {"id":"o2","kind":"decklink","name":"Later"},
         {"id":"o3","name":"Minimal"},
         42
     ]}"#;
@@ -269,7 +270,8 @@ fn off_outputs_have_no_window() {
             display_id: None,
             frame_locked: None,
             pattern: None,
-            message: None
+            message: None,
+            ndi: None,
         }
     );
 }
@@ -1187,4 +1189,376 @@ fn a_host_set_later_gets_the_windows_planned_before() {
     e.st.set_output_host(Some(host.clone()));
     e.st.outputs_reconcile_now();
     assert_eq!(host.last().len(), 1);
+}
+
+// ---- NDI outputs -----------------------------------------------------------------------------
+
+fn ndi(id: &str, screen: &str) -> OutputConfig {
+    OutputConfig {
+        id: id.into(),
+        kind: OutputKind::Ndi,
+        name: format!("Kinetra {id}"),
+        enabled: true,
+        display: OutputDisplayRef::default(),
+        screen_id: Some(screen.into()),
+        mode: OutputMode::Fill,
+        background: OutputBackground::Black,
+        key_of: None,
+        always_on_top: false,
+        audio: None,
+        ndi: Some(NdiOutputSettings::default()),
+    }
+}
+
+#[test]
+fn ndi_outputs_are_clamped() {
+    let a = display("a", 0, 0, 1920, 1080, 60);
+    let mut n = ndi("n1", "main");
+    n.display = OutputDisplayRef {
+        id: a.id.clone(),
+        ..Default::default()
+    };
+    n.mode = OutputMode::Key;
+    n.key_of = Some("o1".into());
+    n.audio = Some(OutputAudio {
+        enabled: true,
+        device: None,
+    });
+    n.always_on_top = true;
+    n.ndi = Some(NdiOutputSettings {
+        groups: Some("  Studio A \u{7}".into()),
+        ..Default::default()
+    });
+    // A key output can't key an NDI output.
+    let k = key("k1", &a, "n1");
+    // Without settings an NDI output gets the defaults; a display output loses stray ones.
+    let bare = OutputConfig {
+        ndi: None,
+        ..ndi("n2", "main")
+    };
+    let disp = OutputConfig {
+        ndi: Some(NdiOutputSettings::default()),
+        ..fill("o1", &a, "main")
+    };
+    let mut list = vec![n, k, bare, disp];
+    list.extend((3..=5).map(|i| ndi(&format!("n{i}"), "main")));
+    let out = clamp_outputs(list);
+    let n = &out[0];
+    assert_eq!(n.display, OutputDisplayRef::default());
+    assert_eq!(n.mode, OutputMode::Fill);
+    assert_eq!(n.key_of, None);
+    assert_eq!(n.audio, None);
+    assert!(!n.always_on_top);
+    assert_eq!(n.ndi.as_ref().unwrap().groups.as_deref(), Some("Studio A"));
+    let k = out.iter().find(|c| c.id == "k1").unwrap();
+    assert_eq!((k.key_of.clone(), k.enabled), (None, false));
+    let n2 = out.iter().find(|c| c.id == "n2").unwrap();
+    assert_eq!(n2.ndi, Some(NdiOutputSettings::default()));
+    assert_eq!(out.iter().find(|c| c.id == "o1").unwrap().ndi, None);
+    // At most 4 NDI outputs: the 5th is dropped.
+    let count = out.iter().filter(|c| c.kind == OutputKind::Ndi).count();
+    assert_eq!(count, NDI_OUTPUTS_MAX);
+    assert!(!out.iter().any(|c| c.id == "n5"));
+}
+
+#[test]
+fn ndi_settings_round_trip_with_rate_labels() {
+    let json = r#"{"id":"n1abc","kind":"ndi","name":"Main","enabled":true,"screenId":"main",
+        "ndi":{"rate":"59.94","alpha":false,"premultiplied":true,"groups":"A","bus":"preview"}}"#;
+    let c: OutputConfig = serde_json::from_str(json).unwrap();
+    let s = c.ndi.clone().unwrap();
+    assert_eq!(s.rate, NdiRate::R59_94);
+    assert!(!s.alpha && s.premultiplied);
+    assert_eq!(s.bus, NdiBus::Preview);
+    let back = serde_json::to_value(&c).unwrap();
+    assert_eq!(back["ndi"]["rate"], "59.94");
+    assert_eq!(back["kind"], "ndi");
+    // A display output never writes `ndi`.
+    let a = display("a", 0, 0, 1920, 1080, 60);
+    let d = serde_json::to_value(fill("o1", &a, "main")).unwrap();
+    assert!(d.get("ndi").is_none());
+}
+
+#[test]
+fn the_ndi_plan_follows_project_server_and_screen() {
+    let mut sizes = screens();
+    sizes.insert("odd".into(), (1279, 721));
+    let p = |server| {
+        Some(PlanProject {
+            server,
+            screens: &sizes,
+        })
+    };
+    let mut n = ndi("n1", "main");
+    // No project / server failed / screen missing / starting: nothing sent.
+    let (plans, st) = plan_ndi(&[n.clone()], None);
+    assert!(plans.is_empty());
+    assert_eq!(st[0].1.state, OutputState::NoProject);
+    let failed = ServerState::Failed {
+        message: "Port 7770 is in use".into(),
+    };
+    let (_, st) = plan_ndi(&[n.clone()], p(&failed));
+    assert_eq!(st[0].1.state, OutputState::Failed);
+    assert_eq!(st[0].1.message.as_deref(), Some("Port 7770 is in use"));
+    let (plans, st) = plan_ndi(&[ndi("n1", "gone")], p(&RUNNING));
+    assert!(plans.is_empty());
+    assert_eq!(st[0].1.state, OutputState::ScreenMissing);
+    let (plans, st) = plan_ndi(&[n.clone()], p(&ServerState::Starting));
+    assert!(plans.is_empty());
+    assert_eq!(st[0].1.state, OutputState::Showing);
+    // Running: the capture page, the screen's size, UYVA straight at the chosen rate.
+    let (plans, st) = plan_ndi(&[n.clone()], p(&RUNNING));
+    assert_eq!(st[0].1.state, OutputState::Showing);
+    assert_eq!(st[0].1.ndi, Some(NdiLive::default()));
+    let pl = &plans[0];
+    assert_eq!(pl.url, "http://127.0.0.1:7770/screen/main?audio=0&cap=1");
+    assert_eq!((pl.width, pl.height, pl.rate), (1920, 1080, FrameRate::R50));
+    assert_eq!(pl.format, PixelFormat::Uyva);
+    assert_eq!(pl.alpha, AlphaMode::Straight);
+    assert_eq!(pl.name, "Kinetra n1");
+    // Preview bus, alpha off over a color, premultiplied, odd width rounded up to even.
+    n.screen_id = Some("odd".into());
+    n.background = OutputBackground::Color {
+        color: "#102030".into(),
+    };
+    n.ndi = Some(NdiOutputSettings {
+        rate: NdiRate::R29_97,
+        alpha: false,
+        premultiplied: true,
+        groups: Some("A".into()),
+        bus: NdiBus::Preview,
+    });
+    let (plans, _) = plan_ndi(&[n.clone()], p(&RUNNING));
+    let pl = &plans[0];
+    assert_eq!(
+        pl.url,
+        "http://127.0.0.1:7770/screen/odd/preview?audio=0&cap=1"
+    );
+    assert_eq!(
+        (pl.width, pl.height, pl.rate),
+        (1280, 721, FrameRate::R29_97)
+    );
+    assert_eq!(pl.format, PixelFormat::Uyvy);
+    assert_eq!(pl.alpha, AlphaMode::Premultiplied);
+    assert_eq!(pl.background, [0x10, 0x20, 0x30]);
+    assert_eq!(pl.groups.as_deref(), Some("A"));
+    // Off: no plan, status off (still marked as NDI).
+    n.enabled = false;
+    let (plans, st) = plan_ndi(&[n], p(&RUNNING));
+    assert!(plans.is_empty());
+    assert_eq!(st[0].1.state, OutputState::Off);
+    assert_eq!(st[0].1.ndi, Some(NdiLive::default()));
+}
+
+#[test]
+fn ndi_outputs_have_no_window_and_display_outputs_no_ndi_plan() {
+    let a = display("a", 0, 0, 1920, 1080, 60);
+    let configs = [ndi("n1", "main"), fill("o1", &a, "main")];
+    let (w, s) = plan_running(&configs, &[a], &HashMap::new());
+    assert_eq!(w.len(), 1);
+    assert_eq!(w[0].outputs, ["o1"]);
+    assert_eq!(
+        s[0].state,
+        OutputState::Off,
+        "plan() leaves NDI to plan_ndi"
+    );
+    let sizes = screens();
+    let (plans, st) = plan_ndi(
+        &configs,
+        Some(PlanProject {
+            server: &RUNNING,
+            screens: &sizes,
+        }),
+    );
+    assert_eq!(plans.len(), 1);
+    assert_eq!(st.iter().map(|(i, _)| *i).collect::<Vec<_>>(), [0]);
+}
+
+#[test]
+fn an_ndi_output_is_on_air_only_with_a_receiver() {
+    let status = |state, ndi| OutputStatus {
+        id: "x".into(),
+        state,
+        display_id: None,
+        frame_locked: None,
+        pattern: None,
+        message: None,
+        ndi,
+    };
+    let none = Some(NdiLive::default());
+    let one = Some(NdiLive {
+        receivers: 1,
+        ..Default::default()
+    });
+    assert!(!status_on_air(&status(OutputState::Showing, none)));
+    assert!(status_on_air(&status(OutputState::Showing, one)));
+    assert!(!status_on_air(&status(OutputState::NoProject, none)));
+    assert!(!status_on_air(&status(OutputState::ScreenMissing, none)));
+    assert!(!status_on_air(&status(OutputState::NdiMissing, none)));
+    // Display outputs keep their rule.
+    assert!(status_on_air(&status(OutputState::NoProject, None)));
+    assert!(!status_on_air(&status(OutputState::DisplayMissing, None)));
+}
+
+#[test]
+fn new_ndi_outputs_default_to_50_in_europe_else_59_94() {
+    for r in ["NO", "no", "GB", "DE", "SE", "UA"] {
+        assert_eq!(default_ndi_rate(Some(r)), NdiRate::R50, "{r}");
+    }
+    for r in ["US", "CA", "JP", "BR", "AU", ""] {
+        assert_eq!(default_ndi_rate(Some(r)), NdiRate::R59_94, "{r}");
+    }
+    assert_eq!(default_ndi_rate(None), NdiRate::R59_94);
+}
+
+/// Records the NDI plans; receivers and failures are set by the test.
+#[derive(Default)]
+struct FakeNdi {
+    applied: Mutex<Vec<Vec<NdiPlan>>>,
+    live: Mutex<HashMap<String, NdiLive>>,
+    fail: Mutex<HashMap<String, String>>,
+    closed: Mutex<usize>,
+}
+
+impl NdiHost for FakeNdi {
+    fn apply(&self, plans: &[NdiPlan]) -> HashMap<String, String> {
+        self.applied.lock().unwrap().push(plans.to_vec());
+        let fail = self.fail.lock().unwrap();
+        plans
+            .iter()
+            .filter_map(|p| fail.get(&p.id).map(|e| (p.id.clone(), e.clone())))
+            .collect()
+    }
+    fn live(&self) -> HashMap<String, NdiLive> {
+        self.live.lock().unwrap().clone()
+    }
+    fn close_all(&self) {
+        *self.closed.lock().unwrap() += 1;
+    }
+}
+
+impl FakeNdi {
+    fn count(&self) -> usize {
+        self.applied.lock().unwrap().len()
+    }
+    fn last(&self) -> Vec<NdiPlan> {
+        self.applied
+            .lock()
+            .unwrap()
+            .last()
+            .cloned()
+            .unwrap_or_default()
+    }
+}
+
+fn running(port: u16) -> ServerStatus {
+    ServerStatus::Running {
+        port,
+        url: format!("http://127.0.0.1:{port}"),
+        lan_url: None,
+    }
+}
+
+#[test]
+fn ndi_outputs_run_through_the_host_and_count_on_air_with_receivers() {
+    let e = env();
+    let fake = Arc::new(FakeNdi::default());
+    e.st.set_ndi_host(Some(fake.clone()));
+    let screen = open_with_screen(&e);
+    e.st.outputs_set_server(&running(7771));
+    set_outputs(&e.st, vec![ndi("n1", &screen)]);
+    e.st.outputs_reconcile_now();
+    let plans = fake.last();
+    assert_eq!(plans.len(), 1);
+    assert_eq!(
+        plans[0].url,
+        format!("http://127.0.0.1:7771/screen/{screen}?audio=0&cap=1")
+    );
+    assert_eq!((plans[0].width, plans[0].height), (1280, 720));
+    assert!(e.host.last().is_empty(), "no window");
+    assert!(!e.st.displays_rt().watching(), "no display watcher for NDI");
+    let s = &e.st.list_outputs()[0];
+    assert_eq!(
+        (s.state, s.ndi),
+        (OutputState::Showing, Some(NdiLive::default()))
+    );
+    assert!(!e.st.any_output_showing(), "sending to nobody isn't on air");
+    assert!(!e.st.cloud_on_air());
+
+    // Unchanged: no host work.
+    let n = fake.count();
+    e.st.outputs_reconcile_now();
+    assert_eq!(fake.count(), n);
+
+    // A receiver connects: one outputs-changed with it, and now it's on air.
+    let events = e.rec.named(names::OUTPUTS_CHANGED).len();
+    fake.live.lock().unwrap().insert(
+        "n1".into(),
+        NdiLive {
+            receivers: 1,
+            program: true,
+            preview: false,
+            dropping: false,
+        },
+    );
+    e.st.outputs_ndi_changed();
+    let ev = e.rec.named(names::OUTPUTS_CHANGED);
+    assert_eq!(ev.len(), events + 1);
+    assert_eq!(ev.last().unwrap()[0]["ndi"]["receivers"], 1);
+    assert_eq!(ev.last().unwrap()[0]["ndi"]["program"], true);
+    assert!(e.st.any_output_showing());
+    assert!(e.st.cloud_on_air());
+    // The same again: nothing sent.
+    e.st.outputs_ndi_changed();
+    assert_eq!(e.rec.named(names::OUTPUTS_CHANGED).len(), events + 1);
+
+    // Test patterns are for display outputs.
+    assert!(e
+        .st
+        .output_test_pattern("n1", Some(TestPattern::Bars))
+        .is_err());
+
+    // A changed setting is a new plan; the runtime missing shows as ndiMissing and is retried.
+    fake.fail
+        .lock()
+        .unwrap()
+        .insert("n1".into(), NDI_MISSING.into());
+    let mut p = e.st.prefs();
+    p.outputs[0].ndi.as_mut().unwrap().rate = NdiRate::R59_94;
+    e.st.set_prefs(p);
+    e.st.outputs_reconcile_now();
+    assert_eq!(fake.last()[0].rate, FrameRate::R59_94);
+    assert_eq!(e.st.list_outputs()[0].state, OutputState::NdiMissing);
+    assert!(!e.st.any_output_showing());
+    let n = fake.count();
+    fake.fail.lock().unwrap().clear();
+    e.st.outputs_reconcile_now();
+    assert_eq!(
+        fake.count(),
+        n + 1,
+        "a failure is retried on the next reconcile"
+    );
+    assert_eq!(e.st.list_outputs()[0].state, OutputState::Showing);
+
+    // Off: the host stops it.
+    e.st.all_outputs_off();
+    e.st.outputs_reconcile_now();
+    assert!(fake.last().is_empty());
+    assert!(!e.st.any_output_showing());
+
+    // Exit stops everything.
+    e.st.outputs_shutdown();
+    assert_eq!(*fake.closed.lock().unwrap(), 1);
+}
+
+#[test]
+fn without_an_ndi_host_an_ndi_output_says_so() {
+    let e = env();
+    let screen = open_with_screen(&e);
+    e.st.outputs_set_server(&running(7771));
+    set_outputs(&e.st, vec![ndi("n1", &screen)]);
+    e.st.outputs_reconcile_now();
+    let s = &e.st.list_outputs()[0];
+    assert_eq!(s.state, OutputState::Failed);
+    assert_eq!(s.message.as_deref(), Some(NDI_UNAVAILABLE));
 }

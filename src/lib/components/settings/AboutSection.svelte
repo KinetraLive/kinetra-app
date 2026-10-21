@@ -26,6 +26,8 @@
   import { toasts } from "$lib/stores/toasts.svelte";
   import type { AppInfo } from "$lib/types";
   import { formatBytePair } from "./format";
+  // NDI's licensing asks for the trademark notice in the About box.
+  import { NDI_TRADEMARK } from "$lib/components/outputs/ndi-links";
   import { firstVisible } from "./lazy.svelte";
   import { updateRequest } from "./state.svelte";
   import { CHECK_FAILED, UP_TO_DATE, updater } from "./updates.svelte";
@@ -222,6 +224,9 @@
         {#snippet icon()}<ScrollText size={14} />{/snippet}
         View licenses
       </Button>
+    </SettingsRow>
+    <SettingsRow label="Trademarks">
+      <span class="muted">{NDI_TRADEMARK}</span>
     </SettingsRow>
   </SettingsSection>
 </div>

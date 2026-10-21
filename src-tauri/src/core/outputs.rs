@@ -45,9 +45,11 @@ use std::time::Duration;
 use serde::Deserialize;
 
 use crate::core::events::names;
+use crate::core::frame_out::{AlphaMode, FrameRate, PixelFormat};
 use crate::core::model::{
-    DisplayInfo, OutputAudio, OutputBackground, OutputConfig, OutputMode, OutputState,
-    OutputStatus, ServerStatus, TestPattern, CHROMA_GREEN, OUTPUTS_MAX, OUTPUT_AUDIO_DEVICE_MAX,
+    DisplayInfo, NdiBus, NdiLive, NdiRate, OutputAudio, OutputBackground, OutputConfig,
+    OutputDisplayRef, OutputKind, OutputMode, OutputState, OutputStatus, ServerStatus, TestPattern,
+    CHROMA_GREEN, NDI_GROUPS_MAX, NDI_OUTPUTS_MAX, OUTPUTS_MAX, OUTPUT_AUDIO_DEVICE_MAX,
     OUTPUT_NAME_MAX,
 };
 use crate::core::state::AppState;
@@ -150,6 +152,26 @@ pub fn clamp_outputs(list: Vec<OutputConfig>) -> Vec<OutputConfig> {
                 None => OutputBackground::Black,
             };
         }
+        match c.kind {
+            OutputKind::Display => c.ndi = None,
+            OutputKind::Ndi => {
+                if out.iter().filter(|o| o.kind == OutputKind::Ndi).count() >= NDI_OUTPUTS_MAX {
+                    continue;
+                }
+                // An NDI source is a fill with alpha: no display, no key pair, no audio (v1).
+                c.display = OutputDisplayRef::default();
+                c.mode = OutputMode::Fill;
+                c.key_of = None;
+                c.audio = None;
+                c.always_on_top = false;
+                let mut ndi = c.ndi.take().unwrap_or_default();
+                ndi.groups = ndi
+                    .groups
+                    .map(|g| clean(g.trim(), NDI_GROUPS_MAX).trim().to_string())
+                    .filter(|g| !g.is_empty());
+                c.ndi = Some(ndi);
+            }
+        }
         out.push(c);
     }
     // Names: unique ignoring case.
@@ -176,7 +198,7 @@ pub fn clamp_outputs(list: Vec<OutputConfig>) -> Vec<OutputConfig> {
     // Key pairs.
     let fills: HashSet<String> = out
         .iter()
-        .filter(|c| c.mode == OutputMode::Fill)
+        .filter(|c| c.mode == OutputMode::Fill && c.kind == OutputKind::Display)
         .map(|c| c.id.clone())
         .collect();
     let mut keyed = HashSet::new();
@@ -403,7 +425,8 @@ pub fn plan(
             return None;
         }
         let f = *index.get(c.key_of.as_deref()?)?;
-        (configs[f].mode == OutputMode::Fill && f != i).then_some(f)
+        (configs[f].mode == OutputMode::Fill && configs[f].kind == OutputKind::Display && f != i)
+            .then_some(f)
     };
     let key_of_fill: HashMap<usize, usize> =
         (0..n).filter_map(|k| fill_of(k).map(|f| (f, k))).collect();
@@ -422,8 +445,11 @@ pub fn plan(
             })
         })
         .collect();
+    // NDI outputs have no window (see `plan_ndi`).
     let active: Vec<bool> = (0..n)
-        .map(|i| configs[i].enabled || pats[i].is_some())
+        .map(|i| {
+            configs[i].kind == OutputKind::Display && (configs[i].enabled || pats[i].is_some())
+        })
         .collect();
 
     // Displays: exact ids first, then the fallback match for the rest.
@@ -589,6 +615,7 @@ pub fn plan(
             frame_locked: None,
             pattern: None,
             message: None,
+            ndi: None,
         };
         if !active[i] {
             statuses.push(st);
@@ -677,6 +704,163 @@ pub fn identify_plan(displays: &[DisplayInfo]) -> Vec<WindowPlan> {
         .collect()
 }
 
+// ---- NDI plan (pure) --------------------------------------------------------------------------
+
+/// The NDI host's failure for "the NDI Runtime isn't installed" (status `ndiMissing`; other
+/// failures are shown as `failed` with the message).
+pub const NDI_MISSING: &str = "ndiMissing";
+/// Shown where no NDI host exists (macOS for now).
+pub const NDI_UNAVAILABLE: &str = "NDI output isn't available on this computer yet";
+
+/// An NDI source that should be sending.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NdiPlan {
+    /// The output's id.
+    pub id: String,
+    /// The NDI source name (the output's name; receivers show `MACHINE (name)`).
+    pub name: String,
+    /// The renderer page the source captures (silent, counted for readiness, `cap=1`).
+    pub url: String,
+    /// Capture size: the screen's, the width rounded up to even (4:2:2).
+    pub width: u32,
+    pub height: u32,
+    pub rate: FrameRate,
+    pub format: PixelFormat,
+    pub alpha: AlphaMode,
+    /// Behind the graphics when alpha is off.
+    pub background: [u8; 3],
+    pub groups: Option<String>,
+}
+
+/// European countries and territories (ISO 3166-1 alpha-2): 50 Hz video.
+const EUROPE: &[&str] = &[
+    "AD", "AL", "AM", "AT", "AX", "AZ", "BA", "BE", "BG", "BY", "CH", "CY", "CZ", "DE", "DK", "EE",
+    "ES", "FI", "FO", "FR", "GB", "GE", "GG", "GI", "GR", "HR", "HU", "IE", "IM", "IS", "IT", "JE",
+    "LI", "LT", "LU", "LV", "MC", "MD", "ME", "MK", "MT", "NL", "NO", "PL", "PT", "RO", "RS", "RU",
+    "SE", "SI", "SJ", "SK", "SM", "TR", "UA", "VA", "XK",
+];
+
+/// A new NDI output's frame rate: 50 in Europe, 59.94 elsewhere (owner decision 2026-10-21),
+/// from the system's region (`None`: unknown → 59.94).
+pub fn default_ndi_rate(region: Option<&str>) -> NdiRate {
+    match region {
+        Some(r) if EUROPE.contains(&r.trim().to_ascii_uppercase().as_str()) => NdiRate::R50,
+        _ => NdiRate::R59_94,
+    }
+}
+
+pub fn frame_rate(r: NdiRate) -> FrameRate {
+    match r {
+        NdiRate::R25 => FrameRate::R25,
+        NdiRate::R29_97 => FrameRate::R29_97,
+        NdiRate::R30 => FrameRate::R30,
+        NdiRate::R50 => FrameRate::R50,
+        NdiRate::R59_94 => FrameRate::R59_94,
+        NdiRate::R60 => FrameRate::R60,
+    }
+}
+
+fn rgb(bg: &OutputBackground) -> [u8; 3] {
+    let hex = bg_hex(bg);
+    let b = |i: usize| u8::from_str_radix(&hex[i..i + 2], 16).unwrap_or(0);
+    [b(0), b(2), b(4)]
+}
+
+/// The NDI sources to run and the statuses of the NDI outputs (index into `configs`, status).
+/// An enabled NDI output sends only with a project whose server runs and whose screen exists;
+/// otherwise `noProject` / `screenMissing` / `failed` (server) with nothing sent. A source that
+/// is planned reports `showing`; the host's failures and receivers are filled in afterwards.
+pub fn plan_ndi(
+    configs: &[OutputConfig],
+    project: Option<PlanProject<'_>>,
+) -> (Vec<NdiPlan>, Vec<(usize, OutputStatus)>) {
+    let mut plans = Vec::new();
+    let mut statuses = Vec::new();
+    for (i, c) in configs.iter().enumerate() {
+        if c.kind != OutputKind::Ndi {
+            continue;
+        }
+        // Always `Some` for NDI outputs: that is how `status_on_air` tells them apart.
+        let mut st = OutputStatus {
+            id: c.id.clone(),
+            state: OutputState::Off,
+            display_id: None,
+            frame_locked: None,
+            pattern: None,
+            message: None,
+            ndi: Some(NdiLive::default()),
+        };
+        if c.enabled {
+            let settings = c.ndi.clone().unwrap_or_default();
+            match project {
+                None => st.state = OutputState::NoProject,
+                Some(p) => {
+                    let screen = c
+                        .screen_id
+                        .as_deref()
+                        .and_then(|s| p.screens.get(s).map(|wh| (s, *wh)));
+                    match (p.server, screen) {
+                        (_, None) => st.state = OutputState::ScreenMissing,
+                        (ServerState::Failed { message }, _) => {
+                            st.state = OutputState::Failed;
+                            st.message = Some(message.clone());
+                        }
+                        // Starting: sends once the server listens, a moment later.
+                        (ServerState::Starting | ServerState::Stopped, Some(_)) => {
+                            st.state = OutputState::Showing;
+                        }
+                        (ServerState::Running { port }, Some((sid, (w, h)))) => {
+                            let bus = match settings.bus {
+                                NdiBus::Program => "",
+                                NdiBus::Preview => "/preview",
+                            };
+                            plans.push(NdiPlan {
+                                id: c.id.clone(),
+                                name: c.name.clone(),
+                                url: format!(
+                                    "http://127.0.0.1:{port}/screen/{}{bus}?audio=0&cap=1",
+                                    enc(sid)
+                                ),
+                                width: w + w % 2,
+                                height: h,
+                                rate: frame_rate(settings.rate),
+                                format: if settings.alpha {
+                                    PixelFormat::Uyva
+                                } else {
+                                    PixelFormat::Uyvy
+                                },
+                                alpha: if settings.premultiplied {
+                                    AlphaMode::Premultiplied
+                                } else {
+                                    AlphaMode::Straight
+                                },
+                                background: rgb(&c.background),
+                                groups: settings.groups.clone(),
+                            });
+                            st.state = OutputState::Showing;
+                        }
+                    }
+                }
+            }
+        }
+        statuses.push((i, st));
+    }
+    (plans, statuses)
+}
+
+/// Whether an output counts as "on air" for Exit, updates, license changes and cloud backup:
+/// a display output while its window shows anything; an NDI output only while a receiver is
+/// connected (owner decision 2026-10-21).
+pub fn status_on_air(s: &OutputStatus) -> bool {
+    match &s.ndi {
+        Some(live) => s.state == OutputState::Showing && live.receivers > 0,
+        None => matches!(
+            s.state,
+            OutputState::Showing | OutputState::NoProject | OutputState::ScreenMissing
+        ),
+    }
+}
+
 // ---- Runtime ----------------------------------------------------------------------------------
 
 /// Creates, moves, navigates and closes the output windows (Tauri, `src/outputs.rs`). Called on
@@ -691,17 +875,35 @@ pub trait OutputHost: Send + Sync {
     fn close_all(&self);
 }
 
+/// Runs the NDI sources (Windows: `src/ndi/host.rs`). Called on the blocking pool, one call at a
+/// time.
+pub trait NdiHost: Send + Sync {
+    /// Makes the running sources exactly `plans` (a changed plan restarts its source). Returns
+    /// the outputs that failed, with the error ([`NDI_MISSING`] when the runtime isn't
+    /// installed).
+    fn apply(&self, plans: &[NdiPlan]) -> HashMap<String, String>;
+    /// Receivers and tally per running source. Never waits for `apply`.
+    fn live(&self) -> HashMap<String, NdiLive>;
+    /// Stops every source now (exit).
+    fn close_all(&self);
+}
+
 /// What the last reconcile applied.
 #[derive(Default)]
 struct Applied {
     windows: Vec<WindowPlan>,
     failures: HashMap<String, String>,
+    ndi: Vec<NdiPlan>,
+    ndi_failures: HashMap<String, String>,
 }
 
 /// Output runtime (one per `AppState`).
 #[derive(Default)]
 pub struct Outputs {
     host: RwLock<Option<Arc<dyn OutputHost>>>,
+    ndi_host: RwLock<Option<Arc<dyn NdiHost>>>,
+    /// An NDI live update is queued on the blocking pool.
+    ndi_pending: AtomicBool,
     rt: Mutex<Option<tokio::runtime::Handle>>,
     /// A reconcile is queued on the blocking pool.
     pending: AtomicBool,
@@ -724,6 +926,13 @@ pub struct Outputs {
 impl Outputs {
     fn host(&self) -> Option<Arc<dyn OutputHost>> {
         self.host
+            .read()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
+    }
+
+    fn ndi_host(&self) -> Option<Arc<dyn NdiHost>> {
+        self.ndi_host
             .read()
             .unwrap_or_else(PoisonError::into_inner)
             .clone()
@@ -761,6 +970,74 @@ impl AppState {
         // The new host gets every window, even when the plan is unchanged.
         self.outputs_rt().new_host.store(true, Ordering::SeqCst);
         self.outputs_request();
+    }
+
+    /// Sets the NDI host (the app on Windows) and reconciles.
+    pub fn set_ndi_host(&self, host: Option<Arc<dyn NdiHost>>) {
+        *self
+            .outputs_rt()
+            .ndi_host
+            .write()
+            .unwrap_or_else(PoisonError::into_inner) = host;
+        self.outputs_rt().new_host.store(true, Ordering::SeqCst);
+        self.outputs_request();
+    }
+
+    /// An NDI source's receivers or tally changed (called by the host from its sender threads;
+    /// never blocks): the statuses are patched on the blocking pool, coalesced, without a whole
+    /// reconcile.
+    pub fn outputs_ndi_changed(&self) {
+        let o = self.outputs_rt();
+        let rt = lock(&o.rt).clone();
+        let Some(rt) = rt else {
+            self.outputs_ndi_refresh();
+            return;
+        };
+        if o.ndi_pending.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        let weak = self.downgrade();
+        rt.spawn_blocking(move || {
+            if let Some(st) = weak.upgrade() {
+                st.outputs_rt().ndi_pending.store(false, Ordering::SeqCst);
+                st.outputs_ndi_refresh();
+            }
+        });
+    }
+
+    /// Copies the host's receivers and tally into the statuses of sending NDI outputs; emits
+    /// `outputs-changed` and re-checks what waits for "nothing on air" when they changed.
+    fn outputs_ndi_refresh(&self) {
+        let o = self.outputs_rt();
+        let Some(host) = o.ndi_host() else { return };
+        let live = host.live();
+        let (changed, statuses, on_air_changed) = {
+            let mut g = lock(&o.statuses);
+            let before = g.iter().any(status_on_air);
+            let mut changed = false;
+            for s in g.iter_mut() {
+                if s.state != OutputState::Showing || s.ndi.is_none() {
+                    continue;
+                }
+                let next = live.get(&s.id).copied().unwrap_or_default();
+                if s.ndi != Some(next) {
+                    s.ndi = Some(next);
+                    changed = true;
+                }
+            }
+            (changed, g.clone(), before != g.iter().any(status_on_air))
+        };
+        if !changed {
+            return;
+        }
+        match serde_json::to_value(&statuses) {
+            Ok(v) => self.events().emit(names::OUTPUTS_CHANGED, v),
+            Err(e) => tracing::warn!("outputs-changed not sent: {e}"),
+        }
+        if on_air_changed {
+            self.license_settle();
+            self.cloud_outputs_changed();
+        }
     }
 
     /// The host's windows changed outside a reconcile (an output page crashed too often and the
@@ -830,7 +1107,11 @@ impl AppState {
             p.retain(|id, _| configs.iter().any(|c| c.id == *id));
             p.clone()
         };
-        let needed = configs.iter().any(|c| c.enabled) || !patterns.is_empty();
+        // Only display outputs need the display watcher.
+        let needed = configs
+            .iter()
+            .any(|c| c.enabled && c.kind == OutputKind::Display)
+            || !patterns.is_empty();
         // Starts or stops the display watcher outside every outputs lock (stopping joins it).
         self.displays_set_needed(needed);
 
@@ -848,7 +1129,47 @@ impl AppState {
             screens: &screens,
         });
         let (windows, mut statuses) = plan(&configs, &displays, project, &patterns);
+        let (ndi_plans, ndi_statuses) = plan_ndi(&configs, project);
+        for (i, s) in ndi_statuses {
+            statuses[i] = s;
+        }
         let new_host = o.new_host.swap(false, Ordering::SeqCst);
+        if (new_host || ndi_plans != run.ndi || !run.ndi_failures.is_empty())
+            && !o.closed.load(Ordering::SeqCst)
+        {
+            run.ndi_failures = match o.ndi_host() {
+                Some(h) if !(ndi_plans.is_empty() && run.ndi.is_empty() && !new_host) => {
+                    h.apply(&ndi_plans)
+                }
+                Some(_) => HashMap::new(),
+                None => ndi_plans
+                    .iter()
+                    .map(|p| (p.id.clone(), NDI_UNAVAILABLE.to_string()))
+                    .collect(),
+            };
+            for (id, e) in &run.ndi_failures {
+                if e != NDI_MISSING {
+                    tracing::warn!("NDI output {id}: {e}");
+                }
+            }
+            run.ndi = ndi_plans;
+        }
+        let live = o.ndi_host().map(|h| h.live()).unwrap_or_default();
+        for s in statuses
+            .iter_mut()
+            .filter(|s| s.ndi.is_some() && s.state == OutputState::Showing)
+        {
+            if let Some(e) = run.ndi_failures.get(&s.id) {
+                if e == NDI_MISSING {
+                    s.state = OutputState::NdiMissing;
+                } else {
+                    s.state = OutputState::Failed;
+                    s.message = Some(e.clone());
+                }
+            } else if let Some(l) = live.get(&s.id) {
+                s.ndi = Some(*l);
+            }
+        }
         if ((new_host && !windows.is_empty()) || windows != run.windows || !run.failures.is_empty())
             && !o.closed.load(Ordering::SeqCst)
         {
@@ -895,6 +1216,7 @@ impl AppState {
         if changed {
             // An output going dark may end the show: a pending license change can apply now.
             self.license_settle();
+            self.cloud_outputs_changed();
         }
     }
 
@@ -914,8 +1236,14 @@ impl AppState {
 
     /// Shows a test pattern on an output and its pair (`None`: the screen again).
     pub fn output_test_pattern(&self, id: &str, pattern: Option<TestPattern>) -> AppResult<()> {
-        if !self.prefs().outputs.iter().any(|c| c.id == id) {
-            return Err(AppError::NotFound(format!("output {id}")));
+        match self.prefs().outputs.iter().find(|c| c.id == id) {
+            None => return Err(AppError::NotFound(format!("output {id}"))),
+            Some(c) if c.kind == OutputKind::Ndi => {
+                return Err(AppError::Invalid(
+                    "Test patterns are for display outputs".into(),
+                ))
+            }
+            Some(_) => {}
         }
         {
             let mut p = lock(&self.outputs_rt().patterns);
@@ -954,12 +1282,7 @@ impl AppState {
     /// Whether any output window shows something (a screen, black without a project, a
     /// pattern): exit asks first, updates wait.
     pub fn any_output_showing(&self) -> bool {
-        lock(&self.outputs_rt().statuses).iter().any(|s| {
-            matches!(
-                s.state,
-                OutputState::Showing | OutputState::NoProject | OutputState::ScreenMissing
-            )
-        })
+        lock(&self.outputs_rt().statuses).iter().any(status_on_air)
     }
 
     /// Closes every output window and stops the display watcher (exit).
@@ -967,6 +1290,9 @@ impl AppState {
         let o = self.outputs_rt();
         o.closed.store(true, Ordering::SeqCst);
         if let Some(h) = o.host() {
+            h.close_all();
+        }
+        if let Some(h) = o.ndi_host() {
             h.close_all();
         }
         self.displays_shutdown();

@@ -189,6 +189,19 @@ pub fn run() {
                 state.use_system_displays(main_hwnd);
             }
             state.set_output_host(Some(outputs::OutputWindows::new(app.handle().clone())));
+            // NDI outputs (Windows): nothing loads or runs until one is on.
+            #[cfg(windows)]
+            {
+                let data = core::devprofile::dir(app.path().app_local_data_dir()?, profile)
+                    .join("ndi-capture");
+                let weak = state.downgrade();
+                let notify: ndi::sender::OnChange = Arc::new(move || {
+                    if let Some(st) = weak.upgrade() {
+                        st.outputs_ndi_changed();
+                    }
+                });
+                state.set_ndi_host(Some(ndi::host::NdiOutputs::new(data, notify)));
+            }
             app.manage(server);
             // OSC control: no task or socket until a project enables it.
             let osc = OscManager::new(&state, tauri::async_runtime::handle().inner().clone());
@@ -388,6 +401,7 @@ pub fn run() {
             commands::outputs::output_test_pattern,
             commands::outputs::identify_displays,
             commands::outputs::all_outputs_off,
+            commands::outputs::ndi_info,
             commands::control_api::control_api_view,
             commands::control_api::control_api_set,
             commands::control_api::control_api_token,

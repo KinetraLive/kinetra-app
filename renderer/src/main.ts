@@ -2,7 +2,8 @@
 // /screen/<id>/preview → /ws?screen=<id>&bus=preview (layers shown settled).
 // `?output=<id>` (a Kinetra display output window) loads the `output` chunk: fit, background,
 // key and dual (fill + key) from one connection. `?mute=1` (the app's own previews) is forwarded
-// to the WebSocket: such a connection never counts toward media readiness.
+// to the WebSocket: such a connection never counts toward media readiness. `?cap=1` (an NDI
+// output's capture page) is forwarded too: it counts for readiness but not as an OBS-style viewer.
 import { App } from "./app";
 import { connect } from "./connection";
 import { setPreview } from "./layer";
@@ -31,7 +32,7 @@ function start() {
   setPreview(pv);
   const go = (h: (m: ServerMsg) => void) =>
     id
-      ? connect(wsUrl(location, id, pv) + (q.get("mute") == "1" ? "&mute=1" : ""), h, {
+      ? connect(wsUrl(location, id, pv) + (q.get("mute") == "1" ? "&mute=1" : q.get("cap") == "1" ? "&cap=1" : ""), h, {
           onStatus: (s) => show(s, s === "connected" ? "#15803d" : "#6b7280"),
         })
       : (console.warn("renderer: no screen id in the URL"), show("no screen id", "#b45309"));

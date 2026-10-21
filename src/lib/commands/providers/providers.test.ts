@@ -169,9 +169,10 @@ describe("project items", () => {
     await loaded();
     const items = providerItems(ctx());
     // Reserved screens are never listed.
-    expect(ids(items).filter((i) => i.startsWith("screen."))).toEqual(["screen.edit:s1", "screen.control:s1"]);
+    expect(ids(items).filter((i) => i.startsWith("screen."))).toEqual(["screen.edit:s1", "screen.control:s1", "screen.ndi:s1"]);
     expect(titleOf(byId(items, "screen.edit:s1"))).toBe("Go to Main");
     expect(titleOf(byId(items, "screen.control:s1"))).toBe("Open Main in Control");
+    expect(titleOf(byId(items, "screen.ndi:s1"))).toBe("Send Main over NDI®");
     expect(byId(items, "screen.edit:s1").scope).toBe("screen");
     expect(titleOf(byId(items, "template.edit:t1"))).toBe("Edit Lower third");
     expect(byId(items, "template.edit:t1").scope).toBe("template");

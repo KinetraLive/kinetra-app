@@ -33,7 +33,7 @@ import { openPreferences, toAppError } from "$lib/api";
 import { clearRecents, exitApp, setZoom, toggleFullscreen } from "$lib/api/app";
 import { listScreens } from "$lib/api/live";
 import { allOutputsOff, listOutputs } from "$lib/api/outputs";
-import { menuLabel, patchOutput, showingText } from "$lib/components/outputs/labels";
+import { isOnAir, menuLabel, patchOutput, showingText } from "$lib/components/outputs/labels";
 import { CHECK_UPDATES } from "$lib/components/settings/sections";
 import { sectionRoot } from "$lib/components/shell/nav";
 import { t } from "$lib/i18n";
@@ -112,7 +112,7 @@ async function anythingOnAir(): Promise<boolean> {
 async function outputsShowing(): Promise<number> {
   if (!prefs.value?.outputs?.length) return 0;
   try {
-    return (await listOutputs()).filter((s) => s.state === "showing").length;
+    return (await listOutputs()).filter(isOnAir).length;
   } catch {
     return 0;
   }

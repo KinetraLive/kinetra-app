@@ -5,16 +5,19 @@
 
 import {
   CHROMA_GREEN,
+  NDI_OUTPUTS_MAX,
   OUTPUTS_MAX,
   type DisplayInfo,
+  type NdiOutputSettings,
+  type NdiRate,
   type OutputBackground,
   type OutputConfig,
   type OutputStatus,
   type TestPattern,
 } from "$lib/types";
 
-export { menuLabel, patchOutput, screenOf, showingText, warningText } from "./labels";
-import { patchOutput } from "./labels";
+export { isOnAir, menuLabel, patchOutput, screenOf, showingText, warningText } from "./labels";
+import { isOnAir, patchOutput } from "./labels";
 
 // ---- Labels -----------------------------------------------------------------------------------
 
@@ -28,9 +31,10 @@ export const PATTERNS: readonly { value: TestPattern; label: string }[] = [
   { value: "name", label: "Name" },
 ];
 
-/** How a status reads: `program` = on air (a red TallyDot), `warning` = a problem (amber text and
- * icon, never a tally color), `muted` = off or waiting. */
-export type StatusTone = "program" | "warning" | "muted";
+/** How a status reads: `program` = on air (a red TallyDot), `preview` = on a receiver's preview
+ * (a green TallyDot; NDI tally), `warning` = a problem (amber text and icon, never a tally color),
+ * `muted` = off or waiting. */
+export type StatusTone = "program" | "preview" | "warning" | "muted";
 
 export interface StatusLine {
   tone: StatusTone;
@@ -40,6 +44,7 @@ export interface StatusLine {
 /** The status of an output as one short line ("Showing", "Display disconnected", …). */
 export function statusLine(o: OutputConfig, s: OutputStatus | undefined): StatusLine {
   const state = s?.state ?? (o.enabled ? "noProject" : "off");
+  if (o.kind === "ndi") return ndiStatusLine(state, s);
   if (s?.pattern && state !== "displayMissing" && state !== "failed") return { tone: "program", text: "Test pattern" };
   switch (state) {
     case "showing":
@@ -57,6 +62,31 @@ export function statusLine(o: OutputConfig, s: OutputStatus | undefined): Status
   }
 }
 
+/** An NDI output's status: on air only with a receiver; the receiver count itself isn't shown
+ * until it is checked against vMix and Studio Monitor (owner, 2026-10-21). */
+function ndiStatusLine(state: OutputStatus["state"], s: OutputStatus | undefined): StatusLine {
+  switch (state) {
+    case "showing": {
+      const live = s?.ndi;
+      if (live?.dropping) return { tone: "warning", text: "Dropping frames" };
+      if (live?.program) return { tone: "program", text: "On program" };
+      if (live?.preview) return { tone: "preview", text: "On preview" };
+      if (live && live.receivers > 0) return { tone: "program", text: "Sending" };
+      return { tone: "muted", text: "Ready · no receiver" };
+    }
+    case "ndiMissing":
+      return { tone: "warning", text: "NDI® Runtime not installed" };
+    case "screenMissing":
+      return { tone: "warning", text: "Screen not found" };
+    case "failed":
+      return { tone: "warning", text: s?.message || "Couldn't start" };
+    case "noProject":
+      return { tone: "muted", text: "Waiting for a project" };
+    default:
+      return { tone: "muted", text: "Off" };
+  }
+}
+
 /** Key pairs: "Frame-locked" / "Not frame-locked: displays differ"; null when not a pair or not
  * shown yet. */
 export function frameLockText(s: OutputStatus | undefined): string | null {
@@ -64,9 +94,9 @@ export function frameLockText(s: OutputStatus | undefined): string | null {
   return s.frameLocked ? "Frame-locked" : "Not frame-locked: displays differ";
 }
 
-/** The outputs showing (a screen or a pattern), in prefs order. */
+/** The outputs on air (a screen or a pattern; NDI: with a receiver), in prefs order. */
 export const showing = (configs: readonly OutputConfig[], status: readonly OutputStatus[]): OutputConfig[] =>
-  configs.filter((o) => status.find((s) => s.id === o.id)?.state === "showing");
+  configs.filter((o) => isOnAir(status.find((s) => s.id === o.id)));
 
 // ---- Display map --------------------------------------------------------------------------------
 
@@ -123,7 +153,7 @@ export function displayOptions(o: OutputConfig, s: OutputStatus | undefined, dis
 
 /** The fill outputs a key output can key for (not itself). */
 export const fillOptions = (configs: readonly OutputConfig[], id: string): { value: string; label: string }[] =>
-  configs.filter((c) => c.mode === "fill" && c.id !== id).map((c) => ({ value: c.id, label: c.name }));
+  configs.filter((c) => c.mode === "fill" && c.kind === "display" && c.id !== id).map((c) => ({ value: c.id, label: c.name }));
 
 export type BackgroundKind = OutputBackground["kind"];
 
@@ -170,7 +200,7 @@ export const displayRef = (d: DisplayInfo): OutputConfig["display"] => ({
  */
 export function newOutput(configs: readonly OutputConfig[], displays: readonly DisplayInfo[], firstScreen: string | null): OutputConfig | null {
   if (configs.length >= OUTPUTS_MAX || displays.length === 0) return null;
-  const used = new Set(configs.map((c) => c.display.id));
+  const used = new Set(configs.filter((c) => c.kind === "display").map((c) => c.display.id));
   const free = displays.filter((d) => !used.has(d.id));
   const display = free.find((d) => !d.hasMainWindow) ?? free[0] ?? displays[0];
   return {
@@ -194,7 +224,7 @@ export function newOutput(configs: readonly OutputConfig[], displays: readonly D
  */
 export function withMode(configs: readonly OutputConfig[], id: string, mode: OutputConfig["mode"]): OutputConfig[] | null {
   if (mode === "fill") return patchOutput(configs, id, { mode, keyOf: null });
-  const fill = configs.find((c) => c.mode === "fill" && c.id !== id);
+  const fill = configs.find((c) => c.mode === "fill" && c.kind === "display" && c.id !== id);
   if (!fill) return null;
   return patchOutput(configs, id, { mode, keyOf: fill.id });
 }
@@ -208,4 +238,80 @@ export function removeOutput(configs: readonly OutputConfig[], id: string): Outp
 export function withBackground(o: OutputConfig, kind: BackgroundKind): OutputBackground {
   if (kind === "color") return { kind, color: o.background.kind === "color" ? o.background.color : "#808080" };
   return { kind };
+}
+
+// ---- NDI outputs ------------------------------------------------------------------------------------
+
+/** A free source name: "Kinetra <screen>" (or "Kinetra"), then " 2", " 3"… (outputs' names are
+ * unique ignoring case; the NDI source is named after its output). ≤ 40 characters. */
+export function ndiName(configs: readonly OutputConfig[], screenName: string | null): string {
+  const taken = new Set(configs.map((c) => c.name.toLowerCase()));
+  const base = (screenName ? `Kinetra ${screenName}` : "Kinetra").slice(0, 40).trim();
+  if (!taken.has(base.toLowerCase())) return base;
+  for (let n = 2; ; n++) {
+    const suffix = ` ${n}`;
+    const name = base.slice(0, 40 - suffix.length).trimEnd() + suffix;
+    if (!taken.has(name.toLowerCase())) return name;
+  }
+}
+
+/** NDI outputs configured. */
+export const ndiCount = (configs: readonly OutputConfig[]): number => configs.filter((c) => c.kind === "ndi").length;
+
+/** Whether another NDI output fits (≤ 8 outputs, ≤ 4 of them NDI). */
+export const canAddNdi = (configs: readonly OutputConfig[]): boolean =>
+  configs.length < OUTPUTS_MAX && ndiCount(configs) < NDI_OUTPUTS_MAX;
+
+/** Add NDI output: the screen, the region's frame rate, transparency on, straight alpha, Program.
+ * Off unless `enabled` (Preferences adds it off like a display output; "Send over NDI®" turns it
+ * on). Null at the limits. */
+export function newNdiOutput(
+  configs: readonly OutputConfig[],
+  screen: { id: string; name: string } | null,
+  rate: NdiRate,
+  enabled = false,
+): OutputConfig | null {
+  if (!canAddNdi(configs)) return null;
+  return {
+    id: outputId(),
+    kind: "ndi",
+    name: ndiName(configs, screen?.name ?? null),
+    enabled,
+    display: { id: "", name: "", edidKey: "", width: 0, height: 0 },
+    screenId: screen?.id ?? null,
+    mode: "fill",
+    background: { kind: "black" },
+    keyOf: null,
+    alwaysOnTop: false,
+    ndi: { rate, alpha: true, premultiplied: false, groups: null, bus: "program" },
+  };
+}
+
+/** The NDI output that sends a screen (the first one, enabled first). */
+export function ndiOutputOf(configs: readonly OutputConfig[], screenId: string): OutputConfig | undefined {
+  const all = configs.filter((c) => c.kind === "ndi" && c.screenId === screenId);
+  return all.find((c) => c.enabled) ?? all[0];
+}
+
+/**
+ * "Send {screen} over NDI®" / "Stop sending…": turns that screen's NDI output on (making one when
+ * there is none) or off. Null when a new one doesn't fit.
+ */
+export function withScreenNdi(
+  configs: readonly OutputConfig[],
+  screen: { id: string; name: string },
+  on: boolean,
+  rate: NdiRate,
+): OutputConfig[] | null {
+  const existing = ndiOutputOf(configs, screen.id);
+  if (existing) return patchOutput(configs, existing.id, { enabled: on });
+  if (!on) return [...configs];
+  const o = newNdiOutput(configs, screen, rate, true);
+  return o ? [...configs, o] : null;
+}
+
+/** Patches an NDI output's settings. */
+export function withNdi(o: OutputConfig, patch: Partial<NdiOutputSettings>): Partial<OutputConfig> {
+  const base: NdiOutputSettings = o.ndi ?? { rate: "50", alpha: true, premultiplied: false, groups: null, bus: "program" };
+  return { ndi: { ...base, ...patch } };
 }

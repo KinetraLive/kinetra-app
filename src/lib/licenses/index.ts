@@ -17,7 +17,7 @@ export type LicenseItem = {
   /** License files shipped with the package; `text` indexes `Licenses.texts`. */
   files?: LicenseFile[];
 };
-export type LicenseGroup = { id: "npm" | "rust" | "fonts"; label: string; items: LicenseItem[] };
+export type LicenseGroup = { id: "npm" | "rust" | "fonts" | "ndi"; label: string; items: LicenseItem[] };
 export type Licenses = { schemaVersion: 1; depsHash: string; groups: LicenseGroup[]; texts: string[] };
 
 let loading: Promise<Licenses> | undefined;

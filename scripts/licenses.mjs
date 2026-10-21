@@ -1,11 +1,12 @@
 // `pnpm licenses`: writes src/lib/licenses/licenses.json, the third-party notices shown in
-// Preferences > About. Three groups:
+// Preferences > About. Four groups:
 //   npm   the app's production dependencies (package.json `dependencies`, the renderer's too) and the
 //         Svelte/SvelteKit runtime compiled into the bundle, walked transitively through pnpm's
 //         node_modules/.pnpm layout (`dependencies` + installed `optionalDependencies`);
 //   rust  crates reachable from the kinetra package over normal dependencies on the host target
 //         (`cargo metadata --locked --offline --filter-platform <host>`), proc-macros included;
 //   fonts the bundled @fontsource families (app UI and renderer).
+//   ndi   the NDI® notices in legal/ndi/ (header license, NDI terms).
 // License texts (LICENSE*, LICENCE*, COPYING*) are deduplicated into `texts`. The output is
 // deterministic (sorted, no timestamp) and carries `depsHash` (scripts/licenses-deps.mjs), which a
 // vitest compares with the manifests. No dependencies.
@@ -225,10 +226,36 @@ function fontGroup() {
     .sort(byName);
 }
 
+// NDI's notices (legal/ndi/): the MIT license of the SDK headers Kinetra's declarations come from,
+// and the NDI terms for the NDI Runtime (not included; the user installs it).
+function ndiGroup() {
+  const dir = join(ROOT, "legal", "ndi");
+  const file = (name, path) => ({ name, text: textRef(readFileSync(join(dir, path), "utf8")) });
+  return [
+    {
+      name: "NDI® SDK headers",
+      version: "6.3.0.3",
+      license: "MIT",
+      copyright: "Vizrt NDI AB",
+      url: "https://ndi.video",
+      files: [file("LICENSE", "HEADERS-LICENSE.txt")],
+    },
+    {
+      name: "NDI® Runtime (not included)",
+      version: "6",
+      license: "NDI SDK License Agreement",
+      copyright: "NDI, Inc. / Vizrt NDI AB",
+      url: "https://ndi.video",
+      files: [file("NDI terms", "NOTICE.md")],
+    },
+  ];
+}
+
 const groups = [
   { id: "npm", label: "App (npm)", items: npmGroup() },
   { id: "rust", label: "Core (Rust)", items: rustGroup() },
   { id: "fonts", label: "Fonts", items: fontGroup() },
+  { id: "ndi", label: "NDI®", items: ndiGroup() },
 ];
 const out = { schemaVersion: 1, depsHash: depsFingerprint(ROOT), groups, texts };
 const json = `${JSON.stringify(out)}\n`;

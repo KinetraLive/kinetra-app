@@ -18,10 +18,11 @@ describe("LicensesDialog", () => {
   it("lists the groups with counts, names, mono versions and license badges", async () => {
     const { dialog } = await open();
     const labels = [...dialog.querySelectorAll("h3")].map((h) => h.textContent!.replace(/\s+/g, " ").trim());
-    expect(labels).toHaveLength(3);
+    expect(labels).toHaveLength(4);
     expect(labels[0]).toMatch(/^App \(npm\) \d+$/);
     expect(labels[1]).toMatch(/^Core \(Rust\) \d+$/);
     expect(labels[2]).toMatch(/^Fonts \d+$/);
+    expect(labels[3]).toBe("NDI® 2");
     const xy = rows(dialog).find((r) => r.querySelector(".name")?.textContent === "@xyflow/svelte")!;
     expect(xy).toBeTruthy();
     expect(xy.querySelector(".version")!.classList.contains("mono")).toBe(true);

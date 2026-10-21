@@ -142,6 +142,9 @@ struct RendererReports {
     screen: String,
     /// Counts toward `MediaReadiness.total` (Program, not an app preview).
     counted: bool,
+    /// An NDI output's capture page (`cap=1`): counted for readiness, but not one of the
+    /// [`LiveHub::program_renderers`] (an NDI output is on air only with a receiver).
+    capture: bool,
     layers: HashMap<String, (u32, bool, Option<String>)>,
 }
 
@@ -1116,6 +1119,11 @@ impl LiveHub {
     /// connection that isn't an app preview (it counts toward `total`). Drop the result when
     /// the connection ends.
     pub fn renderer_attach(&self, screen_id: &str, counted: bool) -> RendererReg {
+        self.renderer_attach_as(screen_id, counted, false)
+    }
+
+    /// [`renderer_attach`](Self::renderer_attach); `capture`: an NDI output's capture page.
+    pub fn renderer_attach_as(&self, screen_id: &str, counted: bool, capture: bool) -> RendererReg {
         let id = {
             let mut state = self.write();
             let id = {
@@ -1127,6 +1135,7 @@ impl LiveHub {
                     RendererReports {
                         screen: screen_id.to_string(),
                         counted,
+                        capture,
                         layers: HashMap::new(),
                     },
                 );
@@ -1147,13 +1156,13 @@ impl LiveHub {
         }
     }
 
-    /// Connected Program renderers of user screens that aren't app previews (OBS, vMix, output
-    /// windows, a browser): cloud backup counts them as on air (owner decision 2026-10-15).
+    /// Connected Program renderers of user screens that aren't app previews or NDI capture pages
+    /// (OBS, vMix, output windows, a browser): cloud backup counts them as on air (owner decision 2026-10-15).
     pub fn program_renderers(&self) -> usize {
         lock(&self.shared.book)
             .conns
             .values()
-            .filter(|c| c.counted && !is_reserved_screen(&c.screen))
+            .filter(|c| c.counted && !c.capture && !is_reserved_screen(&c.screen))
             .count()
     }
 

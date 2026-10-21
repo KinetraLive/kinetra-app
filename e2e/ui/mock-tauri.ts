@@ -1597,6 +1597,19 @@ export function installMockTauri(s: MockScenario): void {
       const partner = o.mode === "key" ? fill : configs.find((c) => c.keyOf === o.id && c.mode === "key");
       const pd = partner ? displays.find((x) => x.id === partner.display.id) : undefined;
       const screen = o.mode === "key" ? (fill?.screenId ?? null) : o.screenId;
+      if (o.kind === "ndi") {
+        const st: OutputStatus["state"] = !o.enabled ? "off" : s.noProject ? "noProject" : !o.screenId || !shown.has(o.screenId) ? "screenMissing" : "showing";
+        return {
+          id: o.id,
+          state: st,
+          displayId: null,
+          frameLocked: null,
+          pattern: null,
+          message: null,
+          ndi: { receivers: 0, program: false, preview: false, dropping: false },
+          ...s.outputStatus?.[o.id],
+        };
+      }
       const state: OutputStatus["state"] =
         !o.enabled && !pattern ? "off" : !d ? "displayMissing" : s.noProject ? "noProject" : !pattern && (!screen || !shown.has(screen)) ? "screenMissing" : "showing";
       return {
@@ -1621,6 +1634,7 @@ export function installMockTauri(s: MockScenario): void {
       return null;
     },
     identify_displays: () => null,
+    ndi_info: () => ({ available: true, installed: true, downloadUrl: "https://ndi.link/NDIRedistV6", defaultRate: "50" }),
     all_outputs_off: () => {
       const configs = (prefs.outputs as OutputConfig[] | undefined) ?? [];
       prefs = { ...prefs, outputs: configs.map((o) => ({ ...o, enabled: false })) };

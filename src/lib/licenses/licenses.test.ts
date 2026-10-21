@@ -16,9 +16,9 @@ describe("licenses.json", () => {
     );
   });
 
-  it("has the three groups, each non-empty, and every text reference resolves", () => {
+  it("has the four groups, each non-empty, and every text reference resolves", () => {
     expect(data.schemaVersion).toBe(1);
-    expect(data.groups.map((g) => g.id)).toEqual(["npm", "rust", "fonts"]);
+    expect(data.groups.map((g) => g.id)).toEqual(["npm", "rust", "fonts", "ndi"]);
     for (const g of data.groups) {
       expect(g.items.length).toBeGreaterThan(0);
       for (const i of g.items) {
@@ -49,6 +49,10 @@ describe("licenses.json", () => {
     expect(item("rust", "axum")).toBeTruthy();
     expect(item("fonts", "IBM Plex Sans")).toMatchObject({ license: "OFL-1.1", package: "@fontsource/ibm-plex-sans" });
     expect(item("fonts", "IBM Plex Mono")).toMatchObject({ license: "OFL-1.1", package: "@fontsource/ibm-plex-mono" });
+    // NDI: the headers' MIT license and the NDI terms (the runtime isn't bundled).
+    expect(item("ndi", "NDI® SDK headers")).toMatchObject({ license: "MIT" });
+    const terms = item("ndi", "NDI® Runtime (not included)");
+    expect(data.texts[terms!.files![0].text]).toContain("registered trademark of Vizrt NDI AB");
   });
 
   it("lists every bundled font (app UI and on-air graphics) as OFL-1.1 with its license text", () => {

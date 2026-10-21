@@ -500,16 +500,59 @@ export type OutputBackground =
 /** Green for "Fill on green" (chroma). */
 export const CHROMA_GREEN = "#00b140";
 
+/** The frame rates an NDI output can send. */
+export type NdiRate = "25" | "29.97" | "30" | "50" | "59.94" | "60";
+export const NDI_RATES: readonly NdiRate[] = ["25", "29.97", "30", "50", "59.94", "60"];
+
+/** An NDI output's settings (`OutputConfig.ndi`). */
+export interface NdiOutputSettings {
+  rate: NdiRate;
+  /** Send transparency; off = composited over the output's `background`. */
+  alpha: boolean;
+  /** Color multiplied by alpha (Advanced; some receivers want it). Off = straight alpha. */
+  premultiplied: boolean;
+  /** NDI groups, comma-separated (Advanced); null = NDI's default group. */
+  groups: string | null;
+  /** Studio mode's Preview instead of Program (Advanced). */
+  bus: "program" | "preview";
+}
+
+export const NDI_OUTPUTS_MAX = 4;
+
+/** What an NDI output's receivers do now (`OutputStatus.ndi`). */
+export interface NdiLive {
+  /** NDI connections to the source (check the count with vMix / Studio Monitor before showing it). */
+  receivers: number;
+  /** Tally: a receiver has it on program / preview. */
+  program: boolean;
+  preview: boolean;
+  /** Over 1 % of the last second's frames were dropped. */
+  dropping: boolean;
+}
+
+/** `ndi_info`: whether NDI outputs can run here and what a new one starts with. */
+export interface NdiInfo {
+  /** Windows only for now. */
+  available: boolean;
+  /** The NDI Runtime is installed (a file check; nothing loaded). */
+  installed: boolean;
+  downloadUrl: string;
+  /** 50 in Europe, 59.94 elsewhere (the system's region). */
+  defaultRate: NdiRate;
+}
+
 /**
- * One display output (`kind` is the extension point: NDI / DeckLink later, not built now).
+ * One output: a display window (`kind: "display"`) or an NDI source (`kind: "ndi"`, `ndi` set;
+ * its source name is `name`; no display, key, audio or always-on-top).
  * `mode: "fill"` shows the screen composited on `background`; `mode: "key"` shows its alpha as
  * white on black and pairs with the fill output named in `keyOf` (same screen, frame-synced when
- * the two displays allow one spanning window: adjacent, same size and refresh rate).
+ * the two displays allow one spanning window: adjacent, same size and refresh rate). Display
+ * outputs only.
  */
 export interface OutputConfig {
   /** nanoid(10). */
   id: string;
-  kind: "display";
+  kind: "display" | "ndi";
   /** 1–40 characters, unique ignoring case ("Output 1"). */
   name: string;
   /** Shown when on and its display is connected and a project is open. */
@@ -536,6 +579,8 @@ export interface OutputConfig {
    * ("Speakers (Realtek(R) Audio)"); null = the system default. Labels, not ids: device ids differ
    * per web origin and port. */
   audio?: { enabled: boolean; device: string | null };
+  /** NDI outputs only. */
+  ndi?: NdiOutputSettings;
 }
 
 export const OUTPUTS_MAX = 8;
@@ -552,7 +597,9 @@ export type OutputState =
   /** Enabled, but the screen isn't in the open project (black). */
   | "screenMissing"
   /** The window couldn't be created / the display is used by another output. */
-  | "failed";
+  | "failed"
+  /** An NDI output, but the NDI Runtime isn't installed. */
+  | "ndiMissing";
 
 /** Live status per output (`list_outputs` / `outputs-changed`, on change only). */
 export interface OutputStatus {
@@ -566,6 +613,8 @@ export interface OutputStatus {
   pattern: TestPattern | null;
   /** Short operator-facing reason for failed / a note ("Moved to another port"). */
   message: string | null;
+  /** NDI outputs (always present for them): receivers and tally while sending. */
+  ndi?: NdiLive;
 }
 
 export type TestPattern = "bars" | "grid" | "safe" | "name";

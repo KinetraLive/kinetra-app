@@ -38,6 +38,8 @@ pub struct SenderStats {
     pub receivers: AtomicI32,
     /// Bit 0: on program in some receiver, bit 1: on preview.
     pub tally: AtomicU8,
+    /// More than 1 % of the frames of the last second were dropped before sending.
+    pub dropping: AtomicBool,
     /// Time spent in each send call (enable for measurements).
     pub send_time: Samples,
     /// Time from the tick a frame was made for to its send call returning (enable likewise).
@@ -64,6 +66,10 @@ pub struct NdiSender {
 /// The mailbox a sender takes frames from (the frame source's outlet, or a plain mailbox).
 pub trait FrameInbox: Send + Sync {
     fn mailbox(&self) -> &Mailbox<Arc<Frame>>;
+    /// Frames replaced before the sender took them (an outlet counts them).
+    fn dropped(&self) -> u64 {
+        0
+    }
 }
 
 impl FrameInbox for Mailbox<Arc<Frame>> {
@@ -76,6 +82,9 @@ impl FrameInbox for Mailbox<Arc<Frame>> {
 impl FrameInbox for crate::frames::Outlet {
     fn mailbox(&self) -> &Mailbox<Arc<Frame>> {
         &self.mailbox
+    }
+    fn dropped(&self) -> u64 {
+        self.dropped.load(Ordering::Relaxed)
     }
 }
 
@@ -92,6 +101,7 @@ impl NdiSender {
         groups: Option<&str>,
         inbox: Arc<dyn FrameInbox>,
         mode: SendMode,
+        on_change: Option<OnChange>,
     ) -> Result<Self, NdiError> {
         let c_name = CString::new(name).map_err(|_| NdiError::Name)?;
         let c_groups = groups
@@ -121,6 +131,7 @@ impl NdiSender {
             stats: stats.clone(),
             stop: stop.clone(),
             mode,
+            on_change,
         };
         let thread = std::thread::Builder::new()
             .name("ndi-send".into())
@@ -153,15 +164,32 @@ struct Job {
     stats: Arc<SenderStats>,
     stop: Arc<AtomicBool>,
     mode: SendMode,
+    on_change: Option<OnChange>,
 }
 
+/// Called (on the sender thread) when the receiver count, tally or dropping changes.
+pub type OnChange = Arc<dyn Fn() + Send + Sync>;
+
 impl Job {
+    /// What the UI shows: (receivers, tally bits, dropping).
+    fn snapshot(&self) -> (i32, u8, bool) {
+        let s = &self.stats;
+        (
+            s.receivers.load(Ordering::Relaxed),
+            s.tally.load(Ordering::Relaxed),
+            s.dropping.load(Ordering::Relaxed),
+        )
+    }
+
     fn run(self) {
         let api = self.runtime.api;
         let inst = self.inst.0;
         // Async: the frame NDI may still read until the next send call.
         let mut in_flight: Option<Arc<Frame>> = None;
         let mut polled = Instant::now() - Duration::from_secs(1);
+        let mut shown = self.snapshot();
+        // (dropped, sent) at the last poll, for the dropping rate.
+        let mut counts = (self.inbox.dropped(), 0u64);
         while !self.stop.load(Ordering::Relaxed) {
             let mut frame = self.inbox.mailbox().take(Duration::from_millis(500));
             // NDI encodes every frame it's given, receivers or not (measured: 2.2 ms a 1080p
@@ -207,6 +235,22 @@ impl Job {
                     u8::from(t.on_program) | (u8::from(t.on_preview) << 1),
                     Ordering::Relaxed,
                 );
+                let (dropped, sent) = (
+                    self.inbox.dropped(),
+                    self.stats.sent.load(Ordering::Relaxed),
+                );
+                let (dd, ds) = (dropped - counts.0, sent - counts.1);
+                counts = (dropped, sent);
+                self.stats
+                    .dropping
+                    .store(dd * 100 > dd + ds, Ordering::Relaxed);
+            }
+            let now = self.snapshot();
+            if now != shown {
+                shown = now;
+                if let Some(f) = &self.on_change {
+                    f();
+                }
             }
             if self.inbox.mailbox().is_closed() {
                 break;
@@ -417,6 +461,7 @@ mod tests {
             None,
             inbox.clone(),
             SendMode::Sync,
+            None,
         )
         .unwrap();
         inbox.put(frame(&pool, 1));
@@ -443,7 +488,15 @@ mod tests {
         let rt = Arc::new(Runtime::start(&FAKE).unwrap());
         let inbox: Arc<Mailbox<Arc<Frame>>> = Arc::default();
         let pool = Pool::new(PixelFormat::Uyva.frame_bytes(4, 2), 4);
-        let s = NdiSender::start(rt, "A", Some("Studio"), inbox.clone(), SendMode::Async).unwrap();
+        let s = NdiSender::start(
+            rt,
+            "A",
+            Some("Studio"),
+            inbox.clone(),
+            SendMode::Async,
+            None,
+        )
+        .unwrap();
         inbox.put(frame(&pool, 1));
         wait_until(|| s.stats.sent.load(Ordering::Relaxed) == 1);
         assert_eq!(pool.idle(), 0, "NDI may still read the first frame");
@@ -466,7 +519,7 @@ mod tests {
         let rt = Arc::new(Runtime::start(&FAKE).unwrap());
         let inbox: Arc<Mailbox<Arc<Frame>>> = Arc::default();
         let pool = Pool::new(PixelFormat::Uyva.frame_bytes(4, 2), 4);
-        let s = NdiSender::start(rt, "Idle", None, inbox.clone(), SendMode::Sync).unwrap();
+        let s = NdiSender::start(rt, "Idle", None, inbox.clone(), SendMode::Sync, None).unwrap();
         for t in 0..3 {
             inbox.put(frame(&pool, t));
             wait_until(|| s.stats.skipped.load(Ordering::Relaxed) > t as u64);
@@ -483,12 +536,48 @@ mod tests {
     }
 
     #[test]
+    fn changes_are_reported_only_when_they_happen() {
+        let _g = SERIAL.lock().unwrap();
+        *SEEN.lock().unwrap() = None;
+        let rt = Arc::new(Runtime::start(&FAKE).unwrap());
+        let inbox: Arc<Mailbox<Arc<Frame>>> = Arc::default();
+        let calls = Arc::new(AtomicU64::new(0));
+        let c = calls.clone();
+        let on_change: OnChange = Arc::new(move || {
+            c.fetch_add(1, Ordering::Relaxed);
+        });
+        let s = NdiSender::start(
+            rt,
+            "Live",
+            None,
+            inbox.clone(),
+            SendMode::Sync,
+            Some(on_change),
+        )
+        .unwrap();
+        // The first poll finds 2 receivers and program tally: one report.
+        wait_until(|| calls.load(Ordering::Relaxed) == 1);
+        let pool = Pool::new(PixelFormat::Uyva.frame_bytes(4, 2), 4);
+        for t in 0..3 {
+            inbox.put(frame(&pool, t));
+            wait_until(|| s.stats.sent.load(Ordering::Relaxed) > t as u64);
+        }
+        assert_eq!(
+            calls.load(Ordering::Relaxed),
+            1,
+            "nothing changed while sending"
+        );
+        assert!(!s.stats.dropping.load(Ordering::Relaxed));
+        drop(s);
+    }
+
+    #[test]
     fn invalid_names_are_refused() {
         let _g = SERIAL.lock().unwrap();
         let rt = Arc::new(Runtime::start(&FAKE).unwrap());
         let inbox: Arc<Mailbox<Arc<Frame>>> = Arc::default();
         assert!(matches!(
-            NdiSender::start(rt, "a\0b", None, inbox, SendMode::Sync),
+            NdiSender::start(rt, "a\0b", None, inbox, SendMode::Sync, None),
             Err(NdiError::Name)
         ));
     }
