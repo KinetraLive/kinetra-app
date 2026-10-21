@@ -19,6 +19,7 @@ pub mod flow_engine;
 pub mod flow_nodes;
 pub mod flow_templates;
 pub mod flows;
+pub mod frame_out;
 pub mod fsx;
 pub mod live;
 pub mod live_hub;

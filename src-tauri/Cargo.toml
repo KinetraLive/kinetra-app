@@ -71,12 +71,45 @@ futures-util = { version = "0.3", default-features = false, features = ["sink", 
 # MIDI hot-plug (a message-only window receiving device notifications) and display outputs
 # (GDI display enumeration, the monitor EDID in the registry, a hidden window for display
 # broadcasts). Only features Tauri already compiles (tao uses Registry too).
+#
+# NDI output frames (src/frames/): a WebView2 visual captured on the GPU (Windows.Graphics.Capture
+# into D3D11), converted to UYVY + alpha by shaders compiled at start (d3dcompiler_47, part of
+# Windows), read back through staging textures; QPC + a high-resolution waitable timer pace it.
+# No new crate (owner OK with the NDI plan, 2026-10-21).
 [target.'cfg(windows)'.dependencies]
-windows = { version = "0.62", default-features = false, features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_UI_WindowsAndMessaging", "Win32_System_LibraryLoader", "Win32_System_Registry", "Win32_System_Com", "Win32_System_Threading"] }
+windows = { version = "0.62", default-features = false, features = [
+  "Win32_Foundation",
+  "Win32_Graphics_Gdi",
+  "Win32_UI_WindowsAndMessaging",
+  "Win32_System_LibraryLoader",
+  "Win32_System_Registry",
+  "Win32_System_Com",
+  "Win32_System_Threading",
+  "Foundation",
+  "Foundation_Numerics",
+  "Graphics",
+  "Graphics_Capture",
+  "Graphics_DirectX",
+  "Graphics_DirectX_Direct3D11",
+  "System",
+  "UI",
+  "UI_Composition",
+  "Win32_Graphics_Direct3D",
+  "Win32_Graphics_Direct3D_Fxc",
+  "Win32_Graphics_Direct3D11",
+  "Win32_Graphics_Dxgi",
+  "Win32_Graphics_Dxgi_Common",
+  "Win32_Security",
+  "Win32_System_Performance",
+  "Win32_System_WinRT",
+  "Win32_System_WinRT_Direct3D11",
+] }
 # WebView2 COM APIs of the output windows (the version wry already compiles; no features): the
 # stored microphone permission state that lets pages see audio output devices (`setSinkId`), and
 # `ProcessFailed` for output window crash recovery. `Win32_System_Com` above is compiled by it.
 webview2-com = "0.39"
+# Vector2 for the capture's composition visual (the version windows 0.62 already compiles).
+windows-numerics = "0.3"
 
 # macOS updates are .app.tar.gz archives: the updater needs its archive support there.
 [target.'cfg(target_os = "macos")'.dependencies]
@@ -94,6 +127,11 @@ kinetra-license = { git = "https://github.com/KinetraLive/kinetra-license", tag 
 # Test signing keys (the version kinetra-license already compiles).
 ed25519-dalek = { version = "3.0.0", default-features = false, features = ["fast", "zeroize"] }
 tempfile = "3"
+
+# examples/ndi_probe.rs: the CPU of the capture page's WebView2 processes (a process snapshot) and
+# the probe's own memory. Dev only (not in the app's build).
+[target.'cfg(windows)'.dev-dependencies]
+windows = { version = "0.62", default-features = false, features = ["Win32_System_Diagnostics_ToolHelp", "Win32_System_ProcessStatus"] }
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
 [profile.release]

@@ -2338,6 +2338,7 @@ dependencies = [
  "walkdir",
  "webview2-com",
  "windows",
+ "windows-numerics",
 ]
 
 [[package]]
