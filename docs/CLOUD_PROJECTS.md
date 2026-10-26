@@ -128,6 +128,9 @@ All sizes are integers in bytes. Shown to users as GB = 10⁹ bytes.
 ### 3.4 Retries
 
 - `429 rate_limited`: wait `Retry-After`.
+- `503 commit_incomplete` (commit only): the server confirmed part of the uploads and saved
+  that; commit again right away with the same `Idempotency-Key` until it answers
+  otherwise. Not a failure, and not counted against the commit rate limit.
 - `5xx`, `503 cloud_unavailable`, network errors: exponential backoff from 5 s to 15 min
   with jitter. A backup that can't finish is resumed later from where it stopped (blobs
   already uploaded aren't uploaded again).
@@ -337,10 +340,16 @@ Header `Idempotency-Key: <uuid>` (a retry with the same key returns the first re
 The new version is the head. `conflict` is set when `base_version_id` wasn't the head
 (§9).
 
+The server confirms uploads it hasn't seen yet in storage during the commit, at most
+`commit_check_max` (2 000) per request and for at most a few seconds; each confirmed upload
+is saved at once. With more left: `503 commit_incomplete` (`details.remaining`), commit
+again with the same key and it carries on (§3.4). Missing blobs are reported before that.
+
 Errors: `409 missing_blobs` (`details.missing`: up to 1 000 SHA-256s that aren't stored
-yet: upload them and commit again), `400 invalid_path` (`details: {index, reason}`),
+yet: upload them and commit again), `503 commit_incomplete` (`details.remaining`), `400 invalid_path` (`details: {index, reason}`),
 `400 too_many_files`, `400 manifest_too_large`, `409 project_in_trash`,
-`403 cloud_read_only`, `429 rate_limited` (20 commits per hour per project).
+`403 cloud_read_only`, `429 rate_limited` (20 commits per hour per project; idempotent retries, `missing_blobs`
+and `commit_incomplete` don't count).
 
 A commit that adds **no new bytes** (only removals, renames or files already stored) is
 accepted even when `state` is `full`.
@@ -495,6 +504,7 @@ after the change).
 | 409 | `conflict` | Restore clashes with another project | Tell the user |
 | 429 | `rate_limited` | `Retry-After` | Wait |
 | 503 | `cloud_unavailable` | Storage or cloud backup temporarily off | Back off, retry |
+| 503 | `commit_incomplete` | Commit confirmed part of the uploads; `details.remaining` | Commit again now, same key; not a failure |
 
 ## 12. Limits (defaults, config on the server)
 

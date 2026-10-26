@@ -536,13 +536,16 @@ data: {"id":"0199…","status":"open","total_votes":20,…}
 
 ## Cloud projects
 
-Backup and version history of projects. The full contract (bodies, app behaviour, manifest
-and path rules, conflicts) is `docs/CLOUD_PROJECTS.md`, a copy of kinetra-cloud's; this is
-the summary. Needs a usable license with `pro.cloud_sync` (not a day pass); without one but
-with data stored, the account is read-only (`state: lapsed`). File bytes never come here:
-the app uploads to and downloads from storage with presigned URLs (valid 10 minutes). All
-bearer auth, rate-limited per account (commits also per project). Projects and versions
-that aren't yours answer `404`. The app's client is `src-tauri/src/core/cloud/projects/`.
+Backup and version history of app projects. The full contract (bodies, app behaviour,
+manifest and path rules, conflicts) is `docs/CLOUD_PROJECTS.md`; this is the summary.
+Needs a usable license with `pro.cloud_sync` (not a day pass); without one but with data
+stored, the account is read-only (`state: lapsed`). File bytes never come here: the app
+uploads to and downloads from storage with presigned URLs (valid 10 minutes). All bearer
+auth, rate-limited per account (`KINETRA_RATE_LIMIT_CLOUD_ACCOUNT`, commits also per
+project). Projects and versions that aren't yours answer `404`.
+
+In this repo: `docs/CLOUD_PROJECTS.md` is a copy of kinetra-cloud's (the contract wins), and the
+app's client is `src-tauri/src/core/cloud/projects/`.
 
 | Endpoint | Answer |
 |---|---|
@@ -556,12 +559,16 @@ that aren't yours answer `404`. The app's client is `src-tauri/src/core/cloud/pr
 | `GET /v1/cloud/uploads/{id}` | **200** `{sha256, size, part_size, part_count, parts_done: [{number, etag}], expires_at}` (resume) |
 | `POST /v1/cloud/uploads/{id}/complete` `{"parts": [{"number", "etag"}]}` | **200** `{sha256, state: "stored"}`; `409 upload_mismatch` |
 | `DELETE /v1/cloud/uploads/{id}` | **204** |
-| `POST /v1/cloud/projects/{id}/versions` (`Idempotency-Key`) | **201** `{"version", "conflict"}` (**200** for a retry); `409 missing_blobs` (`details.missing`), `503 commit_incomplete` (`details.remaining`; commit again after 1 s, same key, up to 50 rounds), `400 invalid_path` / `too_many_files` / `manifest_too_large`, `409 project_in_trash` |
+| `POST /v1/cloud/projects/{id}/versions` (`Idempotency-Key`) | **201** `{"version", "conflict"}` (**200** for a retry); `409 missing_blobs` (`details.missing`), `503 commit_incomplete` (`details.remaining`: commit again with the same key), `400 invalid_path` / `too_many_files` / `manifest_too_large`, `409 project_in_trash` |
 | `GET /v1/cloud/projects/{id}/versions?before=&limit=` | **200** `{"versions", "next"}`, newest first |
 | `GET /v1/cloud/projects/{id}/versions/{vid}/manifest` | **200** `{"version", "manifest"}` |
 | `PATCH /v1/cloud/projects/{id}/versions/{vid}` `{"kept"?, "label"?, "conflict_resolved"?}` | **200** version; `409 too_many_kept` |
 | `DELETE /v1/cloud/projects/{id}/versions/{vid}` | **204**; `409 cannot_delete_head` |
 | `POST /v1/cloud/blobs/download` `{"sha256s": [...]}` (≤ 1 000) | **200** `{"urls": [{sha256, url, expires_at}], "missing": [...]}` |
+
+Also on every endpoint: `403 cloud_not_in_plan`, `403 cloud_read_only` (writes while
+lapsed; `details.purge_at`), `503 cloud_unavailable` (switched off or storage didn't
+answer; retry later).
 
 ### Errors
 
@@ -582,4 +589,4 @@ that aren't yours answer `404`. The app's client is `src-tauri/src/core/cloud/pr
 | 409 | `upload_mismatch` | Multipart parts missing, out of order, or the size is wrong. | Start that file again. |
 | 409 | `cannot_delete_head` | The newest version can't be deleted. | Delete the project instead. |
 | 503 | `cloud_unavailable` | Cloud backup is switched off or storage didn't answer. | "Cloud backup: offline, will retry"; back off. |
-| 503 | `commit_incomplete` | Commit of a big backup: the server is still confirming the uploaded files; `details.remaining`. | Commit again with the same key after 1 s, up to 50 rounds, while the answer stays the same; not offline, not a failed try. Then the normal 5xx retries ("offline" only if those fail too). (Server 2026-10-26; not yet in CLOUD_PROJECTS.md.) |
+| 503 | `commit_incomplete` | Commit confirmed part of the uploads; `details.remaining`. Not counted against the commit rate limit. | Commit again with the same key; not a failure. The app waits 1 s between rounds, at most 50, then uses the normal 5xx retries ("offline" only if those fail too; owner, 2026-10-26). |

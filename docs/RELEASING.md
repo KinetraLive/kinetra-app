@@ -248,6 +248,13 @@ undo a rollback, run it again with the newer version. Nothing is ever deleted.
     Tauri uses the gtk3 bindings, which stopped at 0.18. **Before any Linux build** (for example
     Kinetra Node), check whether Tauri has moved to newer GTK bindings and whether the alert
     still applies; reopen it if it does.
+  - **@sveltejs/kit** (GHSA-pfhg-q3qv-9q6r, open redirect via `use:enhance` form actions;
+    GHSA-27mw-82g8-phjj, XSS via an untrusted `cache-control` from `setHeaders` on prerendered
+    pages; Dependabot #6–#9, fixed only in SvelteKit 3.0), dismissed as "vulnerable code is not
+    used" (2026-10-26). Kinetra is a static SPA (`adapter-static`, `ssr = false`): no
+    `use:enhance` or `$app/forms`, no form actions or server routes (`+page.server`, `+server`),
+    no `setHeaders`. **If any of those are added before the SvelteKit 3 upgrade** (in the
+    backlog), reopen the alerts.
 - `cargo audit` ignores (`src-tauri/.cargo/audit.toml`):
   - **zip 4.6.1** (RUSTSEC-2026-0367, -0368, -0369: extraction with SUID/SGID bits and
     symlinks), ignored 2026-10-26. Only in `Cargo.lock`: tauri-plugin-updater lists zip as a
