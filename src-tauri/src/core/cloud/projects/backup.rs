@@ -1166,6 +1166,17 @@ impl AppState {
                     key = uuid_v7();
                     self.cloud_set_pending_commit(&run.cloud_id, Some(key.clone()));
                 }
+                // The server is still confirming the uploaded files (big backups): the same key
+                // again at once, for as long as it says so. Not offline, not a failed try; the
+                // view stays at Committing.
+                Err(CallError::Api { code, details, .. }) if code == "commit_incomplete" => {
+                    let remaining = details
+                        .as_ref()
+                        .and_then(|d| d.get("remaining"))
+                        .and_then(|v| v.as_u64());
+                    tracing::debug!("cloud commit incomplete, remaining {remaining:?}");
+                    tries -= 1;
+                }
                 // Not reached / the server is busy: the same key again, a little later.
                 Err(e)
                     if e.is_offline()

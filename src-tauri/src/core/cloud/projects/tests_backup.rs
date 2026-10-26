@@ -70,6 +70,10 @@ pub(super) struct Fake {
     lose_commit_answers: u32,
     /// Commits refused with 429.
     commits_429: bool,
+    /// Commits answered `503 commit_incomplete` (still confirming uploads), this many times.
+    incomplete_commits: u32,
+    /// The `Idempotency-Key` of every commit request, in order.
+    commit_keys: Vec<String>,
     /// PATCHes seen (version id → body).
     patches: Vec<(String, Value)>,
     /// The `reason` of every version committed.
@@ -297,6 +301,12 @@ async fn handle(
             let key = h("idempotency-key");
             let mut f = f.lock().unwrap();
             f.log.push("COMMIT".into());
+            f.commit_keys.push(key.clone());
+            if f.incomplete_commits > 0 {
+                f.incomplete_commits -= 1;
+                let remaining = f.incomplete_commits * 100 + 100;
+                return err(503, "commit_incomplete", json!({"remaining": remaining}));
+            }
             if f.commits_429 {
                 return err(429, "rate_limited", Value::Null);
             }
@@ -1092,6 +1102,39 @@ fn nothing_goes_out_unpaced_while_on_air_first_chunk_included() {
         );
     }
     drop(obs);
+}
+
+#[test]
+fn commit_incomplete_commits_again_at_once_with_the_same_key_and_is_not_offline() {
+    let e = env();
+    e.write("clip.bin", &bytes(10_000, 3));
+    // More answers than the commit's tries (4) and offline retries (2) together: none of
+    // them counts.
+    e.fake.lock().unwrap().incomplete_commits = 6;
+    let v = e.backup();
+    let p = v.project.unwrap();
+    assert_eq!(p.error, None, "not offline, not failed");
+    assert!(p.last_backup_at.is_some());
+    let f = e.fake.lock().unwrap();
+    assert_eq!(f.versions.len(), 1, "one version");
+    assert_eq!(
+        f.commit_keys.len(),
+        7,
+        "6 incomplete, then stored: {:?}",
+        f.log
+    );
+    assert!(
+        f.commit_keys.iter().all(|k| *k == f.commit_keys[0]),
+        "the same key every time: {:?}",
+        f.commit_keys
+    );
+    assert_eq!(f.incomplete_commits, 0);
+    drop(f);
+    assert_eq!(
+        e.st.cloud_record().unwrap().pending_commit,
+        None,
+        "confirmed"
+    );
 }
 
 #[test]

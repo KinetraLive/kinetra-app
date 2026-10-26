@@ -73,6 +73,7 @@ export const API_MESSAGES: Readonly<Record<string, string | null>> = {
   upload_mismatch: "A file changed during the backup. Kinetra will try again.",
   cannot_delete_head: "The newest version can't be deleted. Delete the project's backup instead.",
   cloud_unavailable: "Cloud backup: offline, will retry.",
+  commit_incomplete: "Cloud backup is still checking the uploaded files.",
 };
 
 /** The message for a failed licensing / sign-in call. */
