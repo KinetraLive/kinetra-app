@@ -51,6 +51,8 @@ pub(super) struct Fake {
     commits_by_key: HashMap<String, Value>,
     /// Requests: "PUT blob <sha>", "PUT part <n>", "COMMIT", "CHECK".
     pub(super) log: Vec<String>,
+    /// When each single PUT was stored, with its size.
+    put_times: Vec<(Instant, usize)>,
     // Knobs.
     expire_next_puts: u32,
     storage_full: bool,
@@ -524,6 +526,7 @@ async fn handle(
                 )
                     .into_response();
             }
+            f.put_times.push((Instant::now(), body.len()));
             f.blobs.insert(sha.to_string(), body.to_vec());
             StatusCode::OK.into_response()
         }
@@ -1024,19 +1027,26 @@ fn limit_mode_keeps_sending_on_air_at_the_set_speed() {
 
 #[test]
 fn switching_to_pause_mid_backup_pauses_at_once() {
+    use crate::core::model::{CloudOnAir, CloudPhase};
     let e = env();
-    set_on_air_policy(&e.st, crate::core::model::CloudOnAir::Limit, 64);
-    e.write("clip.bin", &bytes(60_000, 7)); // ~7.5 s at 64 kbit/s
+    // The project's own files go up first, so the clip is the next backup's only transfer.
+    e.backup();
+    let before = e.puts();
+    set_on_air_policy(&e.st, CloudOnAir::Limit, 64);
+    e.write("clip.bin", &bytes(60_000, 7)); // one chunk, held ~7.5 s at 64 kbit/s
     let obs = e.st.live().renderer_attach("main", true);
     e.st.cloud_backup_now().unwrap();
-    wait_until("limited", || {
+    wait_until("uploading, limited", || {
         e.view()
             .project
             .and_then(|p| p.run)
-            .is_some_and(|r| r.limited)
+            .is_some_and(|r| r.limited && r.phase == CloudPhase::Uploading)
     });
+    // In flight: the request is open and the pacer holds its body.
+    std::thread::sleep(Duration::from_millis(200));
+    assert_eq!(e.puts(), before, "held by the pacer: {:?}", e.log());
     let t = Instant::now();
-    set_on_air_policy(&e.st, crate::core::model::CloudOnAir::Pause, 64);
+    set_on_air_policy(&e.st, CloudOnAir::Pause, 64);
     wait_until("paused", || {
         e.view()
             .project
@@ -1046,12 +1056,42 @@ fn switching_to_pause_mid_backup_pauses_at_once() {
     assert!(t.elapsed() < Duration::from_secs(1), "{:?}", t.elapsed());
     assert_eq!(
         e.puts(),
-        0,
-        "the paced request was dropped before it finished"
+        before,
+        "the paced request was dropped before it finished: {:?}",
+        e.log()
     );
     drop(obs);
     e.wait_done();
     assert_eq!(e.view().project.unwrap().error, None);
+    assert_eq!(e.puts(), before + 1, "sent once off air");
+}
+
+#[test]
+fn nothing_goes_out_unpaced_while_on_air_first_chunk_included() {
+    let e = env();
+    set_on_air_policy(&e.st, crate::core::model::CloudOnAir::Limit, 64); // 8,000 bytes/s
+    e.write("a.bin", &bytes(4_000, 1)); // single chunks: ~0.5 s and ~0.25 s
+    e.write("b.bin", &bytes(2_000, 2));
+    let obs = e.st.live().renderer_attach("main", true);
+    let t0 = Instant::now();
+    e.st.cloud_backup_now().unwrap();
+    e.wait_done();
+    assert_eq!(e.view().project.unwrap().error, None);
+    let puts = e.fake.lock().unwrap().put_times.clone();
+    assert!(puts.len() >= 2, "{:?}", e.log());
+    // Every upload, the project's own small files and each first chunk included: by the time
+    // a PUT is stored, the bytes sent so far fit 64 kbit/s since the backup started.
+    let mut sent = 0usize;
+    for (at, n) in &puts {
+        sent += n;
+        let due = Duration::from_secs_f64(sent as f64 / 8_000.0).mul_f64(0.95);
+        assert!(
+            at.duration_since(t0) >= due,
+            "{sent} bytes stored after {:?}, before {due:?}",
+            at.duration_since(t0)
+        );
+    }
+    drop(obs);
 }
 
 #[test]
@@ -1161,7 +1201,18 @@ fn a_change_backs_up_after_the_interval_and_nothing_waits_at_rest() {
     wait_until("timer", || e.st.cloud_timer_waiting());
     wait_until("auto backup", || reasons(&e) == ["auto"]);
     e.wait_done();
-    wait_until("nothing waits", || !e.st.cloud_timer_waiting());
+    // Said in full when it fails (it timed out on macOS only: what re-armed the timer?).
+    let t = Instant::now();
+    while e.st.cloud_timer_waiting() {
+        assert!(
+            t.elapsed() < Duration::from_secs(5),
+            "timed out: nothing waits; backups {:?}, pending {}, log {:?}",
+            reasons(&e),
+            e.st.cloud_record().unwrap().pending,
+            e.log()
+        );
+        std::thread::sleep(Duration::from_millis(10));
+    }
     assert!(!e.st.cloud_record().unwrap().pending);
     // Excluded paths (our snapshots) aren't changes.
     own_write(&e, ".backups/x/project.json", b"{}");

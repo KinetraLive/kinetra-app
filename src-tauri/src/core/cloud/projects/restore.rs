@@ -1156,6 +1156,7 @@ impl AppState {
                 let wait =
                     pacer.delay(self.cloud_gate().mode(), bytes.len() as u64, Instant::now());
                 if !wait.is_zero() {
+                    self.restore_progress(base + got.min(size), None);
                     tokio::time::sleep(wait).await;
                 }
                 got += bytes.len() as u64;

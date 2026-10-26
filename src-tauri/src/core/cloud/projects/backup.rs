@@ -182,13 +182,16 @@ impl AppState {
 
     fn cloud_phase(&self, dir: &Path, phase: CloudPhase, total: u64, run: &Run) {
         run.done.store(0, Ordering::Relaxed);
+        // Shown from the start of uploading: the first chunk may be held by the pacer for seconds.
+        let limited =
+            phase == CloudPhase::Uploading && matches!(self.cloud_gate().mode(), Mode::Limit(_));
         self.cloud_backup_state(dir, |b| {
             b.run = Some(CloudRunView {
                 phase,
                 done_bytes: 0,
                 total_bytes: total,
                 paused: false,
-                limited: false,
+                limited,
             });
         });
         self.emit_cloud();
@@ -1035,6 +1038,8 @@ impl AppState {
                         let mode = st.cloud_gate().mode();
                         let wait = pacer.delay(mode, b.len() as u64, Instant::now());
                         if !wait.is_zero() {
+                            // Say "sending slowly" while this chunk is held, not after.
+                            st.cloud_progress(&dir, base + sent.load(Ordering::Relaxed), None);
                             tokio::time::sleep(wait).await;
                         }
                         let s = sent.fetch_add(b.len() as u64, Ordering::Relaxed) + b.len() as u64;
