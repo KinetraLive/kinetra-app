@@ -1,0 +1,14 @@
+# cargo-audit settings (`cargo audit`, run from src-tauri/).
+
+[advisories]
+# zip 4.6.1 (extraction: SUID/SGID bits, symlink targets, permissions through symlinks).
+# Only in Cargo.lock: tauri-plugin-updater lists zip as a Windows-only dependency behind its
+# `zip` feature, which Kinetra enables on macOS only, so no build compiles zip
+# (`cargo tree -i zip@4.6.1 --target <triple>` prints nothing for Windows and macOS).
+# No fixed updater yet: 2.14.0 still requires zip ^4.
+# Remove these ignores when tauri-plugin-updater moves past zip 4 (owner, 2026-10-26).
+ignore = [
+  "RUSTSEC-2026-0367",
+  "RUSTSEC-2026-0368",
+  "RUSTSEC-2026-0369",
+]
