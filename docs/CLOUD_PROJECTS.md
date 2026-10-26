@@ -130,7 +130,9 @@ All sizes are integers in bytes. Shown to users as GB = 10⁹ bytes.
 - `429 rate_limited`: wait `Retry-After`.
 - `503 commit_incomplete` (commit only): the server confirmed part of the uploads and saved
   that; commit again right away with the same `Idempotency-Key` until it answers
-  otherwise. Not a failure, and not counted against the commit rate limit.
+  otherwise. Not a failure, and not counted against the commit rate limit. Clients may pause
+  briefly between rounds and cap them; past the cap, treat it like any `5xx` below. Kinetra
+  waits 1 s between rounds, up to 50 rounds.
 - `5xx`, `503 cloud_unavailable`, network errors: exponential backoff from 5 s to 15 min
   with jitter. A backup that can't finish is resumed later from where it stopped (blobs
   already uploaded aren't uploaded again).
