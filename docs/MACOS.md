@@ -18,6 +18,7 @@ on a Mac today.
 | **Output audio** (choosing the audio device of a display output) | Not available (display outputs aren't). Browser sources play their audio in OBS / vMix as usual. |
 | **Recovering a crashed output window** | Not available (display outputs aren't). |
 | **Hot-plug** (displays and MIDI devices picked up while Kinetra runs) | Not available (display outputs and MIDI aren't). |
+| **NDI® output** (sending a screen as an NDI® source) | Not available yet. Use browser sources, or receive NDI® from a Windows computer running Kinetra. |
 
 Projects are the same on both systems: a project made on Windows opens on a Mac and the other
 way round. A project's MIDI mappings are kept on a Mac and run again when the project is opened

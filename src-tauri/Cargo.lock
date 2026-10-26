@@ -2338,12 +2338,13 @@ dependencies = [
  "walkdir",
  "webview2-com",
  "windows",
+ "windows-numerics",
 ]
 
 [[package]]
 name = "kinetra-license"
-version = "0.3.0"
-source = "git+https://github.com/KinetraLive/kinetra-license?tag=license-v0.3.0#5ef91e1ab07651417de77b28d1c4be5725c7e5ad"
+version = "0.3.1"
+source = "git+https://github.com/KinetraLive/kinetra-license?tag=license-v0.3.1#c83d8c1cd925ba643471d8e21baaf24778062211"
 dependencies = [
  "base64 0.23.1",
  "ed25519-dalek",

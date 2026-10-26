@@ -193,12 +193,14 @@ update panel: what they gain since the last canary, plain text, one paragraph pe
 published canary's: unchanged or empty notes stop a manual run and warn on the nightly one.
 
 **Stable:**
-1. Bump the version in `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` and `package.json`
+1. Run `cargo audit` in `src-tauri/` and recheck the ignored advisories in
+   `src-tauri/.cargo/audit.toml` (Supply chain, below): drop an ignore once its fix is available.
+2. Bump the version in `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` and `package.json`
    (`pnpm run version:set 0.2.0` does all three) and add a `## 0.2.0` section to `CHANGELOG.md`
    (the Unreleased notes since the last stable release, rewritten for it).
-2. Merge to `main`.
-3. Tag: `git tag -a v0.2.0 -m "Kinetra 0.2.0" && git push origin v0.2.0`.
-4. Watch the "Stable release" workflow; it verifies the download at the end.
+3. Merge to `main`.
+4. Tag: `git tag -a v0.2.0 -m "Kinetra 0.2.0" && git push origin v0.2.0`.
+5. Watch the "Stable release" workflow; it verifies the download at the end.
 
 **Dry run:** Actions › "Dry run" › Run workflow › channel. Download the artifacts from the run to
 try the installers.
@@ -246,6 +248,14 @@ undo a rollback, run it again with the newer version. Nothing is ever deleted.
     Tauri uses the gtk3 bindings, which stopped at 0.18. **Before any Linux build** (for example
     Kinetra Node), check whether Tauri has moved to newer GTK bindings and whether the alert
     still applies; reopen it if it does.
+- `cargo audit` ignores (`src-tauri/.cargo/audit.toml`):
+  - **zip 4.6.1** (RUSTSEC-2026-0367, -0368, -0369: extraction with SUID/SGID bits and
+    symlinks), ignored 2026-10-26. Only in `Cargo.lock`: tauri-plugin-updater lists zip as a
+    Windows-only dependency behind its `zip` feature, which Kinetra enables on macOS only, so
+    `cargo tree -i zip@4.6.1 --target <triple>` prints nothing for Windows and both macOS
+    targets. No fixed updater yet (2.14.0 still requires zip ^4). **Before each stable
+    release**, check whether tauri-plugin-updater has moved past zip 4; then update it and
+    remove the three ignores.
 - `pnpm-workspace.yaml` overrides `cookie` to 0.7 (GHSA-pxg6-pf52-xh8x) because SvelteKit 2
   still asks for ^0.6.0; drop the override once SvelteKit's own range allows 0.7.
 

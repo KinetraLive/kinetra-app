@@ -254,6 +254,10 @@ struct WsQuery {
     /// `1` = an app preview (muted iframe): its media reports don't count toward readiness.
     #[serde(default)]
     mute: Option<String>,
+    /// `1` = an NDI output's capture page: counted for readiness, not as an OBS-style Program
+    /// renderer (`LiveHub::program_renderers`).
+    #[serde(default)]
+    cap: Option<String>,
 }
 
 async fn ws_upgrade(
@@ -264,7 +268,8 @@ async fn ws_upgrade(
     let preview = q.bus.as_deref() == Some("preview");
     // Media readiness counts Program renderers only: not the Preview bus, not app previews.
     let counted = !preview && q.mute.as_deref() != Some("1");
-    ws.on_upgrade(move |socket| session(socket, q.screen, preview, counted, ctx))
+    let capture = q.cap.as_deref() == Some("1");
+    ws.on_upgrade(move |socket| session(socket, q.screen, preview, counted, capture, ctx))
 }
 
 /// Largest renderer → server message accepted (a `ready` is ~100 bytes).
@@ -294,12 +299,19 @@ fn msg_text(msg: &ServerMsg) -> Option<Message> {
 /// screen's diffs from the hub until the peer leaves or the server shuts down. With `preview`
 /// it is the screen's Preview bus: the hub derives that screen's Preview while the connection
 /// lasts, and only preview-bus messages are forwarded.
-async fn session(mut socket: WebSocket, screen: String, preview: bool, counted: bool, ctx: Ctx) {
+async fn session(
+    mut socket: WebSocket,
+    screen: String,
+    preview: bool,
+    counted: bool,
+    capture: bool,
+    ctx: Ctx,
+) {
     let Ctx {
         hub, mut shutdown, ..
     } = ctx;
     // Media readiness: Program renderers that aren't app previews register (dropped on exit).
-    let reg = counted.then(|| hub.renderer_attach(&screen, true));
+    let reg = counted.then(|| hub.renderer_attach_as(&screen, true, capture));
     // Subscribe before reading the snapshot so no change can fall in between.
     let mut rx = hub.subscribe();
 

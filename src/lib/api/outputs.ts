@@ -1,7 +1,7 @@
 // Display outputs: displays, output status, test patterns. Configs live in prefs (`prefs.outputs`,
 // saved with the prefs store); the core reconciles windows on every prefs change.
 
-import type { DisplayInfo, OutputStatus, TestPattern } from "../types";
+import type { DisplayInfo, NdiInfo, OutputStatus, TestPattern } from "../types";
 import { call } from "./index";
 
 /** The connected displays (enumerates now; cheap). */
@@ -19,3 +19,6 @@ export const outputTestPattern = (id: string, pattern: TestPattern | null) =>
 export const identifyDisplays = () => call<void>("identify_displays");
 /** Turns every output off (Output › All outputs off). */
 export const allOutputsOff = () => call<void>("all_outputs_off");
+/** Whether NDI outputs can run here, whether the NDI Runtime is installed, its download link and a
+ * new NDI output's frame rate for this region. Cheap (a file check). */
+export const ndiInfo = () => call<NdiInfo>("ndi_info");

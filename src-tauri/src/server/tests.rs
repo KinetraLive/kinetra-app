@@ -716,6 +716,42 @@ fn media_readiness_counts_program_renderers_only() {
 }
 
 #[test]
+fn an_ndi_capture_page_counts_for_readiness_but_not_as_a_program_renderer() {
+    use crate::core::model::{LiveEdit, MediaEndAction};
+    let hub = Arc::new(LiveHub::default());
+    hub.apply_screen(
+        crate::core::media::test_plan(MediaEndAction::Hold, Some(5000)),
+        LiveEdit::OnTake,
+    )
+    .unwrap();
+    let (port, stop, task, rt) = serve_on_test_runtime(hub.clone());
+    let total = || {
+        hub.layer_view("main", "clip")
+            .unwrap()
+            .media
+            .unwrap()
+            .readiness
+            .total
+    };
+    let mut cap = ws_connect(port, "main&cap=1");
+    ws_json(&mut cap); // hello
+    assert_eq!(ws_json(&mut cap)["t"], "snapshot");
+    wait_until("the capture page counted", || total() == 1);
+    assert_eq!(
+        hub.program_renderers(),
+        0,
+        "NDI is on air only with a receiver"
+    );
+    let mut obs = ws_connect(port, "main");
+    ws_json(&mut obs);
+    ws_json(&mut obs);
+    wait_until("both counted", || total() == 2);
+    assert_eq!(hub.program_renderers(), 1);
+    let _ = stop.send(());
+    rt.block_on(task).unwrap();
+}
+
+#[test]
 fn assets_answer_range_requests_streamed() {
     let tmp = tempfile::tempdir().unwrap();
     let assets_dir = tmp.path().join("assets");

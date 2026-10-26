@@ -50,7 +50,10 @@ Bug reports, ideas and pull requests are welcome. Please read
 ## License
 
 Copyright © 2026 Rørvik Medieteknikk. Kinetra is licensed under the
-[GNU Affero General Public License v3.0](LICENSE).
+[GNU Affero General Public License v3.0](LICENSE), with an
+[additional permission](LICENSE-EXCEPTION.md) for combining it with the NDI® Runtime, which
+Kinetra uses but doesn't include ([NDI® terms](legal/ndi/NOTICE.md)). NDI® is a registered
+trademark of Vizrt NDI AB.
 
 Kinetra and the Kinetra logo are trademarks of Rørvik Medieteknikk and are not covered by
 the license.

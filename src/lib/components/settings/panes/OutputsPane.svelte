@@ -11,17 +11,21 @@
   import Plus from "lucide-svelte/icons/plus";
   import { onMount } from "svelte";
   import { on, toAppError } from "$lib/api";
-  import { identifyDisplays, listOutputs, outputTestPattern, watchDisplays } from "$lib/api/outputs";
+  import { identifyDisplays, listOutputs, ndiInfo, outputTestPattern, watchDisplays } from "$lib/api/outputs";
   import { listScreenDocs } from "$lib/api/screens";
   import Button from "$lib/components/Button.svelte";
   import SettingsSection from "$lib/components/SettingsSection.svelte";
-  import { newOutput } from "$lib/components/outputs/model";
+  import AdvancedHint from "$lib/components/AdvancedHint.svelte";
+  import { canAddNdi, newNdiOutput, newOutput } from "$lib/components/outputs/model";
+  import { NDI_TRADEMARK, NDI_URL, openExternal } from "$lib/components/outputs/ndi-links";
+  import { isAdvanced } from "$lib/stores/mode.svelte";
   import { isMac } from "$lib/platform";
   import { prefs } from "$lib/stores/prefs.svelte";
   import { project } from "$lib/stores/project.svelte";
   import { toasts } from "$lib/stores/toasts.svelte";
-  import { OUTPUTS_MAX, type DisplayInfo, type OutputConfig, type OutputStatus, type TestPattern } from "$lib/types";
+  import { OUTPUTS_MAX, type DisplayInfo, type NdiInfo, type OutputConfig, type OutputStatus, type TestPattern } from "$lib/types";
   import DisplayMap from "../outputs/DisplayMap.svelte";
+  import NdiOutputRow from "../outputs/NdiOutputRow.svelte";
   import OutputRow from "../outputs/OutputRow.svelte";
   import NotOnMac from "../NotOnMac.svelte";
 
@@ -32,6 +36,7 @@
   let status = $state.raw<readonly OutputStatus[]>([]);
   let screens = $state.raw<readonly { id: string; name: string }[] | null>(null);
   let identifying = $state(false);
+  let ndi = $state.raw<NdiInfo | null>(null);
 
   const outputs = $derived<readonly OutputConfig[]>(prefs.value?.outputs ?? []);
 
@@ -53,7 +58,19 @@
       (s) => (status = s),
       () => {},
     );
+    const askNdi = () =>
+      ndiInfo().then(
+        (i) => (ndi = i),
+        () => {},
+      );
+    void askNdi();
+    // Back from installing the NDI® Runtime: asking again also starts outputs that waited for it.
+    const onFocus = () => {
+      if (ndi && !ndi.installed) void askNdi();
+    };
+    window.addEventListener("focus", onFocus);
     return () => {
+      window.removeEventListener("focus", onFocus);
       offDisplays();
       offStatus();
       void watchDisplays(false).catch(() => {});
@@ -89,6 +106,14 @@
     const o = newOutput(outputs, displays, screens?.[0]?.id ?? null);
     if (o) void save([...outputs, o]);
   }
+
+  function addNdi() {
+    if (!ndi) return;
+    const o = newNdiOutput(outputs, screens?.[0] ?? null, ndi.defaultRate);
+    if (o) void save([...outputs, o]);
+  }
+
+  const hasNdi = $derived(outputs.some((o) => o.kind === "ndi"));
 
   async function pattern(id: string, p: TestPattern | null) {
     // Pressed at once; `outputs-changed` confirms.
@@ -140,23 +165,52 @@
       {#snippet icon()}<Plus size={14} />{/snippet}
       Add output
     </Button>
+    {#if ndi?.available}
+      <Button size="sm" disabled={!canAddNdi(outputs)} onclick={addNdi}>
+        {#snippet icon()}<Plus size={14} />{/snippet}
+        Add NDI® output
+      </Button>
+    {/if}
   {/snippet}
   {#if outputs.length === 0}
-    <p class="empty">Show a screen on a display, as fill or key.</p>
+    <p class="empty">Show a screen on a display, as fill or key, or send it over NDI®.</p>
   {:else}
     <ul class="list" aria-label="Outputs">
       {#each outputs as o (o.id)}
-        <OutputRow
-          output={o}
-          {outputs}
-          status={status.find((s) => s.id === o.id)}
-          {displays}
-          {screens}
-          onsave={(next) => void save(next)}
-          onpattern={(p) => void pattern(o.id, p)}
-        />
+        {#if o.kind === "ndi"}
+          <NdiOutputRow
+            output={o}
+            {outputs}
+            status={status.find((s) => s.id === o.id)}
+            {screens}
+            downloadUrl={ndi?.downloadUrl ?? NDI_URL}
+            onsave={(next) => void save(next)}
+          />
+        {:else}
+          <OutputRow
+            output={o}
+            {outputs}
+            status={status.find((s) => s.id === o.id)}
+            {displays}
+            {screens}
+            onsave={(next) => void save(next)}
+            onpattern={(p) => void pattern(o.id, p)}
+          />
+        {/if}
       {/each}
     </ul>
+  {/if}
+  {#if hasNdi || ndi?.available}
+    <div class="ndi-foot">
+      {#if hasNdi && !isAdvanced()}<AdvancedHint feature="More NDI® settings" />{/if}
+      {#if ndi && !ndi.installed}
+        <p class="note">
+          NDI® outputs need the free NDI® Runtime.
+          <a class="link" href={ndi.downloadUrl} onclick={(e) => void openExternal(e, ndi!.downloadUrl)}>Download</a>
+        </p>
+      {/if}
+      <p class="note">{NDI_TRADEMARK}</p>
+    </div>
   {/if}
 </SettingsSection>
 {/if}
@@ -173,5 +227,20 @@
     border-top: 1px solid var(--line);
     color: var(--text-muted);
     font-size: var(--fs-sm);
+  }
+  .ndi-foot {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-1);
+    padding-top: var(--s-2);
+    border-top: 1px solid var(--line);
+  }
+  .note {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: var(--fs-sm);
+  }
+  .link {
+    color: var(--accent-text);
   }
 </style>

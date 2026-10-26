@@ -1,8 +1,9 @@
 <!--
   Control's outputs strip (a lazy chunk, mounted only while this machine has outputs): one chip
-  per output that is showing (a red TallyDot, its name and the screen it shows, or "Test
-  pattern"), and amber warnings for the ones that can't show ("Output 2: display disconnected",
-  "Output 2: screen not found"). Follows `outputs-changed`; renders nothing while no output is on.
+  per output on air (a red TallyDot, its name and the screen it shows, or "Test pattern"; an NDI®
+  output only while a receiver has it), and amber warnings for the ones that can't show ("Output 2:
+  display disconnected", "Output 2: screen not found", "Kinetra Main: NDI® Runtime not installed").
+  Follows `outputs-changed`; renders nothing while no output is on.
   "Outputs" opens Preferences › Outputs.
 
   Props:
@@ -14,7 +15,7 @@
   import { on, openPreferences } from "$lib/api";
   import { listOutputs } from "$lib/api/outputs";
   import TallyDot from "$lib/components/TallyDot.svelte";
-  import { screenOf, warningText } from "$lib/components/outputs/labels";
+  import { isOnAir, screenOf, warningText } from "$lib/components/outputs/labels";
   import { prefs } from "$lib/stores/prefs.svelte";
   import type { OutputStatus } from "$lib/types";
   import type { ControlCtl } from "./control.svelte";
@@ -39,9 +40,11 @@
       const s = status.find((x) => x.id === o.id);
       const warn = warningText(o, s);
       if (warn) return [{ id: o.id, warn, text: warn }];
-      if (s?.state !== "showing") return [];
+      // An NDI output is on air only while a receiver has it.
+      if (!s || !isOnAir(s)) return [];
       const what = s.pattern ? "Test pattern" : nameOf(screenOf(configs, o));
-      return [{ id: o.id, warn: null, text: what ? `${o.name} · ${what}` : o.name }];
+      const name = o.kind === "ndi" ? `${o.name} (NDI®)` : o.name;
+      return [{ id: o.id, warn: null, text: what ? `${name} · ${what}` : name }];
     }),
   );
 </script>

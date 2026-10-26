@@ -202,6 +202,14 @@ impl AppState {
         }));
     }
 
+    /// An output started or stopped counting as on air (a display output, or an NDI output's
+    /// first receiver / last one gone).
+    pub(crate) fn cloud_outputs_changed(&self) {
+        if self.cloud_gate().active.load(Ordering::Relaxed) {
+            self.cloud_gate_refresh();
+        }
+    }
+
     /// A transfer starts or ends: the gate follows on-air changes only while one runs.
     pub(crate) fn cloud_gate_active(&self, on: bool) {
         self.cloud_gate().active.store(on, Ordering::Relaxed);

@@ -10,6 +10,7 @@ const out = vi.hoisted(() => ({
   watchDisplays: vi.fn(async (_on: boolean) => [] as DisplayInfo[]),
   outputTestPattern: vi.fn(async (_id: string, _p: string | null) => {}),
   identifyDisplays: vi.fn(async () => {}),
+  ndiInfo: vi.fn(async () => ({ available: true, installed: true, downloadUrl: "https://ndi.link/NDIRedistV6", defaultRate: "50" })),
 }));
 vi.mock("$lib/api/outputs", () => out);
 vi.mock("$lib/api/screens", () => ({
@@ -118,6 +119,46 @@ describe("Preferences › Outputs", () => {
     const select = screen.getByRole("combobox", { name: "Screen" }) as HTMLSelectElement;
     expect(select.disabled).toBe(true);
     expect(select.selectedOptions[0].textContent).toBe("Open a project to choose a screen");
+  });
+
+  it("adds an NDI® output with the region's rate; its row, status and the trademark line", async () => {
+    project.current = { path: "p", name: "P", createdAt: "", settings: {} } as unknown as typeof project.current;
+    out.ndiInfo.mockResolvedValue({ available: true, installed: false, downloadUrl: "https://ndi.link/NDIRedistV6", defaultRate: "59.94" });
+    render(OutputsPane);
+    await flush();
+    expect(screen.getByText("NDI® is a registered trademark of Vizrt NDI AB.")).toBeTruthy();
+    expect(screen.getByText(/need the free NDI® Runtime/)).toBeTruthy();
+    await fireEvent.click(screen.getByRole("button", { name: "Add NDI® output" }));
+    await flush();
+    const saved = (api.setPrefs.mock.calls.at(-1)?.[0] as Prefs).outputs![0];
+    expect(saved).toMatchObject({ kind: "ndi", name: "Kinetra Main program", enabled: false, screenId: "s1", ndi: { rate: "59.94", alpha: true } });
+    prefs.set({ ...base, uiMode: "simple", outputs: [saved] });
+    api.handlers.get("outputs-changed")?.([
+      { id: saved.id, state: "showing", displayId: null, frameLocked: null, pattern: null, message: null, ndi: { receivers: 1, program: true, preview: false, dropping: false } },
+    ]);
+    await flush();
+    const row = document.querySelector<HTMLElement>(`li[data-output="${saved.id}"]`)!;
+    expect(within(row).getByRole("status").textContent).toContain("On program");
+    expect(within(row).getByRole("link", { name: /About NDI®/ }).getAttribute("href")).toBe("https://ndi.video");
+    expect((within(row).getByRole("combobox", { name: "Frame rate" }) as HTMLSelectElement).value).toBe("59.94");
+    // Simple mode hides the Advanced settings and says so.
+    expect(within(row).queryByRole("textbox", { name: "NDI® groups" })).toBeNull();
+    expect(screen.getByText(/More NDI® settings/)).toBeTruthy();
+    // The runtime missing: amber, with the download link.
+    api.handlers.get("outputs-changed")?.([{ id: saved.id, state: "ndiMissing", displayId: null, frameLocked: null, pattern: null, message: null, ndi: { receivers: 0, program: false, preview: false, dropping: false } }]);
+    await flush();
+    expect(within(row).getByRole("status").textContent).toContain("NDI® Runtime not installed");
+    expect(within(row).getByRole("link", { name: /Download/ }).getAttribute("href")).toBe("https://ndi.link/NDIRedistV6");
+    // Back from installing it: the window's focus asks again (which starts waiting outputs), once installed no more.
+    const asked = out.ndiInfo.mock.calls.length;
+    out.ndiInfo.mockResolvedValue({ available: true, installed: true, downloadUrl: "https://ndi.link/NDIRedistV6", defaultRate: "59.94" });
+    window.dispatchEvent(new Event("focus"));
+    await flush();
+    expect(out.ndiInfo.mock.calls.length).toBe(asked + 1);
+    expect(screen.queryByText(/need the free NDI® Runtime/)).toBeNull();
+    window.dispatchEvent(new Event("focus"));
+    await flush();
+    expect(out.ndiInfo.mock.calls.length).toBe(asked + 1);
   });
 
   it("shows status, switches, and test patterns pressed while showing", async () => {
