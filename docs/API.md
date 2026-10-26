@@ -556,7 +556,7 @@ that aren't yours answer `404`. The app's client is `src-tauri/src/core/cloud/pr
 | `GET /v1/cloud/uploads/{id}` | **200** `{sha256, size, part_size, part_count, parts_done: [{number, etag}], expires_at}` (resume) |
 | `POST /v1/cloud/uploads/{id}/complete` `{"parts": [{"number", "etag"}]}` | **200** `{sha256, state: "stored"}`; `409 upload_mismatch` |
 | `DELETE /v1/cloud/uploads/{id}` | **204** |
-| `POST /v1/cloud/projects/{id}/versions` (`Idempotency-Key`) | **201** `{"version", "conflict"}` (**200** for a retry); `409 missing_blobs` (`details.missing`), `503 commit_incomplete` (`details.remaining`; commit again at once, same key), `400 invalid_path` / `too_many_files` / `manifest_too_large`, `409 project_in_trash` |
+| `POST /v1/cloud/projects/{id}/versions` (`Idempotency-Key`) | **201** `{"version", "conflict"}` (**200** for a retry); `409 missing_blobs` (`details.missing`), `503 commit_incomplete` (`details.remaining`; commit again after 1 s, same key, up to 50 rounds), `400 invalid_path` / `too_many_files` / `manifest_too_large`, `409 project_in_trash` |
 | `GET /v1/cloud/projects/{id}/versions?before=&limit=` | **200** `{"versions", "next"}`, newest first |
 | `GET /v1/cloud/projects/{id}/versions/{vid}/manifest` | **200** `{"version", "manifest"}` |
 | `PATCH /v1/cloud/projects/{id}/versions/{vid}` `{"kept"?, "label"?, "conflict_resolved"?}` | **200** version; `409 too_many_kept` |
@@ -582,4 +582,4 @@ that aren't yours answer `404`. The app's client is `src-tauri/src/core/cloud/pr
 | 409 | `upload_mismatch` | Multipart parts missing, out of order, or the size is wrong. | Start that file again. |
 | 409 | `cannot_delete_head` | The newest version can't be deleted. | Delete the project instead. |
 | 503 | `cloud_unavailable` | Cloud backup is switched off or storage didn't answer. | "Cloud backup: offline, will retry"; back off. |
-| 503 | `commit_incomplete` | Commit of a big backup: the server is still confirming the uploaded files; `details.remaining`. | Commit again at once with the same key until the answer changes; not offline, not a failed try (server 2026-10-26; not yet in CLOUD_PROJECTS.md). |
+| 503 | `commit_incomplete` | Commit of a big backup: the server is still confirming the uploaded files; `details.remaining`. | Commit again with the same key after 1 s, up to 50 rounds, while the answer stays the same; not offline, not a failed try. Then the normal 5xx retries ("offline" only if those fail too). (Server 2026-10-26; not yet in CLOUD_PROJECTS.md.) |

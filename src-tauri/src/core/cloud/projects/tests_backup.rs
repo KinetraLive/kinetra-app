@@ -1138,6 +1138,38 @@ fn commit_incomplete_commits_again_at_once_with_the_same_key_and_is_not_offline(
 }
 
 #[test]
+fn commit_incomplete_past_50_rounds_takes_the_normal_retries_then_offline() {
+    let commits = |e: &Env| e.fake.lock().unwrap().commit_keys.len();
+    // 50 paced rounds, then the normal schedule's 2 retries: the 53rd commit is stored.
+    let e = env();
+    e.write("clip.bin", &bytes(10_000, 3));
+    e.fake.lock().unwrap().incomplete_commits = 52;
+    let p = e.backup().project.unwrap();
+    assert_eq!(p.error, None, "recovered within the normal retries");
+    assert_eq!(commits(&e), 53);
+    assert_eq!(e.fake.lock().unwrap().versions.len(), 1);
+    // One more: the normal retries run out too, and only then it's offline.
+    let e = env();
+    e.write("clip.bin", &bytes(10_000, 3));
+    e.fake.lock().unwrap().incomplete_commits = 53;
+    let p = e.backup().project.unwrap();
+    assert_eq!(
+        p.error.as_deref(),
+        Some("Cloud backup: offline, will retry.")
+    );
+    assert_eq!(commits(&e), 53);
+    let keys = e.fake.lock().unwrap().commit_keys.clone();
+    assert!(
+        keys.iter().all(|k| *k == keys[0]),
+        "the same key throughout"
+    );
+    assert!(
+        e.st.cloud_record().unwrap().pending_commit.is_some(),
+        "kept for the next backup"
+    );
+}
+
+#[test]
 fn a_lost_commit_answer_is_retried_with_the_same_key_and_makes_one_version() {
     let e = env();
     e.write("a.txt", b"x");

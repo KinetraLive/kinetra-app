@@ -61,6 +61,14 @@ const COMMITS: u32 = 4;
 const COMMIT_RETRIES: [Duration; 2] = [Duration::from_secs(2), Duration::from_secs(5)];
 #[cfg(test)]
 const COMMIT_RETRIES: [Duration; 2] = [Duration::from_millis(10), Duration::from_millis(20)];
+/// `503 commit_incomplete` (the server still confirming a big backup's files): the same commit
+/// again after this pause, up to `INCOMPLETE_ROUNDS` times; after that such answers take the
+/// normal retry schedule above.
+#[cfg(not(test))]
+const INCOMPLETE_PAUSE: Duration = Duration::from_secs(1);
+#[cfg(test)]
+const INCOMPLETE_PAUSE: Duration = Duration::from_millis(2);
+const INCOMPLETE_ROUNDS: u32 = 50;
 
 /// The backup state of the open project (in the service's state; the view reads it).
 #[derive(Debug, Clone, Default)]
@@ -1072,6 +1080,7 @@ impl AppState {
             .unwrap_or_else(uuid_v7);
         self.cloud_set_pending_commit(&run.cloud_id, Some(key.clone()));
         let mut offline = 0u32;
+        let mut incomplete = 0u32;
         let mut tries = 0u32;
         while tries < COMMITS {
             tries += 1;
@@ -1167,15 +1176,21 @@ impl AppState {
                     self.cloud_set_pending_commit(&run.cloud_id, Some(key.clone()));
                 }
                 // The server is still confirming the uploaded files (big backups): the same key
-                // again at once, for as long as it says so. Not offline, not a failed try; the
-                // view stays at Committing.
-                Err(CallError::Api { code, details, .. }) if code == "commit_incomplete" => {
+                // again after a short pause, up to 50 rounds. Not offline, not a failed try; the
+                // view stays at Committing. Past the cap it falls to the normal schedule below.
+                Err(CallError::Api { code, details, .. })
+                    if code == "commit_incomplete" && incomplete < INCOMPLETE_ROUNDS =>
+                {
+                    incomplete += 1;
                     let remaining = details
                         .as_ref()
                         .and_then(|d| d.get("remaining"))
                         .and_then(|v| v.as_u64());
-                    tracing::debug!("cloud commit incomplete, remaining {remaining:?}");
+                    tracing::debug!(
+                        "cloud commit incomplete ({incomplete}), remaining {remaining:?}"
+                    );
                     tries -= 1;
+                    tokio::time::sleep(INCOMPLETE_PAUSE).await;
                 }
                 // Not reached / the server is busy: the same key again, a little later.
                 Err(e)
