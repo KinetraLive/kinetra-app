@@ -112,6 +112,8 @@ About › Windows specifications.
 These should work, but we haven't tested them yet. If you use Kinetra this way, we'd like to hear
 how it went:
 
+- **59.94 fps into vMix or OBS.** We ran 50 fps into vMix for 30 minutes with no dropped frames;
+  59.94 fps hasn't had that run yet.
 - **The network dropping out while sending** (a cable pulled, Wi-Fi lost). Receivers should
   reconnect by themselves when the network is back.
 - **A computer whose display runs at 60 Hz.** Kinetra was tested on displays at 144 Hz and more;
