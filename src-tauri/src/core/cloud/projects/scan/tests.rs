@@ -199,10 +199,16 @@ fn decomposed_names_go_up_in_nfc_and_the_file_keeps_its_name() {
     // The real file is read under its own (decomposed) name.
     assert!(l.files[0].abs.ends_with("la\u{030A}vt.png"));
     assert!(l.files[0].abs.exists());
-    // The same name in both forms: the second is a duplicate, listed.
+    // The same name in both forms. macOS (APFS) treats them as one name, so the write
+    // replaces that file; elsewhere it's a second file, a duplicate that is listed.
     write(r, "assets/l\u{e5}vt.png", b"z");
     let l = list(r, None).unwrap();
     assert_eq!(l.files.len(), 2);
-    assert_eq!(l.skipped.len(), 1);
-    assert!(l.skipped[0].reason.contains("same name"));
+    if cfg!(target_os = "macos") {
+        assert!(l.skipped.is_empty(), "{:?}", l.skipped);
+        assert_eq!(std::fs::read(&l.files[0].abs).unwrap(), b"z");
+    } else {
+        assert_eq!(l.skipped.len(), 1);
+        assert!(l.skipped[0].reason.contains("same name"));
+    }
 }
