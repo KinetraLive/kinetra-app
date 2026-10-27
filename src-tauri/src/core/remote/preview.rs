@@ -145,7 +145,7 @@ impl PreviewSink {
         Duration::from_millis(u64::from(self.interval_ms.load(Ordering::Relaxed)))
     }
 
-    pub(crate) fn set_interval(&self, d: Duration) {
+    pub fn set_interval(&self, d: Duration) {
         let ms = u32::try_from(d.as_millis()).unwrap_or(u32::MAX).max(1);
         self.interval_ms.store(ms, Ordering::Relaxed);
     }
@@ -193,7 +193,7 @@ impl PreviewSink {
     }
 
     /// The next picture to send, round robin after `after`: (stream, frame number, picture).
-    fn take_next(&self, after: u16) -> Option<(u16, u32, PreviewFrame)> {
+    pub fn take_next(&self, after: u16) -> Option<(u16, u32, PreviewFrame)> {
         let mut g = lock(&self.slots);
         let pick = g
             .range(after.saturating_add(1)..)

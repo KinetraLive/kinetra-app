@@ -10,6 +10,7 @@ pub mod capture;
 pub mod clock;
 pub mod convert;
 pub mod gpu;
+pub mod jpeg;
 pub mod source;
 
 pub use capture::Page;

@@ -1171,10 +1171,10 @@ impl Session<'_> {
                     let failed = failed.unwrap_or_default();
                     let new = failed.keys().any(|k| !self.preview.failed.contains_key(k));
                     self.preview.failed.extend(failed);
-                    if std::mem::take(&mut self.preview.again) || new {
-                        if !self.preview_refresh().await {
-                            return self.dead();
-                        }
+                    if (std::mem::take(&mut self.preview.again) || new)
+                        && !self.preview_refresh().await
+                    {
+                        return self.dead();
                     }
                 }
                 () = sleep_opt(self.preview.tick) => {

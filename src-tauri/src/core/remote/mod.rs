@@ -144,6 +144,8 @@ pub struct RemoteView {
     /// Screens in the project beyond what remote users see (the protocol shows at most
     /// [`proto::SCREENS_MAX`]): "Collaborators see the first 32 screens". 0 when all show.
     pub screens_hidden: u32,
+    /// This computer can send live pictures (a preview host is set: Windows).
+    pub preview: bool,
 }
 
 /// One accepted remote command (in memory only, this run; gone when the run or app ends).
@@ -341,6 +343,7 @@ impl AppState {
         let mut v = lock(&self.remote().inner).view.clone();
         v.has_show_id = self.project_remote_id().is_some();
         v.available = self.remote_available();
+        v.preview = self.preview_host().is_some();
         v.screens_hidden = u32::try_from(
             self.live()
                 .user_screen_ids()
