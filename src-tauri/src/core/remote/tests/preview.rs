@@ -345,6 +345,43 @@ fn an_empty_demand_and_switching_off_stop_everything() {
 }
 
 #[test]
+fn a_lost_preview_socket_reopens_only_with_the_next_ticket() {
+    let (e, host) = setup(4);
+    e.live();
+    let streams = json!([{"stream": 1, "screen": e.screen, "kind": "program"}]);
+    e.demand(streams.clone(), "tk-1");
+    wait_until("first picture", || e.frames().len() == 1);
+    let connects = |e: &Env| {
+        e.pv()
+            .iter()
+            .filter(|p| matches!(p, PvEv::Connected { .. }))
+            .count()
+    };
+
+    // The server drops the socket (§6.2): tickets are single use, so the app waits for the
+    // server's next demand instead of reconnecting by itself; capturing goes on.
+    let tx = e.sh.to_preview.lock().unwrap().clone().unwrap();
+    tx.send(ToApp::Close(4000, "no_credit".into())).unwrap();
+    wait_until("socket gone", || matches!(e.pv().last(), Some(PvEv::Gone)));
+    std::thread::sleep(Duration::from_millis(1500));
+    assert_eq!(connects(&e), 1);
+    assert!(host.last().is_some_and(|p| p.captures.len() == 1));
+
+    // The same streams with a fresh ticket: one new socket, that ticket, pictures again.
+    e.demand(streams, "tk-2");
+    wait_until("reopened", || connects(&e) == 2);
+    wait_until("second hello", || {
+        e.pv()
+            .iter()
+            .any(|p| matches!(p, PvEv::Text(v) if v["ticket"] == "tk-2"))
+    });
+    let sink = host.sink.lock().unwrap().clone().unwrap();
+    sink.put(1, picture(9));
+    wait_until("picture on the new socket", || e.frames().len() == 2);
+    assert_eq!(e.frames()[1][HEADER_BYTES + 2], 9);
+}
+
+#[test]
 fn the_preview_socket_never_goes_to_another_host() {
     let (e, host) = setup(1);
     e.live();

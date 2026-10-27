@@ -443,8 +443,10 @@ enum SocketEnd {
     Retry,
 }
 
-/// The preview socket: opened with the newest unused ticket, reopened with the backoff while the
-/// task lives (the session stops it when no stream is active). Ends when `ticket` closes.
+/// The preview socket: opened with the newest unused ticket. Tickets are single use, so after a
+/// lost socket it waits for the server's next `preview_demand` with a fresh one (§6.2: the
+/// server sends it by itself, 2 s doubling to 30 s), never reusing one; the backoff only spaces
+/// out connects when tickets arrive faster. Ends when `ticket` closes (no stream active).
 pub(crate) async fn run_socket(mut job: SocketJob) {
     let mut attempt = 0u32;
     let mut used: Option<String> = None;
