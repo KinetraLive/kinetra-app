@@ -1,7 +1,8 @@
 // Output mode (`?output=<id>`): a Kinetra display output window. A lazy chunk, loaded by main.ts
 // only when the URL has `output`; browser sources never load it.
 //
-// - `bg=<rrggbb>`: the page behind the stage (fill), default black;
+// - `bg=<rrggbb>`: the page behind the stage (fill), default black; `bg=checker` (the remote
+//   preview's capture): dark 16 px squares behind transparency (protocol 2 §6.2);
 // - `mode=key`: a black page, every layer as its alpha matte (white on black; one compositor
 //   filter on the screen box, so semi-transparent pixels become the matching grey);
 // - `dual=h|v|hr|vr`: one window spanning two displays: the viewport is split into two equal
@@ -17,8 +18,11 @@ import { App } from "./app";
 import type { ServerMsg } from "./protocol";
 import { Stage } from "./stage";
 
+/** The remote preview's checkerboard: 16 px squares, #2b2b2b / #3a3a3a (protocol 2 §6.2). */
+export const CHECKER = "repeating-conic-gradient(#2b2b2b 0 25%,#3a3a3a 0 50%) 0 0/32px 32px";
+
 export interface OutputOpts {
-  /** Page background for fill, `#rrggbb`. */
+  /** Page background for fill, `#rrggbb`, or {@link CHECKER}. */
   bg: string;
   /** The whole window is a key (alpha matte). */
   key: boolean;
@@ -31,7 +35,7 @@ export function parseOutput(q: URLSearchParams): OutputOpts {
   const bg = q.get("bg") || "";
   const d = q.get("dual");
   return {
-    bg: /^[0-9a-f]{6}$/i.test(bg) ? "#" + bg.toLowerCase() : "#000000",
+    bg: bg === "checker" ? CHECKER : /^[0-9a-f]{6}$/i.test(bg) ? "#" + bg.toLowerCase() : "#000000",
     key: q.get("mode") === "key",
     dual: d === "h" || d === "v" || d === "hr" || d === "vr" ? d : "",
   };

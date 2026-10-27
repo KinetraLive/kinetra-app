@@ -1065,6 +1065,21 @@ impl AppState {
         *lock(&self.outputs_rt().rt) = Some(rt);
     }
 
+    /// The output server's port while it listens.
+    pub(crate) fn output_server_port(&self) -> Option<u16> {
+        match *lock(&self.outputs_rt().server) {
+            ServerState::Running { port } => Some(port),
+            _ => None,
+        }
+    }
+
+    /// An NDI output drops frames now (remote preview pauses).
+    pub(crate) fn ndi_dropping(&self) -> bool {
+        lock(&self.outputs_rt().statuses)
+            .iter()
+            .any(|s| s.ndi.is_some_and(|n| n.dropping))
+    }
+
     /// The output server's status changed.
     pub fn outputs_set_server(&self, status: &ServerStatus) {
         let s = ServerState::from(status);

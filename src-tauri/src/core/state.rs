@@ -68,7 +68,7 @@ use crate::core::model::{
     ProjectFile, ProjectSettings, RecentProject, UiState, BACKUP_INTERVAL_RANGE,
     BACKUP_RETENTION_RANGE, CLOUD_LIMIT_KBPS, COMMAND_ID_MAX, KEYBINDINGS_CAP, KEYS_PER_COMMAND,
     MIDI_DEVICES_CAP, MIDI_NAME_MAX, OSC_ALLOW_CAP, OSC_HOST_MAX, PALETTE_RECENT_CAP,
-    SCREEN_CROP_OVERLAYS, SCREEN_GRID_SIZE_RANGE, ZOOM_RANGE, ZOOM_STEP,
+    PREVIEW_STREAMS, SCREEN_CROP_OVERLAYS, SCREEN_GRID_SIZE_RANGE, ZOOM_RANGE, ZOOM_STEP,
 };
 use crate::core::persist::{self, RecentsFile, Store};
 use crate::core::recipes;
@@ -329,6 +329,10 @@ pub fn clamp_prefs(mut p: Prefs) -> Prefs {
         .cloud
         .limit_kbps
         .map(|k| k.clamp(*CLOUD_LIMIT_KBPS.start(), *CLOUD_LIMIT_KBPS.end()));
+    p.remote.preview_streams = p
+        .remote
+        .preview_streams
+        .clamp(*PREVIEW_STREAMS.start(), *PREVIEW_STREAMS.end());
     p.outputs = crate::core::outputs::clamp_outputs(std::mem::take(&mut p.outputs));
     p.midi = clamp_midi_prefs(std::mem::take(&mut p.midi));
     p.keybindings = std::mem::take(&mut p.keybindings)
@@ -697,6 +701,13 @@ impl AppState {
             .and_then(|p| p.file.value.id.clone())
     }
 
+    /// The open project's "Allow remote preview" (on when no project is open).
+    pub(crate) fn project_remote_preview(&self) -> bool {
+        read(&self.inner.project)
+            .as_ref()
+            .is_none_or(|p| p.file.value.settings.remote_preview)
+    }
+
     /// The open project's folder and cloud backup ID (`project.json` `cloudId`), if open.
     pub(crate) fn project_cloud_id(&self) -> Option<(PathBuf, Option<String>)> {
         read(&self.inner.project)
@@ -950,6 +961,10 @@ impl AppState {
         if capi_changed {
             self.control_api_prefs_changed(prefs.control_api.enabled);
         }
+        if any_changed {
+            // The preview cap (Preferences › Remote control › Preview streams).
+            self.remote_preview_settings_changed();
+        }
         prefs
     }
 
@@ -1146,6 +1161,7 @@ impl AppState {
         self.inner.schedule();
         self.apply_brand(&brand);
         self.notify_project();
+        self.remote_preview_settings_changed();
         Ok(project)
     }
 

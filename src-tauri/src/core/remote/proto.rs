@@ -32,6 +32,11 @@ pub struct Limits {
     pub diffs_per_s: u32,
     pub snapshots_per_s: u32,
     pub result_timeout_ms: u64,
+    /// Protocol 2 (§6): the largest preview frame message, the highest frame rate and the most
+    /// streams the server takes.
+    pub preview_frame_bytes: usize,
+    pub preview_fps: u32,
+    pub preview_streams: u8,
 }
 
 impl Default for Limits {
@@ -42,6 +47,9 @@ impl Default for Limits {
             diffs_per_s: 60,
             snapshots_per_s: 1,
             result_timeout_ms: 5000,
+            preview_frame_bytes: 256 * 1024,
+            preview_fps: 5,
+            preview_streams: 4,
         }
     }
 }
@@ -73,6 +81,9 @@ pub enum Out {
         license_token: String,
         nonce: String,
         timestamp: i64,
+        /// Protocol 2 (§1): only from an app that can capture the live picture.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        preview: Option<PreviewCaps>,
     },
     Register {
         corr: String,
@@ -110,6 +121,14 @@ pub enum Out {
     End {
         reason: EndReason,
     },
+    /// Protocol 2 (§6.1): the app's capture cap changed.
+    PreviewCaps {
+        max_streams: u8,
+    },
+    /// Protocol 2 (§6.1): what the app delivers for every stream of the current demand.
+    PreviewState {
+        streams: Vec<StreamState>,
+    },
 }
 
 impl Out {
@@ -125,6 +144,8 @@ impl Out {
             Self::Pong { .. } => "pong",
             Self::Rename { .. } => "rename",
             Self::End { .. } => "end",
+            Self::PreviewCaps { .. } => "preview_caps",
+            Self::PreviewState { .. } => "preview_state",
         }
     }
 
@@ -268,6 +289,8 @@ pub enum In {
         #[serde(default)]
         message: String,
     },
+    /// Protocol 2 (§6.1): what someone watches now (replaces the previous demand).
+    PreviewDemand(PreviewDemand),
     #[serde(other)]
     Unknown,
 }
@@ -289,6 +312,7 @@ impl In {
             Self::Pong { .. } => "pong",
             Self::ServerRestart { .. } => "server_restart",
             Self::LicenseWarning { .. } => "license_warning",
+            Self::PreviewDemand(_) => "preview_demand",
             Self::Unknown => "unknown",
         }
     }
@@ -379,6 +403,51 @@ pub struct Watching {
     /// `program` | `preview`.
     #[serde(default)]
     pub kind: String,
+}
+
+/// `hello.preview` / `preview_caps` (protocol 2 §1, §6.1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct PreviewCaps {
+    pub max_streams: u8,
+}
+
+/// `preview_demand` (protocol 2 §6.1).
+#[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize)]
+pub struct PreviewDemand {
+    #[serde(default)]
+    pub streams: Vec<DemandStream>,
+    #[serde(default)]
+    pub fps: u32,
+    #[serde(default)]
+    pub max_width: u32,
+    /// JPEG quality 1–100.
+    #[serde(default)]
+    pub quality: u8,
+    #[serde(default)]
+    pub url: String,
+    #[serde(default)]
+    pub ticket: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct DemandStream {
+    pub stream: u16,
+    pub screen: String,
+    /// `program` | `preview` (Studio mode only).
+    #[serde(default)]
+    pub kind: String,
+}
+
+/// One stream of `preview_state` (protocol 2 §6.1).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct StreamState {
+    pub stream: u16,
+    pub active: bool,
+    /// `busy` | `disabled` | `unsupported` | `limit` (inactive streams only).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<&'static str>,
 }
 
 /// What a close code / fatal error means for the app (§10).

@@ -28,6 +28,7 @@ pub mod commands;
 pub mod diag;
 pub mod ids;
 pub mod perms;
+pub mod preview;
 pub mod proto;
 pub mod state;
 
@@ -164,6 +165,8 @@ pub(crate) enum Ctl {
     NewShow,
     Rename(String),
     Ping(tokio::sync::oneshot::Sender<Result<u64, String>>),
+    /// The preview cap or "Allow remote preview" may have changed.
+    PreviewSettings,
 }
 
 struct Conn {
@@ -215,6 +218,8 @@ pub struct Remote {
     /// The newest connection task that has finished (quit waits for it).
     finished: AtomicU64,
     diag: Mutex<Diag>,
+    /// Captures the live preview (Windows; `None`: this computer can't).
+    preview_host: Mutex<Option<Arc<dyn preview::PreviewHost>>>,
     /// Tests: pretend this build has no remote control.
     #[cfg(test)]
     test_unavailable: AtomicBool,
