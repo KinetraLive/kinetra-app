@@ -1,8 +1,11 @@
-<!-- A copy of kinetra-cloud `docs/CONTROL_PROTOCOL_V2.md` (main d646984, 2026-10-27; a DRAFT for review). kinetra-cloud's version wins; refresh this copy when it changes. -->
+<!-- A copy of kinetra-cloud `docs/CONTROL_PROTOCOL_V2.md` (control-v1-1 e533011, 2026-10-27; a DRAFT, server phase 1 built). kinetra-cloud's version wins; refresh this copy when it changes. -->
 
 # Kinetra cloud control protocol 2 (draft)
 
-**Status: draft for review, 2026-10-26; updated 2026-10-27 with the app team's answers**
+**Status: draft for review, 2026-10-26; updated 2026-10-27 with the app team's answers.
+Server phase 1 built on `control-v1-1` (2026-10-27): negotiation, `features`
+(`permissions`, `invites`), permissions and the protocol 1 mapping (§2, §8), the
+collaborators API (§9).**
 (kinetra-private `docs/HANDOFF_TO_CLOUD_CONTROL_V2.md`, f174944). Remote control v1.1. Plan
 and decisions: `docs/PLAN.md` → Remote control v1.1. What the app builds, in order:
 `docs/APP_HANDOFF_CONTROL_V2.md`.
@@ -550,7 +553,7 @@ connections). Announced by `"invites"` in `welcome.features` (§1).
   "id": "0193…",                      // the user id once joined, the invite id while pending
   "status": "joined",                 // joined | pending
   "email": "kari@example.com",
-  "name": "Kari Nordmann",            // null while pending
+  "name": "Kari N.",                  // first name and initial; null while pending
   "permissions": ["edit_fields", "rows", "watch_preview"],
   "invited_at": "2026-10-27T10:00:00Z",   // null for collaborators from before permissions
   "joined_at": "2026-10-27T10:05:00Z",    // null while pending

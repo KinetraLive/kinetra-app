@@ -593,44 +593,55 @@ answer; retry later).
 
 ## Remote control: collaborators (app)
 
-From kinetra-cloud's `docs/CONTROL_PROTOCOL_V2.md` §9 (draft, 2026-10-27; kinetra-cloud documents
-it here when it's built, and that version wins). The owner invites and manages a show's
-collaborators from the app's remote control panel: the same records and rules as the control
-site's Collaborators page (the invite email, the plan's collaborator limit, a pending invite to
-the same address replaced, changes applied at once to open connections). Announced by
-`"invites"` in the control socket's `welcome.features`; until then the app opens the control
-site's page. Bearer session auth. The show is the signed-in account's own show for the project's
-id (`project.json` `id`, the `project_id` of `register`); anyone else, or a project never
-registered, gets `404 not_found`.
+From kinetra-cloud's `docs/API.md` › "Collaborators API (the app, protocol 2 §9)" (control-v1-1
+e533011, 2026-10-27, server phase 1 as built; kinetra-cloud's version wins). The owner invites and
+manages a show's collaborators from the app. App session (`Authorization: Bearer kntr_s_…`); the
+show is the signed-in account's own show for the app project (`project.json` `id`, as sent in
+`register`). The same records and rules as the control site's Collaborators page. Announced to
+protocol 2 apps by `"invites"` in `welcome.features`; until then the app opens the control site's
+page.
 
-In this repo: the client is `src-tauri/src/core/remote/collaborators.rs` (+ `core/cloud/api.rs`).
+In this repo: the client is `src-tauri/src/core/remote/collaborators.rs` (+ `core/cloud/api.rs`),
+the words in `src/lib/components/remote/InviteDialog.svelte` and `license/messages.ts`.
 
-| Endpoint | Answer |
-|---|---|
-| `GET /v1/control/projects/{project_id}/collaborators` | **200** `{"show_id", "limit": {"max", "used"}, "collaborators": [Collaborator]}`, joined first, then pending |
-| `POST /v1/control/projects/{project_id}/collaborators` `{"email", "permissions": [code]}` | **201** Collaborator (`status: "pending"`); the server sends the invite email |
-| `PATCH /v1/control/projects/{project_id}/collaborators/{id}` `{"permissions": [code]}` | **200** Collaborator |
-| `DELETE /v1/control/projects/{project_id}/collaborators/{id}` | **204**; a pending invite stops working, a joined collaborator is disconnected at once |
+| Request | Body | Answer |
+|---|---|---|
+| `GET /v1/control/projects/{project_id}/collaborators` | | `200` `{"show_id", "limit": {"max", "used"}, "collaborators": [Collaborator]}`: joined first, then pending, each by name or email. `used` counts joined collaborators and open invites |
+| `POST /v1/control/projects/{project_id}/collaborators` | `{"email", "permissions": [code]}` | `201` Collaborator (`status: "pending"`); the invite email is sent. A pending invite to the same address is replaced |
+| `PATCH /v1/control/projects/{project_id}/collaborators/{id}` | `{"permissions": [code]}` | `200` Collaborator; a joined collaborator's open connections get the permissions at once |
+| `DELETE /v1/control/projects/{project_id}/collaborators/{id}` | | `204`; a pending invite stops working, a joined collaborator is disconnected at once |
 
-Collaborator: `{id, status: joined | pending, email, name (null while pending), permissions,
-invited_at, joined_at, expires_at}`. `permissions`: any of `take_clear`, `edit_fields`,
-`edit_live_fields`, `run_cues`, `studio`, `timers`, `variants`, `rows`, `button_panel`,
-`watch_preview` (empty is allowed: follows the show, no picture); `edit_live_fields` brings
-`edit_fields`. Creating an invite answers the same whether or not the address has an account.
+```jsonc
+// Collaborator
+{
+  "id": "0193…",                          // the account's id once joined, the invite's id while pending
+  "status": "joined",                     // joined | pending
+  "email": "kari@example.com",
+  "name": "Kari N.",                      // null while pending
+  "permissions": ["edit_fields", "rows", "watch_preview"],
+  "invited_at": "2026-10-27T10:00:00Z",   // null for collaborators from before permissions
+  "joined_at": "2026-10-27T10:05:00Z",    // null while pending
+  "expires_at": null                      // a pending invite's expiry
+}
+```
 
-| Status | `code` | Meaning | What the app should do |
+`permissions`: any of `take_clear`, `edit_fields`, `edit_live_fields`, `run_cues`, `studio`,
+`timers`, `variants`, `rows`, `button_panel`, `watch_preview`, in any order, duplicates ignored,
+empty allowed (follows the show). `edit_live_fields` brings `edit_fields`. The answer lists them in
+that order.
+
+| Status | `code` | When | What the app shows |
 |---|---|---|---|
-| 400 | `unknown_permission` | A code the server doesn't know; `details.codes`. | Bug in the app; drop the code. |
-| 409 | `already_collaborator` | The address has already joined. | "Already a collaborator. Change their permissions instead." |
-| 409 | `collaborator_limit` | Joined + open invites at the plan's limit; `details.max`. | "Your plan allows *max* collaborators per show." |
-
-Also `400 bad_request` (invalid email, your own address; show `message`), `404 not_found` (hide
-the list; offer the control site) and `429 rate_limited` (invites share the control site's
-per-owner limit).
+| 400 | `bad_request` | Invalid email, your own address, `permissions` missing | The server's `message` |
+| 400 | `unknown_permission` | A code the server doesn't know; `details.codes` lists them | "Kinetra sent a permission the server doesn't know. Update Kinetra." (the app only sends known codes) |
+| 404 | `not_found` | No show of yours for this project (also another account's), or no such collaborator or invite | Listing: "This show isn't on the control site." + Open the control site; edit / remove: "They're no longer on this show." and the list again |
+| 409 | `already_collaborator` | The address has already joined | "Already a collaborator. Change their permissions instead." |
+| 409 | `collaborator_limit` | Joined + open invites at the plan's limit; `details.max` | "Your plan allows *max* collaborators per show." |
+| 429 | `rate_limited` | Invites per owner (shared with the control site); all calls per account; `Retry-After` | The shared rate-limit words |
 
 Checked against dev on 2026-10-27 (`examples/remote_live.rs`): protocol 2 with `permissions` and
 `invites`; list, invite, change and remove; your own address → `400 bad_request`; a collaborator
 that doesn't exist → `404 not_found`; inviting a pending address again → `201` with a new id (the
 old invite is gone); inviting a joined address → `409 already_collaborator`; a permission change
-reaches a connected collaborator's `crew` entry (the control site reconnects); a Data editor's
-edit of a layer off air is accepted. Not yet seen live: `unknown_permission`, `collaborator_limit`.
+reaches a connected collaborator (the control site reconnects by itself); a Data editor's edit of
+a layer off air is accepted. Not seen live: `unknown_permission`, `collaborator_limit`.
