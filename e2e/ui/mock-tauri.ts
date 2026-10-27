@@ -18,6 +18,8 @@
 import type {
   ApiStatus,
   CloudView,
+  Collaborator,
+  Collaborators,
   ApplyStyleResult,
   AssetImportProgress,
   AssetInfo,
@@ -169,6 +171,8 @@ export interface MockScenario {
    *  lock; `remote_test` answers Connected after ~300 ms; Connection details shows sample numbers. */
   remote?: Partial<RemoteView>;
   remoteActivity?: RemoteActivity[];
+  /** The show's collaborators (`remote_collaborators`); changed by invite / set / remove. */
+  collaborators?: Collaborators;
   cueNext?: string | null;
   /** The Control API (Preferences › Network & API): the switch and connected programs; default off.
    *  `control_api_set` switches it (emits `control-api`), `control_api_disconnect` drops one. */
@@ -1131,6 +1135,7 @@ export function installMockTauri(s: MockScenario): void {
   };
   const timers = new Map<string, ReturnType<typeof setTimeout>>();
   let remoteState: Partial<RemoteView> = s.remote ?? {};
+  let collaborators: Collaborators = s.collaborators ?? { showId: "", limit: { max: 10, used: 0 }, collaborators: [] };
   let controlApi: ControlApiView = s.controlApi ?? { enabled: false, clients: [] };
   const cloudNow: CloudView = s.cloud ?? {
     access: "available",
@@ -1165,7 +1170,7 @@ export function installMockTauri(s: MockScenario): void {
     ({
       state: "off", on: false, takeLocked: false, crew: [], showId: null, crewUrl: null, controllerUrl: null,
       serverVersion: null, rttMs: null, licenseWarning: null, lastError: null, hasShowId: false,
-      available: true, screensHidden: 0,
+      available: true, screensHidden: 0, protocol: null, features: [], invites: false,
       ...remoteState,
     }) as RemoteView;
   const flowState = (id: string, state: string) => ({ id, state, node: null, message: null, at: new Date().toISOString() });
@@ -1909,6 +1914,25 @@ export function installMockTauri(s: MockScenario): void {
     remote_takeover: () => undefined,
     remote_new_show: () => remoteNow(),
     remote_activity: () => s.remoteActivity ?? [],
+    remote_collaborators: () => collaborators,
+    remote_invite: (a) => {
+      const c: Collaborator = {
+        id: `i${collaborators.collaborators.length + 1}`, status: "pending", email: String(a.email).trim(), name: null,
+        permissions: a.permissions as string[], invitedAt: new Date().toISOString(), joinedAt: null,
+        expiresAt: new Date(Date.now() + 7 * 86_400_000).toISOString(),
+      };
+      collaborators = { ...collaborators, limit: { ...collaborators.limit, used: collaborators.limit.used + 1 }, collaborators: [...collaborators.collaborators, c] };
+      return c;
+    },
+    remote_collaborator_set: (a) => {
+      const list = collaborators.collaborators.map((c) => (c.id === a.id ? { ...c, permissions: a.permissions as string[] } : c));
+      collaborators = { ...collaborators, collaborators: list };
+      return list.find((c) => c.id === a.id);
+    },
+    remote_collaborator_remove: (a) => {
+      collaborators = { ...collaborators, limit: { ...collaborators.limit, used: collaborators.limit.used - 1 }, collaborators: collaborators.collaborators.filter((c) => c.id !== a.id) };
+      return null;
+    },
     cue_position: () => ({ current: null, next: s.cueNext ?? null }),
     remote_test: () =>
       new Promise((r) =>

@@ -11,7 +11,7 @@ use tokio::sync::mpsc::UnboundedSender;
 use super::conn::{self, close, connect, next, send, ConnectError, Got};
 use super::diag::ProbeRecord;
 use super::ids;
-use super::proto::{self, EndReason, In, Out, PROTOCOL};
+use super::proto::{self, EndReason, In, Out};
 use super::Ctl;
 use crate::core::fsx::now_epoch_ms;
 use crate::core::state::AppState;
@@ -132,42 +132,43 @@ async fn run(st: &AppState) -> TestResult {
         Err(_) => return fail("signed_out", "Sign in to use remote control"),
     };
     let t0 = Instant::now();
-    let (mut tx, mut rx) = match connect(&creds.base, &creds.session, true, PROBE_CAP).await {
-        Ok(p) => p,
-        Err(ConnectError::Http {
-            status,
-            code,
-            retry_after,
-        }) => {
-            let mut r = match (status, code.as_deref()) {
-                (401, _) => fail("unauthorized", "Sign in again"),
-                (429, _) => {
-                    let n = retry_after.map_or(60, |d| d.as_secs());
-                    fail(
-                        "rate_limited",
-                        format!("Tested too often, try again in {n} s"),
-                    )
-                }
-                (503, _) => {
-                    let n = retry_after.map_or(30, |d| d.as_secs());
-                    fail(
-                        "server_busy",
-                        format!("Kinetra cloud is busy, try again in {n} s"),
-                    )
-                }
-                (_, Some(c)) => for_code(c, ""),
-                _ => fail(&format!("http_{status}"), "Test failed"),
-            };
-            r.retry_after_s = retry_after.map(|d| d.as_secs());
-            return r;
-        }
-        Err(ConnectError::Net(why)) => return cant_reach("offline", &why),
-    };
+    let (mut tx, mut rx, protocol) =
+        match connect(&creds.base, &creds.session, true, PROBE_CAP).await {
+            Ok(p) => p,
+            Err(ConnectError::Http {
+                status,
+                code,
+                retry_after,
+            }) => {
+                let mut r = match (status, code.as_deref()) {
+                    (401, _) => fail("unauthorized", "Sign in again"),
+                    (429, _) => {
+                        let n = retry_after.map_or(60, |d| d.as_secs());
+                        fail(
+                            "rate_limited",
+                            format!("Tested too often, try again in {n} s"),
+                        )
+                    }
+                    (503, _) => {
+                        let n = retry_after.map_or(30, |d| d.as_secs());
+                        fail(
+                            "server_busy",
+                            format!("Kinetra cloud is busy, try again in {n} s"),
+                        )
+                    }
+                    (_, Some(c)) => for_code(c, ""),
+                    _ => fail(&format!("http_{status}"), "Test failed"),
+                };
+                r.retry_after_s = retry_after.map(|d| d.as_secs());
+                return r;
+            }
+            Err(ConnectError::Net(why)) => return cant_reach("offline", &why),
+        };
     let connect_ms = t0.elapsed().as_millis() as u64;
     let weak = st.downgrade();
     let t = conn::timing();
     let hello = Out::Hello {
-        protocol: PROTOCOL,
+        protocol,
         app_version: env!("CARGO_PKG_VERSION").to_string(),
         machine: creds.machine.clone(),
         license_token: creds.license_token.clone(),

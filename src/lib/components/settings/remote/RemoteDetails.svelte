@@ -136,7 +136,7 @@
     </SettingsRow>
     {#if remote.view?.on && remote.view.screensHidden > 0}
       <SettingsRow label="Screens">
-        <span>Remote users see the first 32 screens ({remote.view.screensHidden} more in this project).</span>
+        <span>Collaborators see the first 32 screens ({remote.view.screensHidden} more in this project).</span>
       </SettingsRow>
     {/if}
     <SettingsRow label="Round trip">

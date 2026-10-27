@@ -1,9 +1,10 @@
-//! Remote commands (`docs/CONTROL_PROTOCOL.md` §8): every check in the protocol's order (first
-//! failure wins), then execution through the paths local actions use: Take / Clear / GO go
-//! through `run_control` exactly like a MIDI button or the palette (Studio mode cues into
-//! Preview), field edits through `set_layer_fields` (live rules, On take staging, Studio diff,
-//! coalesced save). A data editor's edit is applied only while the layer isn't shown, checked
-//! under the hub's lock together with the change.
+//! Remote commands (`docs/CONTROL_PROTOCOL.md` §8; protocol 2 §5): every check in the protocol's
+//! order (first failure wins; step 4 is the actor's permissions, [`super::perms`]), then
+//! execution through the paths local actions use: Take / Clear / GO go through `run_control`
+//! exactly like a MIDI button or the palette (Studio mode cues into Preview), field edits through
+//! `set_layer_fields` (live rules, On take staging, Studio diff, coalesced save). An edit by
+//! someone without `edit_live_fields` is applied only while the layer isn't shown, checked under
+//! the hub's lock together with the change.
 //!
 //! The duplicate check (step 1) and the result's timing are the connection's
 //! (`core::remote::conn`); everything here is synchronous and may block briefly (the screen
@@ -11,6 +12,7 @@
 
 use serde_json::{json, Map, Value};
 
+use super::perms::{EDIT_FIELDS, EDIT_LIVE_FIELDS, RUN_CUES, TAKE_CLEAR};
 use super::proto::{clip, Command, MESSAGE_MAX, VALUES_MAX};
 use super::state::{local_layer_id, Model, RemoteAsset, CUE_LIST_ID};
 use crate::core::control_actions::ControlInput;
@@ -63,23 +65,6 @@ impl Action {
     }
 }
 
-/// Role as the server forwarded it (§9.2; the owner is always an operator).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Role {
-    Viewer,
-    DataEditor,
-    Operator,
-}
-
-fn role_of(s: &str) -> Option<Role> {
-    match s {
-        "viewer" => Some(Role::Viewer),
-        "data_editor" => Some(Role::DataEditor),
-        "operator" | "owner" => Some(Role::Operator),
-        _ => None,
-    }
-}
-
 fn app_id(v: &Value) -> Option<String> {
     let s = v.as_str()?;
     ((1..=64).contains(&s.len())
@@ -129,6 +114,9 @@ pub fn parse(cmd: &Command) -> Result<Action, Refused> {
 /// history) and the assets in it.
 pub struct Ctx<'a> {
     pub enabled: bool,
+    /// The protocol the server picked: a missing permission is `permission` in protocol 2,
+    /// `forbidden` in protocol 1.
+    pub protocol: u32,
     pub take_locked: bool,
     pub model: &'a Model,
     pub assets: &'a [RemoteAsset],
@@ -168,7 +156,7 @@ pub fn run(st: &AppState, ctx: &Ctx<'_>, cmd: &Command) -> Result<Done, Refused>
     }
     // 3. Known action, well-formed arguments.
     let action = parse(cmd)?;
-    let role = role_of(&cmd.actor.role);
+    let perms = cmd.actor.perms();
     let layer_path = action.layer().map(|l| format!("/layers/{l}"));
     let layer_node = layer_path.as_deref().and_then(|p| ctx.model.at(p));
     let screen = layer_node
@@ -179,18 +167,25 @@ pub fn run(st: &AppState, ctx: &Ctx<'_>, cmd: &Command) -> Result<Done, Refused>
             .is_some_and(|s| shown(st, s, local_layer_id(l, s)))
     };
 
-    // 4. Role.
-    match (&action, role) {
-        (_, Some(Role::Operator)) => {}
-        (Action::UpdateFields { layer, .. }, Some(Role::DataEditor)) => {
-            if is_shown(&screen, layer) {
-                return Err(refuse(
-                    "on_air",
-                    "This graphic is on air. An operator can change it.",
-                ));
-            }
+    // 4. Permission (protocol 2 §2; a protocol 1 role maps to the same set).
+    let may_edit_live = perms.has(EDIT_LIVE_FIELDS);
+    let needed = match &action {
+        Action::Take { .. } | Action::Clear { .. } => TAKE_CLEAR,
+        Action::RunCue { .. } => RUN_CUES,
+        Action::UpdateFields { .. } => EDIT_FIELDS,
+    };
+    if !perms.has(needed) {
+        let code = if ctx.protocol >= 2 {
+            "permission"
+        } else {
+            "forbidden"
+        };
+        return Err(refuse(code, "You don't have permission to do that."));
+    }
+    if let Action::UpdateFields { layer, .. } = &action {
+        if !may_edit_live && is_shown(&screen, layer) {
+            return Err(on_air());
         }
-        _ => return Err(refuse("forbidden", "Your role can't do that.")),
     }
 
     // 5. Lock remote take: anything that changes what's on air (an edit of an on-air layer;
@@ -293,15 +288,10 @@ pub fn run(st: &AppState, ctx: &Ctx<'_>, cmd: &Command) -> Result<Done, Refused>
             press(st, &format!("cue.go:{cue}"))
         }
         Action::UpdateFields { layer, values } => {
-            if role == Some(Role::DataEditor) {
+            if !may_edit_live {
                 match st.set_layer_fields_unless_shown(&screen_id, &local(layer), values.clone()) {
                     Ok(Some(_)) => Ok(()),
-                    Ok(None) => {
-                        return Err(refuse(
-                            "on_air",
-                            "This graphic is on air. An operator can change it.",
-                        ))
-                    }
+                    Ok(None) => return Err(on_air()),
                     Err(e) => Err(e),
                 }
             } else {
@@ -318,6 +308,14 @@ pub fn run(st: &AppState, ctx: &Ctx<'_>, cmd: &Command) -> Result<Done, Refused>
         }),
         Err(e) => Err(map_error(&e, &action)),
     }
+}
+
+/// An edit of a layer on air without `edit_live_fields`.
+fn on_air() -> Refused {
+    refuse(
+        "on_air",
+        "This graphic is on air. Someone allowed to edit live graphics can change it.",
+    )
 }
 
 fn name_in(node: &Value) -> String {

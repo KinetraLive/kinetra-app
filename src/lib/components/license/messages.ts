@@ -74,6 +74,10 @@ export const API_MESSAGES: Readonly<Record<string, string | null>> = {
   cannot_delete_head: "The newest version can't be deleted. Delete the project's backup instead.",
   cloud_unavailable: "Cloud backup: offline, will retry.",
   commit_incomplete: "Cloud backup is still checking the uploaded files.",
+  // Remote control collaborators (the invite dialog words collaborator_limit with details.max).
+  unknown_permission: "Kinetra sent a permission the server doesn't know. Update Kinetra.",
+  already_collaborator: "Already a collaborator. Change their permissions instead.",
+  collaborator_limit: "Your plan's collaborators per show are all used.",
 };
 
 /** The message for a failed licensing / sign-in call. */

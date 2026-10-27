@@ -1,14 +1,18 @@
 <!--
-  RemotePanel: remote control at a glance, in the chip's popover (Control) — never modal, nothing
-  here touches what is on air.
+  RemotePanel: remote control at a glance, in the chip's popover (every app page; it opens by
+  itself each time remote control is switched on) — never modal, nothing here touches what is on
+  air.
+    link      the control link with Copy and Open (ControlLink)
     status    the state in words (+ round trip), a license warning, "Move it here?" choices,
               Start again after it ended or stopped
-    people    "N remote users connected": name · role · since (names are the owner's to see)
+    people    "N collaborators connected": name · what they may do · watching · since (names are
+              the owner's to see)
     lock      Lock remote take: remote take / clear / GO and on-air edits are refused
     activity  recent remote actions of this run (in memory only)
-    actions   Manage remote users… and Open controller (control site), Connection details
-              (Preferences), End remote control (the switch stays on: Start again), Turn off
-  Props: view (RemoteView), activity (RemoteActivity[], newest first).
+    actions   Invite collaborator (`oninvite`: the app's dialog, or the control site's page while
+              the server doesn't offer invites), Connection details (Preferences), End remote
+              control (the switch stays on: Start again)
+  Props: view (RemoteView), activity (RemoteActivity[], newest first), oninvite.
 -->
 <script lang="ts">
   import Button from "$lib/components/Button.svelte";
@@ -16,14 +20,12 @@
   import TallyDot from "$lib/components/TallyDot.svelte";
   import { openPreferences, toAppError } from "$lib/api";
   import { remoteEnd, remoteLock, remoteNewShow, remoteSet, remoteStartAgain, remoteTakeover } from "$lib/api/remote";
-  import { openInBrowser } from "$lib/components/license/open";
   import { toasts } from "$lib/stores/toasts.svelte";
   import type { RemoteActivity, RemoteView } from "$lib/types";
+  import ControlLink from "./ControlLink.svelte";
+  import { summaryOf } from "./permissions";
 
-  let { view, activity }: { view: RemoteView; activity: RemoteActivity[] } = $props();
-
-  const ROLES: Record<string, string> = { operator: "Operator", data_editor: "Data editor", viewer: "Viewer" };
-  const role = (r: string) => ROLES[r] ?? r;
+  let { view, activity, oninvite }: { view: RemoteView; activity: RemoteActivity[]; oninvite: () => void } = $props();
   const clock = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
   let busy = $state(false);
@@ -72,8 +74,12 @@
     {#if view.state === "live" && view.rttMs !== null}<span class="muted tnum">· {view.rttMs} ms</span>{/if}
   </p>
 
+  {#if view.on && view.state !== "ended" && view.state !== "stopped"}
+    <ControlLink url={view.controllerUrl} />
+  {/if}
+
   {#if view.on && view.screensHidden > 0}
-    <p class="note">Remote users see the first 32 screens.</p>
+    <p class="note">Collaborators see the first 32 screens.</p>
   {/if}
 
   {#if view.licenseWarning}
@@ -96,12 +102,15 @@
   {#if view.state === "live"}
     <section aria-labelledby="rp-people">
       <h4 class="section-label" id="rp-people">
-        {view.crew.length === 0 ? "No one connected" : view.crew.length === 1 ? "1 remote user connected" : `${view.crew.length} remote users connected`}
+        {view.crew.length === 0 ? "No one connected yet" : view.crew.length === 1 ? "1 collaborator connected" : `${view.crew.length} collaborators connected`}
       </h4>
       {#if view.crew.length > 0}
         <ul class="list">
           {#each view.crew as p (p.id ?? p.name + p.sinceMs)}
-            <li><span class="name">{p.name}</span><span class="muted when">{role(p.role)} · since <span class="tnum">{clock(p.sinceMs)}</span></span></li>
+            <li>
+              <span class="name">{p.name}</span>
+              <span class="muted when">{summaryOf(p)}{p.watching.length > 0 ? " · watching" : ""} · since <span class="tnum">{clock(p.sinceMs)}</span></span>
+            </li>
           {/each}
         </ul>
       {/if}
@@ -109,7 +118,7 @@
 
     <div class="lock">
       <Switch label="Lock remote take" checked={view.takeLocked} disabled={busy} onchange={(on) => run(() => remoteLock(on))} />
-      <span class="muted">Remote users can still prepare graphics that aren't on air.</span>
+      <span class="muted">Collaborators can still prepare graphics that aren't on air.</span>
     </div>
   {/if}
 
@@ -125,11 +134,8 @@
   {/if}
 
   <div class="row links">
-    {#if view.crewUrl}
-      <Button size="sm" variant="ghost" onclick={() => view.crewUrl && openInBrowser(view.crewUrl)}>Manage remote users…</Button>
-    {/if}
-    {#if view.controllerUrl}
-      <Button size="sm" variant="ghost" onclick={() => view.controllerUrl && openInBrowser(view.controllerUrl)}>Open controller</Button>
+    {#if view.invites || view.crewUrl}
+      <Button size="sm" onclick={oninvite}>Invite collaborator{view.invites ? "…" : " ↗"}</Button>
     {/if}
     <Button size="sm" variant="ghost" onclick={() => void openPreferences("remote")}>Connection details</Button>
   </div>

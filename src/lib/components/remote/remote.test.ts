@@ -16,6 +16,9 @@ const base: RemoteView = {
   lastError: null,
   hasShowId: false,
   available: true,
+  protocol: null,
+  features: [],
+  invites: false,
   screensHidden: 0,
 };
 const v = (over: Partial<RemoteView> & Pick<RemoteView, "state">) => ({ ...base, on: true, ...over }) as RemoteView;
@@ -30,7 +33,7 @@ describe("chipOf", () => {
   });
 
   it("says how many are connected, in green, while live", () => {
-    const crew = [{ id: "a", name: "Kari", role: "operator", anonymous: false, sinceMs: 1 }];
+    const crew = [{ id: "a", name: "Kari", role: "", permissions: ["take_clear"], watching: [], sinceMs: 1 }];
     expect(chipOf(v({ state: "live", runId: "r", resumed: false }))).toEqual({ text: "On", label: "Remote control: On", tally: "preview" });
     expect(chipOf(v({ state: "live", runId: "r", resumed: false, crew }))?.label).toBe("Remote control: 1 connected");
   });

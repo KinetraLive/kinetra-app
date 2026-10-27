@@ -601,6 +601,68 @@ impl Api {
         .map(|_| ())
     }
 
+    // ---- Remote control: collaborators (protocol 2 §9; ids checked path-safe by the caller) ----
+
+    pub async fn collaborators_list(
+        &self,
+        session: &str,
+        project_id: &str,
+    ) -> Result<CollaboratorsWire, CallError> {
+        self.get(
+            &format!("/v1/control/projects/{project_id}/collaborators"),
+            Some(session),
+        )
+        .await
+    }
+
+    pub async fn collaborator_invite(
+        &self,
+        session: &str,
+        project_id: &str,
+        email: &str,
+        permissions: &[String],
+    ) -> Result<CollaboratorWire, CallError> {
+        self.post(
+            &format!("/v1/control/projects/{project_id}/collaborators"),
+            Some(session),
+            json!({ "email": email, "permissions": permissions }),
+        )
+        .await
+    }
+
+    pub async fn collaborator_patch(
+        &self,
+        session: &str,
+        project_id: &str,
+        id: &str,
+        permissions: &[String],
+    ) -> Result<CollaboratorWire, CallError> {
+        self.send(
+            reqwest::Method::PATCH,
+            &format!("/v1/control/projects/{project_id}/collaborators/{id}"),
+            Some(session),
+            Some(json!({ "permissions": permissions })),
+        )
+        .await?
+        .ok_or(CallError::Offline)
+    }
+
+    pub async fn collaborator_delete(
+        &self,
+        session: &str,
+        project_id: &str,
+        id: &str,
+    ) -> Result<(), CallError> {
+        self.send::<Value>(
+            reqwest::Method::DELETE,
+            &format!("/v1/control/projects/{project_id}/collaborators/{id}"),
+            Some(session),
+            None,
+        )
+        .await
+        .map(|_| ())
+    }
+
     /// Opens the live results stream (`text/event-stream`) with `client` (one without a total
     /// timeout). `Ok` is a 200 whose body is the stream; errors before it are the usual JSON.
     pub async fn poll_events(
@@ -656,6 +718,53 @@ fn error_body(status: u16, retry_after: Option<u64>, bytes: &[u8]) -> CallError 
         },
         Err(_) => CallError::Offline,
     }
+}
+
+// ---- Remote control: collaborators ------------------------------------------------------------
+
+/// A show's collaborators (protocol 2 §9): snake_case in from the server, camelCase out to the UI
+/// (`remote_collaborators`). Unknown fields are ignored.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CollaboratorsWire {
+    #[serde(default, alias = "show_id")]
+    pub show_id: String,
+    #[serde(default)]
+    pub limit: CollaboratorLimit,
+    #[serde(default)]
+    pub collaborators: Vec<CollaboratorWire>,
+}
+
+/// The plan's collaborator limit per show; `used` counts joined collaborators and open invites.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize)]
+pub struct CollaboratorLimit {
+    #[serde(default)]
+    pub max: u32,
+    #[serde(default)]
+    pub used: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CollaboratorWire {
+    /// The user id once joined, the invite id while pending.
+    pub id: String,
+    /// `joined` | `pending`.
+    pub status: String,
+    #[serde(default)]
+    pub email: String,
+    /// `None` while pending.
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub permissions: Vec<String>,
+    #[serde(default, alias = "invited_at")]
+    pub invited_at: Option<String>,
+    #[serde(default, alias = "joined_at")]
+    pub joined_at: Option<String>,
+    /// A pending invite's expiry.
+    #[serde(default, alias = "expires_at")]
+    pub expires_at: Option<String>,
 }
 
 // ---- Polls --------------------------------------------------------------------------------------

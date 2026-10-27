@@ -1,6 +1,7 @@
 //! The connection task: ONE tokio task per switch-on, holding ONE WebSocket at a time.
 //!
-//! Lifecycle (§3): upgrade (Bearer, `kinetra-control.v1`) → `hello` → `welcome` → `register`
+//! Lifecycle (§3): upgrade (Bearer, `kinetra-control.v2` or `.v1`, the server picks) → `hello` →
+//! `welcome` → `register`
 //! → `registered` → `snapshot` → diffs and commands until the switch goes off, the project
 //! closes, the app quits (`end`) or the server ends / stops it. Drops reconnect with the §10.2
 //! backoff (0.5 s, 1, 2, 4, 8, then 15 s, ±30 %, reset after 60 s connected) and `resume_run`;
@@ -38,7 +39,7 @@ use super::diag::{Dir, MsgRecord, Reconnect, Refusal};
 use super::ids;
 use super::proto::{
     self, close_action, close_code_name, stop_message, CloseAction, CmdResult, EndReason, In,
-    Limits, Out, APP_PATH, DIFF_OPS_MAX, PROTOCOL, SUBPROTOCOL,
+    Limits, Out, APP_PATH, DIFF_OPS_MAX, SUBPROTOCOLS,
 };
 use super::state::{self, Model};
 use super::{Ctl, Phase};
@@ -170,13 +171,14 @@ pub(super) fn ws_url(base: &str, probe: bool) -> String {
     format!("{ws}{APP_PATH}{}", if probe { "?mode=probe" } else { "" })
 }
 
-/// Upgrades to the control endpoint. Secrets go into headers only (never logged).
+/// Upgrades to the control endpoint, offering protocols 2 and 1; returns the protocol the
+/// server picked. Secrets go into headers only (never logged).
 pub(super) async fn connect(
     base: &str,
     session: &str,
     probe: bool,
     within: Duration,
-) -> Result<(Tx, Rx), ConnectError> {
+) -> Result<(Tx, Rx, u32), ConnectError> {
     let mut req = ws_url(base, probe)
         .into_client_request()
         .map_err(|e| ConnectError::Net(e.to_string()))?;
@@ -186,7 +188,7 @@ pub(super) async fn connect(
     h.insert(header::AUTHORIZATION, auth);
     h.insert(
         header::SEC_WEBSOCKET_PROTOCOL,
-        HeaderValue::from_static(SUBPROTOCOL),
+        HeaderValue::from_static(SUBPROTOCOLS),
     );
     let ua = format!(
         "Kinetra/{} ({})",
@@ -202,7 +204,18 @@ pub(super) async fn connect(
     let fut = tokio_tungstenite::connect_async_with_config(req, Some(cfg), true);
     match tokio::time::timeout(within, fut).await {
         Err(_) => Err(ConnectError::Net("The connection timed out".into())),
-        Ok(Ok((ws, _))) => Ok(ws.split()),
+        Ok(Ok((ws, resp))) => {
+            // A server that echoes nothing (or something we didn't offer) is treated as
+            // protocol 1: its `welcome` says so too.
+            let protocol = resp
+                .headers()
+                .get(header::SEC_WEBSOCKET_PROTOCOL)
+                .and_then(|v| v.to_str().ok())
+                .and_then(proto::protocol_of)
+                .unwrap_or(1);
+            let (tx, rx) = ws.split();
+            Ok((tx, rx, protocol))
+        }
         Ok(Err(WsError::Http(resp))) => {
             let status = resp.status().as_u16();
             let retry_after = resp
@@ -488,7 +501,7 @@ async fn session(
         }
     };
     drop(st);
-    let (tx, rx) = match connect(&creds.base, &creds.session, false, t.handshake).await {
+    let (tx, rx, protocol) = match connect(&creds.base, &creds.session, false, t.handshake).await {
         Ok(p) => p,
         Err(ConnectError::Http {
             status,
@@ -535,6 +548,7 @@ async fn session(
         gen,
         tx,
         rx,
+        protocol,
         t: *t,
         limits: Limits::default(),
         heartbeat: t.heartbeat,
@@ -559,6 +573,8 @@ struct Session<'a> {
     gen: u64,
     tx: Tx,
     rx: Rx,
+    /// The protocol the server picked at the upgrade (1 or 2).
+    protocol: u32,
     t: Timing,
     limits: Limits,
     heartbeat: Duration,
@@ -765,7 +781,7 @@ impl Session<'_> {
     ) -> End {
         // hello → welcome
         let hello = Out::Hello {
-            protocol: PROTOCOL,
+            protocol: self.protocol,
             app_version: env!("CARGO_PKG_VERSION").to_string(),
             machine: creds.machine.clone(),
             license_token: creds.license_token.clone(),
@@ -797,18 +813,32 @@ impl Session<'_> {
                     server_version,
                     heartbeat_s,
                     limits,
+                    features,
                     ..
                 }) => {
                     self.limits = limits;
+                    // Features are protocol 2 (§1); a protocol 1 server has none.
+                    let features = if self.protocol >= 2 {
+                        features
+                    } else {
+                        Vec::new()
+                    };
+                    let protocol = self.protocol;
                     if heartbeat_s > 0 {
                         self.heartbeat = Duration::from_secs(heartbeat_s);
                     }
                     if let Some(st) = self.st() {
                         let mut d = st.remote().diag();
                         d.server_version = Some(server_version.clone());
+                        d.protocol = Some(protocol);
                         d.limits = serde_json::to_value(limits).ok();
                         drop(d);
-                        st.remote_update(self.gen, |v| v.server_version = Some(server_version));
+                        st.remote_update(self.gen, |v| {
+                            v.server_version = Some(server_version);
+                            v.protocol = Some(protocol);
+                            v.invites = features.iter().any(|f| f == "invites");
+                            v.features = features;
+                        });
                     }
                     break;
                 }
@@ -1229,11 +1259,13 @@ impl Session<'_> {
         };
         let model = self.model.clone();
         let c = cmd.clone();
+        let protocol = self.protocol;
         let outcome = tokio::task::spawn_blocking(move || {
             let input = st.remote_build_input();
             let m = model.lock().unwrap_or_else(PoisonError::into_inner);
             let ctx = commands::Ctx {
                 enabled: st.remote_enabled(),
+                protocol,
                 take_locked: input.take_locked,
                 model: &m,
                 assets: &input.assets,
@@ -1301,14 +1333,14 @@ impl Session<'_> {
                         .diag()
                         .result_time(done_ms.saturating_sub(received_ms));
                     let text = commands::describe(&cmd.actor.name, done, &labels);
-                    st.remote_activity_now(&cmd.actor.name, &cmd.actor.role, text);
+                    st.remote_activity_now(&cmd.actor.name, cmd.actor.kind(), text);
                 }
                 Err(r) => {
                     st.remote().diag().refusal(Refusal {
                         at: done_ms,
                         corr: cmd.corr.clone(),
                         action: proto::clip(&cmd.action, 32),
-                        role: proto::clip(&cmd.actor.role, 32),
+                        role: proto::clip(cmd.actor.kind(), 32),
                         code: r.code.to_string(),
                         layer: cmd.args["layer"].as_str().map(|s| proto::clip(s, 64)),
                         cue_list: cmd.args["cue_list"].as_str().map(|s| proto::clip(s, 64)),

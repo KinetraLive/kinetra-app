@@ -590,3 +590,40 @@ answer; retry later).
 | 409 | `cannot_delete_head` | The newest version can't be deleted. | Delete the project instead. |
 | 503 | `cloud_unavailable` | Cloud backup is switched off or storage didn't answer. | "Cloud backup: offline, will retry"; back off. |
 | 503 | `commit_incomplete` | Commit confirmed part of the uploads; `details.remaining`. Not counted against the commit rate limit. | Commit again with the same key; not a failure. The app waits 1 s between rounds, at most 50, then uses the normal 5xx retries ("offline" only if those fail too; owner, 2026-10-26). |
+
+## Remote control: collaborators (app)
+
+From kinetra-cloud's `docs/CONTROL_PROTOCOL_V2.md` §9 (draft, 2026-10-27; kinetra-cloud documents
+it here when it's built, and that version wins). The owner invites and manages a show's
+collaborators from the app's remote control panel: the same records and rules as the control
+site's Collaborators page (the invite email, the plan's collaborator limit, a pending invite to
+the same address replaced, changes applied at once to open connections). Announced by
+`"invites"` in the control socket's `welcome.features`; until then the app opens the control
+site's page. Bearer session auth. The show is the signed-in account's own show for the project's
+id (`project.json` `id`, the `project_id` of `register`); anyone else, or a project never
+registered, gets `404 not_found`.
+
+In this repo: the client is `src-tauri/src/core/remote/collaborators.rs` (+ `core/cloud/api.rs`).
+
+| Endpoint | Answer |
+|---|---|
+| `GET /v1/control/projects/{project_id}/collaborators` | **200** `{"show_id", "limit": {"max", "used"}, "collaborators": [Collaborator]}`, joined first, then pending |
+| `POST /v1/control/projects/{project_id}/collaborators` `{"email", "permissions": [code]}` | **201** Collaborator (`status: "pending"`); the server sends the invite email |
+| `PATCH /v1/control/projects/{project_id}/collaborators/{id}` `{"permissions": [code]}` | **200** Collaborator |
+| `DELETE /v1/control/projects/{project_id}/collaborators/{id}` | **204**; a pending invite stops working, a joined collaborator is disconnected at once |
+
+Collaborator: `{id, status: joined | pending, email, name (null while pending), permissions,
+invited_at, joined_at, expires_at}`. `permissions`: any of `take_clear`, `edit_fields`,
+`edit_live_fields`, `run_cues`, `studio`, `timers`, `variants`, `rows`, `button_panel`,
+`watch_preview` (empty is allowed: follows the show, no picture); `edit_live_fields` brings
+`edit_fields`. Creating an invite answers the same whether or not the address has an account.
+
+| Status | `code` | Meaning | What the app should do |
+|---|---|---|---|
+| 400 | `unknown_permission` | A code the server doesn't know; `details.codes`. | Bug in the app; drop the code. |
+| 409 | `already_collaborator` | The address has already joined. | "Already a collaborator. Change their permissions instead." |
+| 409 | `collaborator_limit` | Joined + open invites at the plan's limit; `details.max`. | "Your plan allows *max* collaborators per show." |
+
+Also `400 bad_request` (invalid email, your own address; show `message`), `404 not_found` (hide
+the list; offer the control site) and `429 rate_limited` (invites share the control site's
+per-owner limit).

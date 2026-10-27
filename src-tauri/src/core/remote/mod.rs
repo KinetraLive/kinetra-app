@@ -23,9 +23,11 @@
 //! (the connection task: lifecycle, reconnect, heartbeat, snapshots and diffs) and `probe`
 //! (Test connection, §4a).
 
+pub mod collaborators;
 pub mod commands;
 pub mod diag;
 pub mod ids;
+pub mod perms;
 pub mod proto;
 pub mod state;
 
@@ -131,8 +133,15 @@ pub struct RemoteView {
     pub has_show_id: bool,
     /// This build offers remote control (`REMOTE_BUILD`).
     pub available: bool,
+    /// The protocol the server picked (1 or 2) while connected.
+    pub protocol: Option<u32>,
+    /// What the server has switched on (protocol 2 `welcome.features`).
+    pub features: Vec<String>,
+    /// The collaborators API is there (`invites`): Invite collaborator opens the app's dialog;
+    /// otherwise it opens the control site's Collaborators page (`crew_url`).
+    pub invites: bool,
     /// Screens in the project beyond what remote users see (the protocol shows at most
-    /// [`proto::SCREENS_MAX`]): "Remote users see the first 32 screens". 0 when all show.
+    /// [`proto::SCREENS_MAX`]): "Collaborators see the first 32 screens". 0 when all show.
     pub screens_hidden: u32,
 }
 
@@ -586,6 +595,9 @@ impl AppState {
             g.view.phase = Phase::Off;
             g.view.crew.clear();
             g.view.rtt_ms = None;
+            g.view.protocol = None;
+            g.view.features.clear();
+            g.view.invites = false;
             g.view.license_warning = None;
             g.conn.take()
         };

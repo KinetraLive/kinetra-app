@@ -3,9 +3,12 @@
   browser at control.kinetra.live. Project-only; a Pro feature (ProLock "control").
     Remote control   the switch (this project, until Kinetra quits: off at every start)
     Status           TallyDot + words; Start again after it ended or stopped
+    Control link     while on: the link with Copy and Open (remote/ControlLink.svelte)
+    Collaborators    Invite collaborator: the app's dialog (lazy) when the server offers invites,
+                     else the control site's Collaborators page
     Lock remote take while on
     Separate show    "Make this a separate show…" once the project has a show (a copied project
-                     shares it with the original; this gives it its own link and crew)
+                     shares it with the original; this gives it its own link and collaborators)
     Connection details  a lazy chunk (./remote/RemoteDetails.svelte): Test connection, numbers,
                      Export diagnostics…, Copy run ID
   The core decides everything; this mirrors `remote` (watched while mounted). No props.
@@ -20,6 +23,8 @@
   import { toAppError } from "$lib/api";
   import { remoteLock, remoteNewShow, remoteSet, remoteStartAgain, remoteTakeover } from "$lib/api/remote";
   import { chipOf } from "$lib/components/remote/chip.svelte";
+  import ControlLink from "$lib/components/remote/ControlLink.svelte";
+  import { openInBrowser } from "$lib/components/license/open";
   import { remote } from "$lib/components/remote/state.svelte";
   import { toasts } from "$lib/stores/toasts.svelte";
 
@@ -68,6 +73,18 @@
     void import("./remote/RemoteDetails.svelte").then((m) => (Details = m.default), () => {});
   });
 
+  type Invite = typeof import("$lib/components/remote/InviteDialog.svelte").default;
+  let Invite = $state.raw<Invite | null>(null);
+  let inviting = $state(false);
+  async function invite() {
+    if (!view?.invites) {
+      if (view?.crewUrl) openInBrowser(view.crewUrl);
+      return;
+    }
+    Invite ??= (await import("$lib/components/remote/InviteDialog.svelte")).default;
+    inviting = true;
+  }
+
   let Confirm = $state.raw<Confirm | null>(null);
   let confirming = $state(false);
   async function askSeparate() {
@@ -100,8 +117,18 @@
         {/if}
       </p>
     </SettingsRow>
+    {#if view?.on && view.state !== "ended" && view.state !== "stopped"}
+      <SettingsRow label="Control link">
+        <ControlLink url={view.controllerUrl} labeled={false} />
+      </SettingsRow>
+    {/if}
+    {#if view?.on && (view.invites || view.crewUrl)}
+      <SettingsRow label="Collaborators" description="Only people you invite can control this show.">
+        <Button onclick={invite}>Invite collaborator{view.invites ? "…" : " ↗"}</Button>
+      </SettingsRow>
+    {/if}
     {#if view?.on}
-      <SettingsRow label="Lock remote take" description="Remote users can't change what's on air." for="pref-remote-lock">
+      <SettingsRow label="Lock remote take" description="Collaborators can't change what's on air." for="pref-remote-lock">
         <Switch
           id="pref-remote-lock"
           label="Lock remote take"
@@ -113,7 +140,7 @@
       </SettingsRow>
     {/if}
     {#if view?.hasShowId}
-      <SettingsRow label="Separate show" description="A copied project shares its show and crew.">
+      <SettingsRow label="Separate show" description="A copied project shares its show and collaborators.">
         <Button disabled={busy} onclick={askSeparate}>Make this a separate show…</Button>
       </SettingsRow>
     {/if}
@@ -124,10 +151,14 @@
   <Details />
 {/if}
 
+{#if Invite}
+  <Invite open={inviting} onclose={() => (inviting = false)} crewUrl={view?.crewUrl ?? null} />
+{/if}
+
 {#if Confirm && confirming}
   <Confirm
     title="Make this a separate show?"
-    message="This project gets its own remote control link and crew. The other copy keeps the current ones."
+    message="This project gets its own remote control link and collaborators. The other copy keeps the current ones."
     confirmLabel="Make a separate show"
     {busy}
     onconfirm={() =>
