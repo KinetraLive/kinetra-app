@@ -33,7 +33,7 @@
   let missing = $state(false);
 
   let email = $state("");
-  let perms = $state<string[]>([...PRESETS.find((p) => p.id === "data")!.codes]);
+  let perms = $state<string[]>([...PRESETS.find((p) => p.id === "watch")!.codes]);
   let sending = $state(false);
   let inviteError = $state<string | null>(null);
 

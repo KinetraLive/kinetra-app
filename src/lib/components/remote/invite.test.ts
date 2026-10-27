@@ -71,14 +71,14 @@ async function openDialog(list: Collaborators, crewUrl: string | null = null) {
 }
 
 describe("InviteDialog", () => {
-  it("invites with the Data editor preset by default, or the boxes picked", async () => {
+  it("invites with Watch only by default (least privilege), or the boxes picked", async () => {
     await openDialog(listOf([]));
     expect(await screen.findByText("No one yet.")).toBeTruthy();
     expect(screen.getByText("0 of 5 collaborators")).toBeTruthy();
     api.remoteInvite.mockResolvedValue({ ...jonas });
     await fireEvent.input(screen.getByLabelText("Email"), { target: { value: "jonas@example.com" } });
     await fireEvent.click(screen.getByRole("button", { name: "Send invite" }));
-    expect(api.remoteInvite).toHaveBeenCalledWith("jonas@example.com", ["edit_fields", "rows", "watch_preview"]);
+    expect(api.remoteInvite).toHaveBeenCalledWith("jonas@example.com", ["watch_preview"]);
     await waitFor(() => expect(api.remoteCollaborators).toHaveBeenCalledTimes(2));
 
     // Watch only, then a box more: Custom.
