@@ -12,7 +12,10 @@
 //! With `REMOTE_LIVE_INVITE=<address>` (the owner names it) it also invites that address as
 //! Watch only, finds it pending, changes it to Data editor, invites it again (to see the server's
 //! answer), and cancels the invite. `REMOTE_LIVE_HOLD=<seconds>` keeps remote control on that
-//! long before ending, printing who connects and what they may do (open the control link).
+//! long before ending (the invite then stays open, back at Watch only, so the invitee can join),
+//! printing who connects, what they may do, what they did and what was refused. While holding,
+//! lines appended to the file `REMOTE_LIVE_CMDS` act on the invitee: `perms watch|data|full|
+//! <code,code>`, `invite` (again), `list`, `end`. The project has a lower third on "Main".
 //! Prints codes, counts and states; addresses only as given; never the session or license.
 
 use std::path::Path;
@@ -21,6 +24,8 @@ use std::time::{Duration, Instant};
 
 use kinetra_lib::core::cloud::config;
 use kinetra_lib::core::events::NullSink;
+use kinetra_lib::core::model::{NewScreen, Rect, ScreenLayer, ScreenLayerKind, TemplateSource};
+use kinetra_lib::core::protocol::Fields;
 use kinetra_lib::core::state::AppState;
 use kinetra_lib::error::AppError;
 
@@ -86,8 +91,15 @@ fn main() {
 
     let parent = tmp.join("shows");
     std::fs::create_dir_all(&parent).unwrap();
-    st.create_project(&parent, "Claude remote live test")
-        .expect("project");
+    // `REMOTE_LIVE_PROJECT=<folder>` reopens an earlier run's project (the same show and its
+    // collaborators).
+    if let Ok(p) = std::env::var("REMOTE_LIVE_PROJECT") {
+        st.open_project(Path::new(&p)).expect("open project");
+    } else {
+        st.create_project(&parent, "Claude remote live test")
+            .expect("project");
+        add_lower_third(&st);
+    }
 
     // Remote control on: protocol 2 and its features.
     st.remote_set(true).expect("remote control on");
@@ -156,7 +168,26 @@ fn main() {
         answer(rt.block_on(st.remote_collaborator_remove(nobody)))
     );
 
-    if let Ok(addr) = std::env::var("REMOTE_LIVE_INVITE") {
+    let hold = std::env::var("REMOTE_LIVE_HOLD")
+        .ok()
+        .and_then(|s| s.parse::<u64>().ok());
+    let invitee = std::env::var("REMOTE_LIVE_INVITE").ok();
+    // Holding with an invite already open (an earlier run): reuse it, no second email.
+    let open = invitee.as_deref().and_then(|addr| {
+        let list = rt.block_on(st.remote_collaborators()).ok()?;
+        list.collaborators
+            .into_iter()
+            .find(|x| x.email.eq_ignore_ascii_case(addr.trim()))
+    });
+    if let (Some(c), Some(_)) = (&open, hold) {
+        println!(
+            "reusing the open invite: status={} permissions={:?}",
+            c.status, c.permissions
+        );
+        let watch = ["watch_preview".to_string()];
+        rt.block_on(st.remote_collaborator_set(&c.id, &watch))
+            .expect("back to Watch only");
+    } else if let Some(addr) = invitee.clone() {
         let c = rt
             .block_on(st.remote_invite(&addr, &["watch_preview".into()]))
             .expect("invite");
@@ -193,31 +224,71 @@ fn main() {
             pending.len(),
             pending.iter().map(|x| &x.status).collect::<Vec<_>>()
         );
-        for p in pending {
-            rt.block_on(st.remote_collaborator_remove(&p.id))
-                .expect("cancel");
-        }
-        let list = rt.block_on(st.remote_collaborators()).expect("list");
-        check(
-            !list
+        if hold.is_none() {
+            cancel(&rt, &st, &addr);
+        } else {
+            // Inviting a pending address again replaces the invite (a new id), so find it again.
+            let list = rt.block_on(st.remote_collaborators()).expect("list");
+            let row = list
                 .collaborators
                 .iter()
-                .any(|x| x.email.eq_ignore_ascii_case(addr.trim())),
-            "the invite was cancelled",
-        );
+                .find(|x| x.email.eq_ignore_ascii_case(addr.trim()))
+                .expect("the invite");
+            println!("the invite now: id changed={}", row.id != c.id);
+            let watch = ["watch_preview".to_string()];
+            rt.block_on(st.remote_collaborator_set(&row.id, &watch))
+                .expect("back to Watch only");
+            println!("the invite stays open (Watch only) while holding");
+        }
     }
 
-    if let Some(secs) = std::env::var("REMOTE_LIVE_HOLD")
-        .ok()
-        .and_then(|s| s.parse::<u64>().ok())
-    {
+    if let Some(secs) = hold {
         println!(
             "holding remote control on for {secs} s: {}",
             v.controller_url.clone().unwrap_or_default()
         );
         let until = Instant::now() + Duration::from_secs(secs);
         let mut seen = String::new();
-        while Instant::now() < until {
+        let cmds = std::env::var("REMOTE_LIVE_CMDS").ok();
+        let read_cmds = || -> Vec<String> {
+            cmds.as_deref()
+                .and_then(|p| std::fs::read_to_string(p).ok())
+                .map(|t| t.lines().map(str::to_string).collect())
+                .unwrap_or_default()
+        };
+        let mut done_lines = read_cmds().len();
+        let (mut acts, mut refused) = (0usize, 0usize);
+        'hold: while Instant::now() < until {
+            let activity = st.remote_activity();
+            for a in activity.iter().skip(acts) {
+                println!("activity: {} ({})", a.text, a.role);
+            }
+            acts = activity.len();
+            let r = st.remote_diagnostics()["refused"]
+                .as_array()
+                .cloned()
+                .unwrap_or_default();
+            for x in r.iter().skip(refused) {
+                println!(
+                    "refused: {} {} → {}",
+                    x["action"].as_str().unwrap_or("?"),
+                    x["layer"].as_str().or(x["cue"].as_str()).unwrap_or(""),
+                    x["code"].as_str().unwrap_or("?")
+                );
+            }
+            refused = r.len();
+            let lines = read_cmds();
+            for line in lines.iter().skip(done_lines) {
+                let line = line.trim();
+                println!("> {line}");
+                if line == "end" {
+                    break 'hold;
+                }
+                if let Some(addr) = invitee.as_deref() {
+                    run_command(&rt, &st, addr, line);
+                }
+            }
+            done_lines = done_lines.max(lines.len());
             let crew: Vec<String> = st
                 .remote_view()
                 .crew
@@ -238,12 +309,133 @@ fn main() {
             }
             std::thread::sleep(Duration::from_millis(500));
         }
-        for a in st.remote_activity().iter().rev() {
-            println!("activity: {}", a.text);
+        if let Some(addr) = invitee.as_deref() {
+            cancel(&rt, &st, addr);
         }
     }
 
     st.remote_end().expect("end");
     st.remote_set(false).expect("off");
     println!("done (the test show stays on the account; delete it on the control site)");
+}
+
+/// Something to take and edit: a lower third on "Main".
+fn add_lower_third(st: &AppState) {
+    let dir = st.project_dir().expect("project dir");
+    let lt = st
+        .templates()
+        .create(
+            &dir,
+            "Lower third",
+            &TemplateSource::Preset {
+                preset_id: "lower-third".into(),
+            },
+        )
+        .expect("template")
+        .id;
+    let mut doc = st
+        .create_screen(&NewScreen {
+            name: "Main".into(),
+            width: 1920,
+            height: 1080,
+            background: "transparent".into(),
+        })
+        .expect("screen")
+        .doc;
+    let fields: Fields = [("name", "Kari Nordmann"), ("title", "Producer")]
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .into();
+    doc.meta.layers.push(ScreenLayer {
+        id: "lt1".into(),
+        name: "Lower third".into(),
+        rect: Rect {
+            x: 0,
+            y: 0,
+            w: 1920,
+            h: 1080,
+        },
+        kind: ScreenLayerKind::Template {
+            template_id: lt,
+            fields,
+            vars: Fields::new(),
+            bindings: Default::default(),
+            variant: None,
+            sizing: None,
+            opacity: None,
+        },
+        anchor: None,
+    });
+    st.save_screen(doc).expect("save screen");
+}
+
+/// Removes every row for `addr` (pending or joined) and checks none is left.
+fn cancel(rt: &tokio::runtime::Runtime, st: &AppState, addr: &str) {
+    let list = rt.block_on(st.remote_collaborators()).expect("list");
+    for p in list
+        .collaborators
+        .iter()
+        .filter(|x| x.email.eq_ignore_ascii_case(addr.trim()))
+    {
+        rt.block_on(st.remote_collaborator_remove(&p.id))
+            .expect("cancel");
+    }
+    let list = rt.block_on(st.remote_collaborators()).expect("list");
+    check(
+        !list
+            .collaborators
+            .iter()
+            .any(|x| x.email.eq_ignore_ascii_case(addr.trim())),
+        "the invitee was removed",
+    );
+}
+
+/// One line of the command file, acting on the invitee's row.
+fn run_command(rt: &tokio::runtime::Runtime, st: &AppState, addr: &str, line: &str) {
+    let list = match rt.block_on(st.remote_collaborators()) {
+        Ok(l) => l,
+        Err(e) => return println!("list → {}", answer(Err::<(), _>(e))),
+    };
+    let row = list
+        .collaborators
+        .iter()
+        .find(|x| x.email.eq_ignore_ascii_case(addr.trim()));
+    let (cmd, arg) = line.split_once(' ').unwrap_or((line, ""));
+    match cmd {
+        "list" => {
+            for c in &list.collaborators {
+                println!(
+                    "  {} {} {:?} named={}",
+                    c.email,
+                    c.status,
+                    c.permissions,
+                    c.name.is_some()
+                );
+            }
+        }
+        "invite" => println!(
+            "invite again → {}",
+            answer(rt.block_on(st.remote_invite(addr, &["watch_preview".into()])))
+        ),
+        "perms" => {
+            let codes: Vec<String> = match arg.trim() {
+                "watch" => vec!["watch_preview".into()],
+                "data" => ["edit_fields", "rows", "watch_preview"]
+                    .map(String::from)
+                    .to_vec(),
+                "full" => kinetra_lib::core::remote::perms::ALL
+                    .iter()
+                    .map(|s| s.to_string())
+                    .collect(),
+                other => other.split(',').map(|s| s.trim().to_string()).collect(),
+            };
+            match row {
+                Some(r) => println!(
+                    "perms {codes:?} → {}",
+                    answer(rt.block_on(st.remote_collaborator_set(&r.id, &codes)))
+                ),
+                None => println!("no row for the invitee"),
+            }
+        }
+        _ => println!("unknown command"),
+    }
 }

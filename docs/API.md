@@ -627,3 +627,10 @@ invited_at, joined_at, expires_at}`. `permissions`: any of `take_clear`, `edit_f
 Also `400 bad_request` (invalid email, your own address; show `message`), `404 not_found` (hide
 the list; offer the control site) and `429 rate_limited` (invites share the control site's
 per-owner limit).
+
+Checked against dev on 2026-10-27 (`examples/remote_live.rs`): protocol 2 with `permissions` and
+`invites`; list, invite, change and remove; your own address → `400 bad_request`; a collaborator
+that doesn't exist → `404 not_found`; inviting a pending address again → `201` with a new id (the
+old invite is gone); inviting a joined address → `409 already_collaborator`; a permission change
+reaches a connected collaborator's `crew` entry (the control site reconnects); a Data editor's
+edit of a layer off air is accepted. Not yet seen live: `unknown_permission`, `collaborator_limit`.
