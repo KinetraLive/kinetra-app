@@ -138,6 +138,21 @@ describe("InviteDialog", () => {
     await waitFor(() => expect(api.remoteCollaboratorRemove).toHaveBeenCalledWith("i2"));
   });
 
+  it("someone already gone: says so and shows the list as it is now", async () => {
+    const { toasts } = await import("$lib/stores/toasts.svelte");
+    const push = vi.spyOn(toasts, "push");
+    await openDialog(listOf([kari]));
+    api.remoteCollaboratorRemove.mockRejectedValueOnce({ code: "cloud", apiCode: "not_found", message: "Not found." });
+    const row = (await screen.findAllByRole("listitem"))[0];
+    await fireEvent.click(within(row).getByRole("button", { name: "Remove" }));
+    api.remoteCollaborators.mockResolvedValue(listOf([]));
+    await fireEvent.click(within(row).getByRole("button", { name: "Remove" }));
+    await waitFor(() => expect(push).toHaveBeenCalledWith({ kind: "error", message: "They're no longer on this show." }));
+    expect(await screen.findByText("No one yet.")).toBeTruthy();
+    // Not mistaken for a show that isn't there.
+    expect(screen.getByRole("button", { name: "Send invite" })).toBeTruthy();
+  });
+
   it("offers the control site when the show isn't there", async () => {
     api.remoteCollaborators.mockRejectedValue({ code: "cloud", apiCode: "not_found", message: "x" });
     render(InviteDialog, { open: true, onclose: () => {}, crewUrl: "https://control.kinetra.live/s/x/crew" });

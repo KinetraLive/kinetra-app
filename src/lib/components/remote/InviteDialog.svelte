@@ -45,8 +45,14 @@
 
   const full = $derived(!!list && list.limit.max > 0 && list.limit.used >= list.limit.max);
 
-  /** The API's codes in the words this dialog needs; anything else as the general table says. */
-  function words(e: unknown): string {
+  const isCode = (e: unknown, code: string) => {
+    const err = toAppError(e);
+    return err.code === "cloud" && err.apiCode === code;
+  };
+
+  /** The API's codes in the words this dialog needs; anything else as the general table says.
+   *  `not_found` means the show for the list, the person for a change or removal. */
+  function words(e: unknown, about: "show" | "person" = "show"): string {
     const err = toAppError(e);
     if (err.code === "cloud") {
       const max = (err.details as { max?: number } | undefined)?.max;
@@ -56,7 +62,7 @@
         case "collaborator_limit":
           return max ? `Your plan allows ${max} collaborators per show.` : "Your plan's collaborators per show are all used.";
         case "not_found":
-          return "This show isn't on the control site.";
+          return about === "show" ? "This show isn't on the control site." : "They're no longer on this show.";
       }
     }
     return cloudMessage(e);
@@ -68,8 +74,7 @@
     try {
       list = await remoteCollaborators();
     } catch (e) {
-      const err = toAppError(e);
-      missing = err.code === "cloud" && err.apiCode === "not_found";
+      missing = isCode(e, "not_found");
       loadError = words(e);
     }
   }
@@ -114,7 +119,12 @@
       editing = removing = null;
       await load();
     } catch (e) {
-      toasts.push({ kind: "error", message: words(e) });
+      toasts.push({ kind: "error", message: words(e, "person") });
+      // Gone already (removed on the control site, or the invite expired): show the list as it is.
+      if (isCode(e, "not_found")) {
+        editing = removing = null;
+        await load();
+      }
     } finally {
       busy = null;
     }
