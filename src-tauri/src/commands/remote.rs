@@ -1,5 +1,6 @@
 //! Remote control (see `core::remote`): the switch, the view, Lock remote take, "Move it here?",
-//! a separate show, Test connection, Connection details and the diagnostics export. The core
+//! a separate show, Test connection, Connection details, the diagnostics export and the show's
+//! collaborators (invite, change permissions, remove). The core
 //! decides everything (Pro, the project, the protocol); these are thin.
 
 use std::path::PathBuf;
@@ -7,6 +8,7 @@ use std::path::PathBuf;
 use serde_json::Value;
 use tauri::State;
 
+use crate::core::cloud::api::{CollaboratorWire, CollaboratorsWire};
 use crate::core::remote::{Activity, CuePosition, RemoteView, TestResult};
 use crate::core::state::AppState;
 use crate::error::AppResult;
@@ -91,4 +93,40 @@ pub async fn remote_diag_watch(state: State<'_, AppState>, on: bool) -> AppResul
 pub async fn remote_export_diagnostics(state: State<'_, AppState>, path: String) -> AppResult<()> {
     let state = state.inner().clone();
     blocking(move || state.remote_export_diagnostics(&PathBuf::from(path))).await
+}
+
+/// The show's collaborators and the plan's limit (owner only).
+#[tauri::command]
+pub async fn remote_collaborators(state: State<'_, AppState>) -> AppResult<CollaboratorsWire> {
+    let state = state.inner().clone();
+    state.remote_collaborators().await
+}
+
+/// Invites a collaborator by email with permission codes (Pro).
+#[tauri::command]
+pub async fn remote_invite(
+    state: State<'_, AppState>,
+    email: String,
+    permissions: Vec<String>,
+) -> AppResult<CollaboratorWire> {
+    let state = state.inner().clone();
+    state.remote_invite(&email, &permissions).await
+}
+
+/// Changes a collaborator's permissions (Pro).
+#[tauri::command]
+pub async fn remote_collaborator_set(
+    state: State<'_, AppState>,
+    id: String,
+    permissions: Vec<String>,
+) -> AppResult<CollaboratorWire> {
+    let state = state.inner().clone();
+    state.remote_collaborator_set(&id, &permissions).await
+}
+
+/// Revokes an invite or removes a collaborator.
+#[tauri::command]
+pub async fn remote_collaborator_remove(state: State<'_, AppState>, id: String) -> AppResult<()> {
+    let state = state.inner().clone();
+    state.remote_collaborator_remove(&id).await
 }

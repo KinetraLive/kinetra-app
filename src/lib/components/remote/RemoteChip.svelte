@@ -2,14 +2,17 @@
   RemoteChip: remote control's indicator in the top bar, next to the server status, on every app
   page; shown only while the switch is on (a lazy chunk). A remote icon, TallyDot + text ("3 connected", "Reconnecting", "Ended";
   the full wording is its label), the latest remote action as a brief line, and a popover with the
-  panel (RemotePanel). The popover opens by itself when the show runs on another machine
-  ("Move it here?"); it is never modal.
+  panel (RemotePanel). The popover opens by itself each time remote control is switched on (the
+  control link comes first) and when the show runs on another machine ("Move it here?"); it is
+  never modal. Invite collaborator opens InviteDialog (lazy, outside the popover) when the server
+  offers invites, else the control site's Collaborators page.
   Props: none (reads `remote`, which the top bar watches).
 -->
 <script lang="ts">
   import RadioTower from "lucide-svelte/icons/radio-tower";
   import TallyDot from "$lib/components/TallyDot.svelte";
   import { remoteActivity } from "$lib/api/remote";
+  import { openInBrowser } from "$lib/components/license/open";
   import type { RemoteActivity } from "$lib/types";
   import RemotePanel from "./RemotePanel.svelte";
   import { ActivityLine, chipOf } from "./chip.svelte";
@@ -35,6 +38,27 @@
     activity = await remoteActivity().catch(() => []);
   }
 
+  // Just switched on: show the link (once per switch-on, from any window).
+  $effect(() => {
+    if (remote.justOn && pop) {
+      remote.justOn = false;
+      if (!pop.matches(":popover-open")) pop.showPopover();
+    }
+  });
+
+  type Invite = typeof import("./InviteDialog.svelte").default;
+  let Invite = $state.raw<Invite | null>(null);
+  let inviting = $state(false);
+  async function invite() {
+    if (!view?.invites) {
+      if (view?.crewUrl) openInBrowser(view.crewUrl);
+      return;
+    }
+    pop?.hidePopover();
+    Invite ??= (await import("./InviteDialog.svelte")).default;
+    inviting = true;
+  }
+
   // "Move it here?" needs an answer: show the choices.
   let asked = false;
   $effect(() => {
@@ -52,8 +76,11 @@
     {#if lines.line}<span class="line" role="status">{lines.line.text}</span>{/if}
   </button>
   <div id="{id}-panel" popover bind:this={pop} class="pop" ontoggle={opened}>
-    <RemotePanel {view} {activity} />
+    <RemotePanel {view} {activity} oninvite={invite} />
   </div>
+{/if}
+{#if Invite}
+  <Invite open={inviting} onclose={() => (inviting = false)} crewUrl={view?.crewUrl ?? null} />
 {/if}
 
 <style>

@@ -104,6 +104,8 @@ pub struct ProbeRecord {
 #[derive(Debug, Default)]
 pub struct Diag {
     pub server_version: Option<String>,
+    /// The protocol the server picked (1 or 2).
+    pub protocol: Option<u32>,
     pub run_id: Option<String>,
     pub show_id: Option<String>,
     pub limits: Option<Value>,
@@ -225,7 +227,7 @@ impl Diag {
             "exportedAt": now_epoch_ms(),
             "appVersion": app_version,
             "os": os,
-            "protocol": super::proto::PROTOCOL,
+            "protocol": self.protocol.unwrap_or(super::proto::PROTOCOL),
             "serverVersion": self.server_version,
             "state": state,
             "runId": self.run_id,

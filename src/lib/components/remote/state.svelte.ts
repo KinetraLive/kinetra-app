@@ -10,14 +10,25 @@ import type { CuePosition, RemoteView } from "$lib/types";
 export class RemoteState {
   view = $state.raw<RemoteView | null>(null);
   cues = $state.raw<CuePosition>({ current: null, next: null });
+  /** Remote control was just switched on (an event, from any window): the chip opens its panel
+   *  once and clears this, so the link is the first thing the owner sees. */
+  justOn = $state(false);
 
   #refs = 0;
   #off: (() => void)[] = [];
 
+  /** What a `remote-control` event does. */
+  apply(v: RemoteView) {
+    // Off → on as this window saw it (an unknown view isn't "off": a page reload while on).
+    if (v.on && this.view && !this.view.on) this.justOn = true;
+    if (!v.on) this.justOn = false;
+    this.view = v;
+  }
+
   /** Starts mirroring (counted); returns the stop. */
   watch(): () => void {
     if (this.#refs++ === 0) {
-      this.#off = [on("remote-control", (v) => (this.view = v)), on("cue-position", (c) => (this.cues = c))];
+      this.#off = [on("remote-control", (v) => this.apply(v)), on("cue-position", (c) => (this.cues = c))];
       // No backend (tests with a partial API mock): nothing to mirror.
       try {
         remoteView().then((v) => (this.view ??= v), () => {});

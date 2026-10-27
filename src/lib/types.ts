@@ -2463,13 +2463,16 @@ export type RemotePhase =
   /** Stopped for something the user handles (sign in, plan, update, clock, moved, limits). */
   | { state: "stopped"; code: string; message: string };
 
-/** Someone connected through the control site (names are shown to the owner only). */
+/** A collaborator connected through the control site (names are shown to the owner only). */
 export interface CrewMember {
   id: string | null;
   name: string;
-  /** viewer | data_editor | operator */
+  /** A protocol 1 server's display role; empty in protocol 2. */
   role: string;
-  anonymous: boolean;
+  /** Protocol 2: the collaborator's permission codes (null from a protocol 1 server). */
+  permissions: string[] | null;
+  /** Protocol 2: whose live picture they watch. */
+  watching: { screen: string; kind: string }[];
   sinceMs: number;
 }
 
@@ -2490,9 +2493,39 @@ export type RemoteView = RemotePhase & {
   hasShowId: boolean;
   /** This build offers remote control (KINETRA_REMOTE at build time). */
   available: boolean;
+  /** The protocol the server picked (1 or 2) while connected. */
+  protocol: number | null;
+  /** What the server has switched on (protocol 2 `welcome.features`). */
+  features: string[];
+  /** The collaborators API is there: Invite collaborator opens the app's dialog, else the
+   *  control site's Collaborators page (`crewUrl`). */
+  invites: boolean;
   /** Screens beyond what remote users see (the protocol shows the first 32); 0 when all show. */
   screensHidden: number;
 };
+
+/** A show's collaborator (`remote_collaborators`, protocol 2 §9). */
+export interface Collaborator {
+  /** The user id once joined, the invite id while pending. */
+  id: string;
+  status: "joined" | "pending";
+  email: string;
+  /** null while pending. */
+  name: string | null;
+  permissions: string[];
+  invitedAt: string | null;
+  joinedAt: string | null;
+  /** A pending invite's expiry. */
+  expiresAt: string | null;
+}
+
+export interface Collaborators {
+  showId: string;
+  /** The plan's limit per show; `used` counts joined collaborators and open invites. */
+  limit: { max: number; used: number };
+  /** Joined first, then pending. */
+  collaborators: Collaborator[];
+}
 
 /** An accepted remote command (`remote-activity`; this run only). */
 export interface RemoteActivity {

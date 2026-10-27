@@ -1854,6 +1854,7 @@ for (const theme of ["dark", "light"] as const) {
 for (const theme of ["dark", "light"] as const) {
   test.describe(`${theme}, remote control`, () => {
     const now = Date.UTC(2026, 9, 13, 18, 0);
+    const ALL_PERMISSIONS = ["take_clear", "edit_fields", "edit_live_fields", "run_cues", "studio", "timers", "variants", "rows", "button_panel", "watch_preview"];
     const scenario = (): MockScenario => ({
       ...screensScenario(theme),
       flows: FLOWS,
@@ -1869,10 +1870,30 @@ for (const theme of ["dark", "light"] as const) {
         serverVersion: "kinetra-cloud 0.9.2",
         crewUrl: "https://control.kinetra.live/s/0193/crew",
         controllerUrl: "https://control.kinetra.live/s/0193",
+        protocol: 2,
+        features: ["permissions", "invites"],
+        invites: true,
         crew: [
-          { id: "u1", name: "Kari Nordmann", role: "operator", anonymous: false, sinceMs: now - 3_600_000 },
-          { id: "u2", name: "Jonas Berg", role: "data_editor", anonymous: false, sinceMs: now - 1_800_000 },
-          { id: null, name: "Guest 3", role: "viewer", anonymous: true, sinceMs: now - 600_000 },
+          { id: "u1", name: "Kari Nordmann", role: "", permissions: ALL_PERMISSIONS, watching: [], sinceMs: now - 3_600_000 },
+          {
+            id: "u2",
+            name: "Jonas Berg",
+            role: "",
+            permissions: ["edit_fields", "rows", "watch_preview"],
+            watching: [{ screen: "s1main01ab", kind: "program" }],
+            sinceMs: now - 1_800_000,
+          },
+          { id: "u3", name: "Ingrid Vale", role: "", permissions: ["watch_preview"], watching: [], sinceMs: now - 600_000 },
+        ],
+      },
+      collaborators: {
+        showId: "0193a7f1-2b3c-7d4e-8f50-6a7b8c9d0e1f",
+        limit: { max: 10, used: 4 },
+        collaborators: [
+          { id: "u1", status: "joined", email: "kari@nordlys.no", name: "Kari Nordmann", permissions: ALL_PERMISSIONS, invitedAt: "2026-10-12T09:00:00Z", joinedAt: "2026-10-12T09:20:00Z", expiresAt: null },
+          { id: "u2", status: "joined", email: "jonas@nordlys.no", name: "Jonas Berg", permissions: ["edit_fields", "rows", "watch_preview"], invitedAt: "2026-10-12T09:01:00Z", joinedAt: "2026-10-12T10:02:00Z", expiresAt: null },
+          { id: "u3", status: "joined", email: "ingrid@nordlys.no", name: "Ingrid Vale", permissions: ["watch_preview"], invitedAt: "2026-10-13T08:00:00Z", joinedAt: "2026-10-13T08:30:00Z", expiresAt: null },
+          { id: "i4", status: "pending", email: "ola@studio-nord.no", name: null, permissions: ["take_clear", "run_cues", "watch_preview"], invitedAt: "2026-10-13T12:00:00Z", joinedAt: null, expiresAt: "2026-10-20T12:00:00Z" },
         ],
       },
       remoteActivity: [
@@ -1893,9 +1914,18 @@ for (const theme of ["dark", "light"] as const) {
       await expect(page.getByText("Next", { exact: true })).toBeVisible();
       await shot(page, `${theme}-90-remote-chip`);
       await chip.click();
-      await expect(page.getByText("3 remote users connected")).toBeVisible();
+      await expect(page.getByText("3 collaborators connected")).toBeVisible();
       await expect(page.getByText("Kari Nordmann took Guest lower third")).toBeVisible();
+      await expect(page.getByText("https://control.kinetra.live/s/0193", { exact: true })).toBeVisible();
       await shot(page, `${theme}-91-remote-panel`);
+      await page.getByRole("button", { name: "Invite collaborator…" }).click();
+      const dialog = page.getByRole("dialog", { name: "Invite collaborator" });
+      await expect(dialog.getByText("Invite sent")).toBeVisible();
+      await dialog.getByLabel("Email").fill("mari@nordlys.no");
+      await shot(page, `${theme}-91b-remote-invite`);
+      await dialog.getByRole("listitem").filter({ hasText: "Jonas Berg" }).getByRole("button", { name: "Edit" }).click();
+      await dialog.getByRole("group", { name: "Permissions of Jonas Berg" }).getByLabel("Edit graphics on air").check();
+      await shot(page, `${theme}-91c-remote-invite-edit`);
     });
 
     test("control at 1024 px: the collapsed toolbar and its More menu", async ({ page }) => {

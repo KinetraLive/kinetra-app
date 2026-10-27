@@ -68,6 +68,10 @@ struct Cfg {
     auto_pong: bool,
     /// Stop reading the app's messages (a stalled link).
     stall: bool,
+    /// The subprotocols the mock speaks, best first (axum picks the first the app offered).
+    protocols: &'static [&'static str],
+    /// `welcome.features` (protocol 2).
+    features: &'static [&'static str],
 }
 
 impl Default for Cfg {
@@ -79,6 +83,8 @@ impl Default for Cfg {
             auto_register: true,
             auto_pong: true,
             stall: false,
+            protocols: &["kinetra-control.v1"],
+            features: &[],
         }
     }
 }
@@ -89,6 +95,10 @@ struct Shared {
     conns: Mutex<usize>,
     to_app: Mutex<Option<mpsc::UnboundedSender<ToApp>>>,
     events: Mutex<Vec<Ev>>,
+    /// Collaborators API requests: (method, path, authorization, body).
+    api: Mutex<Vec<(String, String, String, Value)>>,
+    /// The collaborators API's next answers (status, body), else 200 with an empty list.
+    api_answers: Mutex<Vec<(u16, Value)>>,
 }
 
 #[derive(serde::Deserialize)]
@@ -133,7 +143,7 @@ async fn upgrade(
         ua: h("user-agent"),
         probe: q.mode.as_deref() == Some("probe"),
     });
-    ws.protocols(["kinetra-control.v1"])
+    ws.protocols(cfg.protocols.iter().copied())
         .on_upgrade(move |s| session(s, n, sh))
 }
 
@@ -176,7 +186,7 @@ async fn session(socket: WebSocket, n: usize, sh: Arc<Shared>) {
         };
         match v["t"].as_str().unwrap_or_default() {
             "hello" if cfg.auto_welcome => send(json!({
-                "t": "welcome", "protocol": 1,
+                "t": "welcome", "protocol": v["protocol"], "features": cfg.features,
                 "mode": cfg.welcome_mode.unwrap_or("run"),
                 "server_version": "mock 1", "server_time_ms": crate::core::fsx::now_epoch_ms(),
                 "heartbeat_s": 20, "limits": {}
@@ -200,6 +210,44 @@ async fn session(socket: WebSocket, n: usize, sh: Arc<Shared>) {
     }
     sh.events.lock().unwrap().push(Ev::Gone);
     writer.abort();
+}
+
+/// The collaborators API (protocol 2 §9): records the request, answers the next canned answer.
+async fn collaborators_api(
+    State(sh): State<Arc<Shared>>,
+    method: axum::http::Method,
+    uri: axum::http::Uri,
+    headers: HeaderMap,
+    body: String,
+) -> Response {
+    let auth = headers
+        .get("authorization")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or_default()
+        .to_string();
+    let body: Value = serde_json::from_str(&body).unwrap_or(Value::Null);
+    sh.api
+        .lock()
+        .unwrap()
+        .push((method.to_string(), uri.path().to_string(), auth, body));
+    let answer = {
+        let mut a = sh.api_answers.lock().unwrap();
+        (!a.is_empty()).then(|| a.remove(0))
+    };
+    let (status, body) = answer.unwrap_or((
+        200,
+        json!({"show_id": "show-1", "limit": {"max": 5, "used": 0}, "collaborators": []}),
+    ));
+    let status = StatusCode::from_u16(status).unwrap();
+    if status == StatusCode::NO_CONTENT {
+        return status.into_response();
+    }
+    (
+        status,
+        [("content-type", "application/json")],
+        body.to_string(),
+    )
+        .into_response()
 }
 
 // ---- Environment ------------------------------------------------------------------------------
@@ -299,6 +347,14 @@ fn env() -> Env {
     let base = format!("http://{}", listener.local_addr().unwrap());
     let app = Router::new()
         .route("/v1/control/app", get(upgrade))
+        .route(
+            "/v1/control/projects/{project}/collaborators",
+            axum::routing::any(collaborators_api),
+        )
+        .route(
+            "/v1/control/projects/{project}/collaborators/{id}",
+            axum::routing::any(collaborators_api),
+        )
         .with_state(sh.clone());
     rt.spawn(async move {
         axum::serve(listener, app).await.unwrap();
@@ -456,9 +512,29 @@ impl Env {
 
     /// Sends a command and waits for its result.
     fn command(&self, corr: &str, action: &str, args: Value, role: &str, seen: u64) -> Value {
+        self.command_by(
+            corr,
+            action,
+            args,
+            json!({"id": "0193aaaa-0000-7000-8000-000000000001", "name": ACTOR_NAME, "role": role}),
+            seen,
+        )
+    }
+
+    /// A protocol 2 command: the actor has permissions instead of a role.
+    fn command_p(&self, corr: &str, action: &str, args: Value, perms: &[&str], seen: u64) -> Value {
+        self.command_by(
+            corr,
+            action,
+            args,
+            json!({"id": "0193aaaa-0000-7000-8000-000000000001", "name": ACTOR_NAME, "permissions": perms}),
+            seen,
+        )
+    }
+
+    fn command_by(&self, corr: &str, action: &str, args: Value, actor: Value, seen: u64) -> Value {
         self.push(json!({
-            "t": "command", "corr": corr, "action": action, "args": args,
-            "actor": {"id": "0193aaaa-0000-7000-8000-000000000001", "name": ACTOR_NAME, "role": role},
+            "t": "command", "corr": corr, "action": action, "args": args, "actor": actor,
             "seen_seq": seen, "sent_ms": crate::core::fsx::now_epoch_ms()
         }));
         let mut found = None;
@@ -615,7 +691,8 @@ fn handshake_register_and_snapshot() {
         unreachable!()
     };
     assert_eq!(auth, &format!("Bearer {SESSION}"));
-    assert_eq!(proto, "kinetra-control.v1");
+    // Both offered; this mock speaks protocol 1 only, so the hello says 1.
+    assert_eq!(proto, "kinetra-control.v2, kinetra-control.v1");
     assert!(ua.starts_with("Kinetra/"), "{ua}");
     assert!(!probe);
     let hello = &e.of("hello")[0];
@@ -1262,7 +1339,7 @@ fn license_warning_crew_and_round_trip_reach_the_view() {
     e.live();
     e.push(json!({"t":"crew","connected":[
         {"id":"0193aaaa-0000-7000-8000-000000000001","name":"Kari N.","role":"operator","since_ms":5},
-        {"id":null,"name":"Guest 3","role":"viewer","anonymous":true,"since_ms":6}]}));
+        {"id":"0193aaaa-0000-7000-8000-000000000002","name":"Jonas B.","role":"data_editor","since_ms":6}]}));
     e.push(json!({"t":"license_warning","ends_ms":99,"message":"Your license lapsed."}));
     wait_until("crew", || e.st.remote_view().crew.len() == 2);
     wait_until("warning", || e.st.remote_view().license_warning.is_some());
@@ -1695,3 +1772,5 @@ fn a_local_preview_cue_reaches_remote_browsers() {
         e.tree()["preview"][&e.screen] == json!(["l1"])
     });
 }
+
+mod v2;

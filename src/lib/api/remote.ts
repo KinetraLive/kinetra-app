@@ -1,8 +1,9 @@
 // Remote control (src-tauri/src/commands/remote.rs): the switch, Lock remote take, "Move it
-// here?", a separate show, Test connection and Connection details. The core decides everything;
-// events: `remote-control`, `remote-activity`, `remote-diag`, `cue-position`.
+// here?", a separate show, Test connection, Connection details and the show's collaborators.
+// The core decides everything; events: `remote-control`, `remote-activity`, `remote-diag`,
+// `cue-position`.
 
-import type { CuePosition, RemoteActivity, RemoteDiag, RemoteTestResult, RemoteView } from "../types";
+import type { Collaborator, Collaborators, CuePosition, RemoteActivity, RemoteDiag, RemoteTestResult, RemoteView } from "../types";
 import { call } from "./index";
 
 export const remoteView = () => call<RemoteView>("remote_view");
@@ -24,3 +25,14 @@ export const remoteTest = () => call<RemoteTestResult>("remote_test");
 /** Counted: while ≥ 1 watch, `remote-diag` follows changes (≤ 2/s). Returns the view now. */
 export const remoteDiagWatch = (on: boolean) => call<RemoteDiag>("remote_diag_watch", { on });
 export const remoteExportDiagnostics = (path: string) => call<void>("remote_export_diagnostics", { path });
+
+// Collaborators (protocol 2 §9; the owner's own show). Errors carry the API's code
+// (`collaborator_limit` with `details.max`, `already_collaborator`, …).
+export const remoteCollaborators = () => call<Collaborators>("remote_collaborators");
+/** The server sends the invite email. Unknown codes are dropped by the core. */
+export const remoteInvite = (email: string, permissions: string[]) =>
+  call<Collaborator>("remote_invite", { email, permissions });
+export const remoteCollaboratorSet = (id: string, permissions: string[]) =>
+  call<Collaborator>("remote_collaborator_set", { id, permissions });
+/** Revokes a pending invite, or removes a joined collaborator (disconnected at once). */
+export const remoteCollaboratorRemove = (id: string) => call<void>("remote_collaborator_remove", { id });

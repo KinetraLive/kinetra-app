@@ -1,11 +1,25 @@
-//! The app ↔ server messages of `docs/CONTROL_PROTOCOL.md` (protocol 1), close codes and
-//! limits. Unknown message types from the server are ignored (§2); unknown fields too.
+//! The app ↔ server messages of `docs/CONTROL_PROTOCOL.md` (protocol 1) and its protocol 2 delta
+//! (kinetra-cloud `docs/CONTROL_PROTOCOL_V2.md`), close codes and limits. Unknown message types from the server are ignored (§2); unknown fields too.
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-pub const PROTOCOL: u32 = 1;
-pub const SUBPROTOCOL: &str = "kinetra-control.v1";
+use super::perms::Perms;
+
+/// The highest protocol this app speaks.
+pub const PROTOCOL: u32 = 2;
+/// What the upgrade offers: protocol 2 first, protocol 1 for servers without it (§1 of
+/// protocol 2). The server echoes the one it picked.
+pub const SUBPROTOCOLS: &str = "kinetra-control.v2, kinetra-control.v1";
+
+/// The protocol a subprotocol the server echoed stands for (`None`: not one we offered).
+pub fn protocol_of(subprotocol: &str) -> Option<u32> {
+    match subprotocol.trim() {
+        "kinetra-control.v2" => Some(2),
+        "kinetra-control.v1" => Some(1),
+        _ => None,
+    }
+}
 /// The app endpoint, under the API base.
 pub const APP_PATH: &str = "/v1/control/app";
 
@@ -193,6 +207,9 @@ pub enum In {
         heartbeat_s: u64,
         #[serde(default)]
         limits: Limits,
+        /// What the server has switched on (protocol 2 §1), e.g. `invites`.
+        #[serde(default)]
+        features: Vec<String>,
     },
     Registered {
         #[serde(default)]
@@ -307,10 +324,34 @@ pub struct Actor {
     pub id: Option<String>,
     #[serde(default)]
     pub name: String,
+    /// Protocol 1: the role the server checked the command against.
     #[serde(default)]
     pub role: String,
+    /// Protocol 2: the actor's permissions when the server forwarded the command.
+    #[serde(default)]
+    pub permissions: Option<Vec<String>>,
 }
 
+impl Actor {
+    /// What the actor may do: the permissions (protocol 2), else the role (protocol 1).
+    pub fn perms(&self) -> Perms {
+        match &self.permissions {
+            Some(codes) => Perms::from_codes(codes),
+            None => Perms::from_role(&self.role),
+        }
+    }
+
+    /// A short word for diagnostics and the activity list: the role, else "collaborator".
+    pub fn kind(&self) -> &str {
+        if self.role.is_empty() {
+            "collaborator"
+        } else {
+            &self.role
+        }
+    }
+}
+
+/// A collaborator connected through the control site (`crew`; names are the owner's to see).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CrewMember {
@@ -318,12 +359,26 @@ pub struct CrewMember {
     pub id: Option<String>,
     #[serde(default)]
     pub name: String,
+    /// Protocol 1 only (the display role); empty in protocol 2.
     #[serde(default)]
     pub role: String,
+    /// Protocol 2: the collaborator's permissions (`None` from a protocol 1 server).
     #[serde(default)]
-    pub anonymous: bool,
+    pub permissions: Option<Vec<String>>,
+    /// Protocol 2: the screens they watch the picture of.
+    #[serde(default)]
+    pub watching: Vec<Watching>,
     #[serde(default, alias = "since_ms")]
     pub since_ms: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Watching {
+    #[serde(default)]
+    pub screen: String,
+    /// `program` | `preview`.
+    #[serde(default)]
+    pub kind: String,
 }
 
 /// What a close code / fatal error means for the app (§10).
