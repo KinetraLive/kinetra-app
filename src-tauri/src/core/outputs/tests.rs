@@ -1096,13 +1096,13 @@ fn unplug_and_replug_through_the_watcher() {
     wait_until("the window", || e.host.last().len() == 1);
     assert!(e.st.displays_rt().watching());
 
-    // Unplugged: several OS notifications, one re-enumeration after the debounce.
+    // Unplugged: a burst of OS notifications, one re-enumeration after the debounce. Sent back
+    // to back: sleeps between them stretched past the 50 ms debounce on slow CI runners.
     let enumerations = e.displays.enumerations();
     e.displays.set(vec![display("a", 0, 0, 1920, 1080, 60)]);
     let at = Instant::now();
     for _ in 0..4 {
         e.displays.notify();
-        std::thread::sleep(Duration::from_millis(10));
     }
     wait_until("closed", || e.host.last().is_empty());
     assert_eq!(e.displays.enumerations(), enumerations + 1, "debounced");
