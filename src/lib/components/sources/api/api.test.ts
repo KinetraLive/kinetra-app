@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/svelte";
 import { tick } from "svelte";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import "../../templates/list/matchers";
 import type { ApiStatus, ApiTestResult, SourceDoc, SourceSummary } from "$lib/types";
 
@@ -129,6 +129,13 @@ async function advance(ms: number) {
 }
 
 const lastSaved = (): ApiDoc => api.saveSource.mock.calls.at(-1)?.[0];
+
+// The preview grid is a lazy chunk (`import()` of SheetEditor). Loaded here once, so the tests
+// wait on the editor, not on Vite compiling the chunk on first use (over vi.waitFor's 1 s on the
+// slow macOS runner).
+beforeAll(async () => {
+  await import("$lib/components/sheet/SheetEditor.svelte");
+});
 
 beforeEach(() => {
   vi.useFakeTimers();
