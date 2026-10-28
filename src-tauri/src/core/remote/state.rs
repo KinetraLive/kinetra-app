@@ -6,17 +6,19 @@
 //! list) and diffed against the last one sent. Objects keyed by ID are diffed key by key; arrays
 //! and leaves are replaced whole, so every change has a path.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use serde_json::{json, Map, Value};
 
 use super::proto::{
-    Op, ASSETS_MAX, CUES_MAX, LAYERS_MAX, LIST_VALUE_MAX, NAME_MAX, SCREENS_MAX, TEMPLATES_MAX,
-    VALUE_MAX,
+    Op, ASSETS_MAX, CUES_MAX, LAYERS_MAX, LIST_VALUE_MAX, NAME_MAX, ROWS_BYTES_MAX, ROWS_MAX,
+    SCREENS_MAX, SOURCES_MAX, TEMPLATES_MAX, VALUE_MAX,
 };
 use crate::core::live::FieldDef;
-use crate::core::model::{MediaReadiness, NodeKind, ScreenLayerKind, VariableKind};
-use crate::core::protocol::FieldType;
+use crate::core::model::{
+    ColumnKind, MediaReadiness, NodeKind, ScreenLayerKind, SourceColumn, SourceDoc, VariableKind,
+};
+use crate::core::protocol::{FieldType, Fields};
 use crate::core::sources;
 use crate::core::state::AppState;
 
@@ -55,6 +57,37 @@ pub struct BuildInput {
     pub last_cue: Option<(String, usize)>,
     pub assets: Vec<RemoteAsset>,
     pub flavor: Flavor,
+    /// Protocol 2 state parts the server announced (remote flavor).
+    pub parts: Parts,
+}
+
+/// Protocol 2 state parts (§4), each sent only when the server announced its feature
+/// (`welcome.features`, §1): nothing of them reaches a protocol 1 server.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Parts {
+    /// `templates.*.variants`, `layers.*.variant` / `variant_next` (§4.1).
+    pub variants: bool,
+    /// `sources`, `source_order`, `layers.*.sources` (§4.2).
+    pub rows: bool,
+    /// `studio.take_scope` (§4.4).
+    pub studio: bool,
+    /// The `timer` command (no state of its own: §4.5).
+    pub timers: bool,
+    /// `panel` (§4.3) and `press_button`.
+    pub panel: bool,
+}
+
+impl Parts {
+    pub fn of(features: &[String]) -> Self {
+        let has = |f: &str| features.iter().any(|x| x == f);
+        Self {
+            variants: has("variants"),
+            rows: has("rows"),
+            studio: has("studio"),
+            timers: has("timers"),
+            panel: has("panel"),
+        }
+    }
 }
 
 /// Local flavor: at most this many sources.
@@ -211,6 +244,17 @@ pub fn build(st: &AppState, input: &BuildInput) -> Value {
     let mut templates = Map::new();
     let mut layers = Map::new();
     let mut preview = Map::new();
+    // Protocol 2 rows (§4.2): the table sources (text and API; schedules and polls have no row
+    // to pick) and those whose current row feeds a listed layer's field.
+    let tables: Option<HashMap<String, SourceDoc>> = (!local && input.parts.rows).then(|| {
+        st.sources()
+            .docs()
+            .into_iter()
+            .filter(|d| d.meta.kind.table().is_some())
+            .map(|d| (d.id.clone(), d))
+            .collect()
+    });
+    let mut row_sources: BTreeSet<String> = BTreeSet::new();
 
     for view in hub.user_screen_views().into_iter().take(screens_max) {
         let sid = view.screen.id.clone();
@@ -324,13 +368,16 @@ pub fn build(st: &AppState, input: &BuildInput) -> Value {
                     "name": name_of(&name),
                     "fields": defs.iter().map(field_json).collect::<Vec<_>>(),
                 });
+                let variants: Vec<Value> = lt
+                    .map(|t| t.variants.as_slice())
+                    .unwrap_or_default()
+                    .iter()
+                    .map(|v| json!({"id": v.id, "name": name_of(&v.name)}))
+                    .collect();
+                if !local && input.parts.variants {
+                    t["variants"] = Value::Array(variants.clone());
+                }
                 if local {
-                    let variants: Vec<Value> = lt
-                        .map(|t| t.variants.as_slice())
-                        .unwrap_or_default()
-                        .iter()
-                        .map(|v| json!({"id": v.id, "name": name_of(&v.name)}))
-                        .collect();
                     let ranges: Vec<Value> = lt
                         .map(|t| t.meta.variables.as_slice())
                         .unwrap_or_default()
@@ -393,6 +440,35 @@ pub fn build(st: &AppState, input: &BuildInput) -> Value {
                 obj["ready"] = ready_json(lv.readiness.as_ref());
             } else {
                 obj["remote_editable"] = json!(editable);
+                if input.parts.variants {
+                    // In Studio mode Preview's variant, like the values; otherwise what the
+                    // output shows, with a change staged for the next take as `variant_next`.
+                    if studio {
+                        obj["variant"] = json!(shown.variant);
+                    } else {
+                        obj["variant"] = json!(lv.on_air_variant);
+                        if lv.on_air && lv.pending && lv.variant != lv.on_air_variant {
+                            obj["variant_next"] = json!(lv.variant);
+                        }
+                    }
+                }
+                if let Some(tables) = &tables {
+                    let mut used: Vec<&String> = bindings
+                        .iter()
+                        .filter(|(k, b)| {
+                            !b.column.is_empty()
+                                && tables.contains_key(&b.source_id)
+                                && defs
+                                    .iter()
+                                    .any(|d| &d.key == *k && d.kind != FieldType::List)
+                        })
+                        .map(|(_, b)| &b.source_id)
+                        .collect();
+                    used.sort();
+                    used.dedup();
+                    row_sources.extend(used.iter().map(|s| (*s).clone()));
+                    obj["sources"] = json!(used);
+                }
             }
             layers.insert(key.clone(), obj);
             ids.push(key.clone());
@@ -463,8 +539,144 @@ pub fn build(st: &AppState, input: &BuildInput) -> Value {
         tree["api_flows"] = Value::Object(local_api_flows(st));
     } else {
         tree["remote"] = json!({"take_locked": input.take_locked});
+        if let Some(tables) = &tables {
+            let (sources, order) = remote_sources(tables, &row_sources);
+            // A layer only names sources the tree lists (more than SOURCES_MAX are left out).
+            if row_sources.len() > sources.len() {
+                for l in tree["layers"].as_object_mut().into_iter().flatten() {
+                    if let Some(a) = l.1.get_mut("sources").and_then(Value::as_array_mut) {
+                        a.retain(|s| sources.contains_key(s.as_str().unwrap_or("")));
+                    }
+                }
+            }
+            tree["sources"] = Value::Object(sources);
+            tree["source_order"] = json!(order);
+        }
+        if input.parts.studio {
+            tree["studio"] = json!({"take_scope": "screen"});
+        }
+        if input.parts.panel {
+            tree["panel"] = remote_panel(st);
+        }
     }
     tree
+}
+
+/// Protocol 2 button panel (§4.3): what the control site shows; never the actions.
+fn remote_panel(st: &AppState) -> Value {
+    let doc = st.panel_doc().unwrap_or_default();
+    let buttons: Map<String, Value> = doc
+        .buttons
+        .iter()
+        .map(|b| {
+            (
+                b.id.clone(),
+                json!({
+                    "label": b.label,
+                    "color": b.color,
+                    "confirm": b.confirm,
+                    "on_air": st.panel_button_on_air(b),
+                }),
+            )
+        })
+        .collect();
+    let order: Vec<&String> = doc.buttons.iter().map(|b| &b.id).collect();
+    json!({"buttons": buttons, "order": order})
+}
+
+/// Protocol 2 rows (§4.2): the sources in `used` in name order (≤ [`SOURCES_MAX`]), each with
+/// its rows (≤ [`ROWS_MAX`], and together ≤ [`ROWS_BYTES_MAX`]; more → `truncated`) and the
+/// id of its current row.
+fn remote_sources(
+    tables: &HashMap<String, SourceDoc>,
+    used: &BTreeSet<String>,
+) -> (Map<String, Value>, Vec<String>) {
+    let mut docs: Vec<&SourceDoc> = used.iter().filter_map(|id| tables.get(id)).collect();
+    docs.sort_by(|a, b| {
+        a.meta
+            .name
+            .to_lowercase()
+            .cmp(&b.meta.name.to_lowercase())
+            .then_with(|| a.id.cmp(&b.id))
+    });
+    let mut budget = ROWS_BYTES_MAX;
+    let mut map = Map::new();
+    let mut order = Vec::new();
+    for doc in docs.into_iter().take(SOURCES_MAX) {
+        let Some(t) = doc.meta.kind.table() else {
+            continue;
+        };
+        let ids = row_ids(t.columns, t.rows);
+        let mut rows = Vec::new();
+        for (i, (id, row)) in ids.iter().zip(t.rows).enumerate().take(ROWS_MAX) {
+            let label = row_label(t.columns, row, i);
+            // `{"id":"…","label":"…"},` around them: 21 bytes; a label may be escaped.
+            let cost = id.len() + label.len() + 24;
+            if cost > budget {
+                break;
+            }
+            budget -= cost;
+            rows.push(json!({"id": id, "label": label}));
+        }
+        let current = ids.get(t.index as usize).cloned();
+        map.insert(
+            doc.id.clone(),
+            json!({
+                "name": name_of(&doc.meta.name),
+                "truncated": rows.len() < t.rows.len(),
+                "rows": rows,
+                "current": current,
+            }),
+        );
+        order.push(doc.id.clone());
+    }
+    (map, order)
+}
+
+/// Row ids (protocol 2 §1): a short hash of the row's cells in column order, `-<n>` for the
+/// n-th identical row. The same across runs and reorders while the row is unchanged.
+pub fn row_ids(columns: &[SourceColumn], rows: &[Fields]) -> Vec<String> {
+    let mut seen: HashMap<u64, u32> = HashMap::new();
+    rows.iter()
+        .map(|row| {
+            let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+            let mut mix = |bytes: &[u8]| {
+                for b in bytes.iter().chain([&0xffu8]) {
+                    h ^= u64::from(*b);
+                    h = h.wrapping_mul(0x0100_0000_01b3);
+                }
+            };
+            for c in columns {
+                mix(c.key.as_bytes());
+                mix(row.get(&c.key).map_or("", String::as_str).as_bytes());
+            }
+            let n = seen.entry(h).or_insert(0);
+            *n += 1;
+            let id = format!("{:012x}", h & 0xffff_ffff_ffff);
+            if *n == 1 {
+                id
+            } else {
+                format!("{id}-{n}")
+            }
+        })
+        .collect()
+}
+
+/// A row's label: its first two text columns' values joined, as Control's sources strip shows
+/// the current row; "Row N" when both are empty.
+pub(crate) fn row_label(columns: &[SourceColumn], row: &Fields, index: usize) -> String {
+    let parts: Vec<&str> = columns
+        .iter()
+        .filter(|c| c.kind != ColumnKind::Image)
+        .take(2)
+        .filter_map(|c| row.get(&c.key).map(|v| v.trim()))
+        .filter(|v| !v.is_empty())
+        .collect();
+    if parts.is_empty() {
+        format!("Row {}", index + 1)
+    } else {
+        name_of(&parts.join(" · "))
+    }
 }
 
 /// Local flavor: flows with an API call trigger (`trigger.rest`), which `run_flow` may start.
@@ -675,8 +887,38 @@ pub fn check_refs(tree: &Value) -> Result<(), String> {
             }
             continue;
         }
-        if !templates.contains_key(l["template"].as_str().unwrap_or("")) {
+        let Some(t) = templates.get(l["template"].as_str().unwrap_or("")) else {
             return Err(format!("layer {lid} template"));
+        };
+        // Protocol 2: the variant shown and the staged one are the template's.
+        if let Some(vs) = t["variants"].as_array().filter(|v| !v.is_empty()) {
+            for k in ["variant", "variant_next"] {
+                if let Some(v) = l[k].as_str().filter(|v| !v.is_empty()) {
+                    if !vs.iter().any(|x| x["id"] == v) {
+                        return Err(format!("layer {lid} {k} {v}"));
+                    }
+                }
+            }
+        }
+        for s in l["sources"].as_array().into_iter().flatten() {
+            if obj("sources").is_none_or(|m| !m.contains_key(s.as_str().unwrap_or(""))) {
+                return Err(format!("layer {lid} source {s}"));
+            }
+        }
+    }
+    for (id, s) in obj("sources").into_iter().flatten() {
+        let Some(rows) = s["rows"].as_array() else {
+            continue;
+        };
+        if let Some(c) = s["current"].as_str() {
+            if s["truncated"] != true && !rows.iter().any(|r| r["id"] == c) {
+                return Err(format!("source {id} current"));
+            }
+        }
+    }
+    for s in tree["source_order"].as_array().into_iter().flatten() {
+        if obj("sources").is_none_or(|m| !m.contains_key(s.as_str().unwrap_or(""))) {
+            return Err(format!("source_order {s}"));
         }
     }
     for s in tree["screen_order"].as_array().into_iter().flatten() {
@@ -813,5 +1055,72 @@ mod tests {
             (None, Some("c".into()))
         );
         assert_eq!(current_next(&[], None), (None, None));
+    }
+
+    fn text_source(id: &str, rows: Vec<Fields>) -> SourceDoc {
+        let mut doc: SourceDoc = serde_json::from_value(json!({
+            "id": id, "schemaVersion": 1, "name": id, "kind": "text",
+            "columns": [{"key": "a", "label": "A"}, {"key": "b", "label": "B"}],
+            "rows": [], "index": 0, "updatedAt": "",
+        }))
+        .unwrap();
+        if let Some(t) = doc.meta.kind.table_mut() {
+            *t.rows = rows;
+        }
+        doc
+    }
+
+    fn cells(a: &str, b: &str) -> Fields {
+        Fields::from([("a".into(), a.into()), ("b".into(), b.into())])
+    }
+
+    #[test]
+    fn row_ids_follow_the_content_not_the_position() {
+        let doc = text_source("s", vec![cells("x", "1"), cells("y", "2"), cells("x", "1")]);
+        let t = doc.meta.kind.table().unwrap();
+        let ids = row_ids(t.columns, t.rows);
+        assert_eq!(
+            ids[2],
+            format!("{}-2", ids[0]),
+            "identical rows get an occurrence"
+        );
+        assert_ne!(ids[0], ids[1]);
+        assert!(ids.iter().all(|i| i.len() >= 12 && i.is_ascii()));
+        // Reordered: each row keeps its id; edited: a new one.
+        let moved = text_source("s", vec![cells("y", "2"), cells("x", "1")]);
+        let t = moved.meta.kind.table().unwrap();
+        assert_eq!(row_ids(t.columns, t.rows), [ids[1].clone(), ids[0].clone()]);
+        let edited = text_source("s", vec![cells("x", "1!")]);
+        let t = edited.meta.kind.table().unwrap();
+        assert_ne!(row_ids(t.columns, t.rows)[0], ids[0]);
+    }
+
+    #[test]
+    fn rows_are_capped_per_source_and_in_bytes() {
+        let long = "w".repeat(90);
+        let big = |id: &str| {
+            text_source(
+                id,
+                (0..1500)
+                    .map(|i| cells(&format!("{long}{i}"), ""))
+                    .collect(),
+            )
+        };
+        let tables: HashMap<String, SourceDoc> = (0..6)
+            .map(|i| format!("s{i}"))
+            .map(|id| (id.clone(), big(&id)))
+            .collect();
+        let used: BTreeSet<String> = tables.keys().cloned().collect();
+        let (map, order) = remote_sources(&tables, &used);
+        assert_eq!(order.len(), 6);
+        let mut total = 0;
+        for s in map.values() {
+            let rows = s["rows"].as_array().unwrap();
+            assert!(rows.len() <= ROWS_MAX);
+            assert_eq!(s["truncated"], true);
+            total += serde_json::to_string(rows).unwrap().len();
+        }
+        assert!(total <= ROWS_BYTES_MAX, "{total}");
+        assert_eq!(map["s0"]["rows"].as_array().unwrap().len(), ROWS_MAX);
     }
 }

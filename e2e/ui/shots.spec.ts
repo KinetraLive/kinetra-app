@@ -45,7 +45,7 @@ import {
   variantsScenario,
 } from "./harness";
 import type { MockScenario } from "./mock-tauri";
-import type { DisplayInfo, OutputConfig, ScreenDoc, SourceDoc, TemplateDoc } from "../../src/lib/types";
+import type { DisplayInfo, FieldDef, OutputConfig, ScreenDoc, SourceDoc, TemplateDoc } from "../../src/lib/types";
 
 /** A data table for the spreadsheet shots: speakers of an event (Sources page). */
 const SPEAKERS: SourceDoc = {
@@ -1848,6 +1848,107 @@ for (const theme of ["dark", "light"] as const) {
   });
 }
 
+// The button panel (remote control, protocol 2): six buttons on the Main program screen, one of
+// them pointing at a layer that was deleted.
+const MAIN_FIELDS = {
+  strap: [
+    { key: "label", label: "Label", type: "text", default: "" },
+    { key: "headline", label: "Headline", type: "text", default: "" },
+    { key: "subline", label: "Subline", type: "text", default: "" },
+  ],
+  guest: [
+    { key: "name", label: "Name", type: "text", default: "" },
+    { key: "title", label: "Title", type: "text", default: "" },
+  ],
+  bug: [{ key: "text", label: "Text", type: "text", default: "" }],
+} satisfies Record<string, FieldDef[]>;
+const GUEST_ROWS = [
+  { id: "3f9a0c2e71b4", label: "Grace Hopper · Rear Admiral, computer scientist" },
+  { id: "a81d5e09c3f2", label: "Ada Lovelace · Mathematician" },
+  { id: "5c27b8e4d1a0", label: "Katherine Johnson · NASA mathematician" },
+  { id: "e04f9b3a6c18", label: "Margaret Hamilton · Software engineer, Apollo" },
+  { id: "7b6e1d2c9f05", label: "Hedy Lamarr · Inventor" },
+];
+const PANEL: MockScenario["panel"] = {
+  view: {
+    doc: {
+      buttons: [
+        {
+          id: "bbreaking1",
+          label: "Breaking news",
+          color: "red",
+          confirm: true,
+          actions: [
+            { kind: "setFields", screen: "s1main01ab", layer: "l1strap", values: { headline: "Storm warning for the west coast" } },
+            { kind: "take", screen: "s1main01ab", layer: "l1strap" },
+          ],
+        },
+        { id: "bguest0on1", label: "Guest on", color: "green", confirm: false, actions: [{ kind: "take", screen: "s1main01ab", layer: "l2guest" }] },
+        { id: "bguest0off", label: "Guest off", color: "grey", confirm: false, actions: [{ kind: "clear", screen: "s1main01ab", layer: "l2guest" }] },
+        {
+          id: "bnextada01",
+          label: "Ada Lovelace",
+          color: "blue",
+          confirm: false,
+          actions: [
+            { kind: "selectRow", source: "src1guests", row: "a81d5e09c3f2" },
+            { kind: "setVariant", screen: "s1main01ab", layer: "l2guest", variant: "compact" },
+          ],
+        },
+        { id: "bbreak0001", label: "Break", color: "orange", confirm: true, actions: [{ kind: "runCue", flow: "mac3break0" }] },
+        {
+          id: "bsponsor01",
+          label: "Sponsor bug",
+          color: "purple",
+          confirm: false,
+          actions: [
+            { kind: "take", screen: "s1main01ab", layer: "l9sponsor" },
+            { kind: "clear", screen: "s1main01ab", layer: "l3bug" },
+          ],
+        },
+      ],
+    },
+    issues: [{ button: "bsponsor01", step: 1, message: "A layer of this button no longer exists." }],
+  },
+  targets: {
+    screens: [
+      {
+        id: "s1main01ab",
+        name: "Main program",
+        layers: [
+          { id: "l3bug", name: "LIVE bug", media: false, fields: MAIN_FIELDS.bug, bound: [], variants: [{ id: "default", label: "Default" }] },
+          {
+            id: "l2guest",
+            name: "Guest lower third",
+            media: false,
+            fields: MAIN_FIELDS.guest,
+            bound: ["name", "title"],
+            variants: [
+              { id: "default", label: "Default" },
+              { id: "compact", label: "Compact" },
+              { id: "split", label: "Split screen" },
+            ],
+          },
+          {
+            id: "l1strap",
+            name: "Breaking strap",
+            media: false,
+            fields: MAIN_FIELDS.strap,
+            bound: [],
+            variants: [{ id: "default", label: "Default" }],
+          },
+        ],
+      },
+    ],
+    cues: [
+      { id: "mac1intro0", label: "Show intro" },
+      { id: "mac2nextg0", label: "Next guest" },
+      { id: "mac3break0", label: "Break" },
+    ],
+    sources: [{ id: "src1guests", name: "Guests", rows: GUEST_ROWS }],
+  },
+};
+
 // Remote control (step 2): Control's chip with its panel open (people, lock, recent actions) and
 // the cue strip's Next; Preferences › Network & API › Remote control with Connection details and
 // a Test connection result.
@@ -1896,6 +1997,7 @@ for (const theme of ["dark", "light"] as const) {
           { id: "i4", status: "pending", email: "ola@studio-nord.no", name: null, permissions: ["take_clear", "run_cues", "watch_preview"], invitedAt: "2026-10-13T12:00:00Z", joinedAt: null, expiresAt: "2026-10-20T12:00:00Z" },
         ],
       },
+      panel: PANEL,
       remoteActivity: [
         { at: now - 60_000, name: "Kari Nordmann", role: "operator", text: "Kari Nordmann took Guest lower third" },
         { at: now - 240_000, name: "Jonas Berg", role: "data_editor", text: "Jonas Berg updated Name, Title on Guest lower third" },
@@ -1904,6 +2006,23 @@ for (const theme of ["dark", "light"] as const) {
 
     test.beforeEach(async ({ page, context, server }) => {
       await mirrorScreens(page, context, server);
+    });
+
+    test("control: the button panel editor, a complete button and one with a missing layer", async ({ page }) => {
+      await open(page, "/control", scenario());
+      await page.getByRole("button", { name: "Remote control: 3 connected" }).click();
+      await page.getByRole("button", { name: "Edit button panel…" }).click();
+      const dialog = page.getByRole("dialog", { name: "Button panel" });
+      const list = dialog.getByRole("region", { name: "Buttons" });
+      await expect(list.getByRole("button", { name: "Breaking news" })).toBeVisible();
+      await expect(dialog.getByLabel("Label").first()).toHaveValue("Breaking news");
+      await shot(page, `${theme}-91d-remote-button-panel`);
+      await list.getByRole("button", { name: "Ada Lovelace" }).click();
+      await expect(dialog.getByLabel("Row")).toBeVisible();
+      await shot(page, `${theme}-91e-remote-button-panel-row`);
+      await list.getByRole("button", { name: /Sponsor bug/ }).click();
+      await expect(dialog.getByText("A layer of this button no longer exists.")).toBeVisible();
+      await shot(page, `${theme}-91f-remote-button-panel-missing`);
     });
 
     test("control: the chip, its panel and Next in the cue strip", async ({ page }) => {

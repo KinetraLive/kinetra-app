@@ -246,6 +246,10 @@ impl AppState {
             if ok && p.sched.changes == p.backup.covers {
                 p.sched.marked = false;
                 p.sched.changed_at = None;
+                // A change made while it ran (its own flush) armed a timer for what it covered.
+                if let Some(timer) = p.sched.timer.take() {
+                    timer.abort();
+                }
                 (true, false)
             } else {
                 // Paused (full, held, offline…): the change waits, and arming follows the state.
@@ -332,10 +336,30 @@ impl AppState {
         self.emit_cloud();
     }
 
-    /// Tests: the wait after the last change.
+    /// Tests: the wait after the last change. A waiting timer sleeps to the old deadline, so it
+    /// starts again with the new interval (call it while the timer isn't due).
     #[doc(hidden)]
     pub fn set_test_cloud_interval(&self, d: Option<Duration>) {
         *lock(&self.cloud_projects().test_interval) = d;
+        let waiting = lock(&self.cloud_projects().inner)
+            .project
+            .as_mut()
+            .and_then(|p| p.sched.timer.take());
+        if let Some(t) = waiting {
+            t.abort();
+            self.cloud_arm();
+        }
+    }
+
+    /// Tests: when the waiting timer starts the next automatic backup.
+    #[doc(hidden)]
+    pub fn cloud_timer_due(&self) -> Option<Instant> {
+        let at = lock(&self.cloud_projects().inner)
+            .project
+            .as_ref()
+            .filter(|p| p.sched.timer.is_some())
+            .and_then(|p| p.sched.changed_at)?;
+        Some(at + self.cloud_interval())
     }
 
     /// Whether the next automatic backup is waiting (tests: no task at rest).

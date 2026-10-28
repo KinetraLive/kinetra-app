@@ -5,7 +5,7 @@
 //! {template.html,template.css}` (schema 1: `templates/<id>/{template.html,template.css}`), the
 //! `templates/<id>` and `templates/<id>/variants/<variantId>` folders themselves (moved in or
 //! out), `screens/<id>.json`, `sources/<id>.json`,
-//! `flows/<id>.json`, `controls.json` and images directly in `assets/` (path-safe names with an image extension)
+//! `flows/<id>.json`, `controls.json`, `panel.json` and images directly in `assets/` (path-safe names with an image extension)
 //! matter. Temp files (`*.tmp-*`), set-aside files (`*.corrupt-*`), `.backups/` and everything else are ignored.
 //!
 //! Events are debounced on one std thread: it blocks on `recv` (zero CPU at rest), and after a
@@ -32,6 +32,7 @@ use crate::core::controls::CONTROLS_FILE;
 use crate::core::flows::FLOWS_DIR;
 use crate::core::fsx;
 use crate::core::model::FileKind;
+use crate::core::panel::PANEL_FILE;
 use crate::core::screens::SCREENS_DIR;
 use crate::core::sources::SOURCES_DIR;
 use crate::core::templates::{
@@ -126,6 +127,7 @@ pub fn classify(root: &Path, path: &Path) -> Option<(FileKind, String)> {
         .collect::<Option<_>>()?;
     match parts.as_slice() {
         [file] if *file == CONTROLS_FILE => Some((FileKind::Controls, CONTROLS_FILE.to_string())),
+        [file] if *file == PANEL_FILE => Some((FileKind::Panel, PANEL_FILE.to_string())),
         [dir, file] if *dir == SCREENS_DIR => {
             let id = file.strip_suffix(".json")?;
             is_id(id).then(|| (FileKind::Screen, id.to_string()))
@@ -181,6 +183,7 @@ fn kind_order(k: FileKind) -> u8 {
         FileKind::Asset => 3,
         FileKind::Flow => 4,
         FileKind::Controls => 5,
+        FileKind::Panel => 6,
     }
 }
 

@@ -98,8 +98,15 @@ fn main() {
     } else {
         st.create_project(&parent, "Claude remote live test")
             .expect("project");
-        add_lower_third(&st);
+        let screen = add_lower_third(&st);
+        add_v2_show(&st, &screen);
     }
+    println!(
+        "project: {}",
+        st.project_dir()
+            .map(|d| d.display().to_string())
+            .unwrap_or_default()
+    );
 
     // Remote control on: protocol 2 and its features.
     st.remote_set(true).expect("remote control on");
@@ -259,7 +266,9 @@ fn main() {
         let mut done_lines = read_cmds().len();
         let (mut acts, mut refused) = (0usize, 0usize);
         'hold: while Instant::now() < until {
-            let activity = st.remote_activity();
+            // Newest first: print what came since the last look, oldest of those first.
+            let mut activity = st.remote_activity();
+            activity.reverse();
             for a in activity.iter().skip(acts) {
                 println!("activity: {} ({})", a.text, a.role);
             }
@@ -319,8 +328,117 @@ fn main() {
     println!("done (the test show stays on the account; delete it on the control site)");
 }
 
-/// Something to take and edit: a lower third on "Main".
-fn add_lower_third(st: &AppState) {
+/// Protocol 2's parts: a guest list bound to the lower third (rows), a countdown (timer), a cue
+/// that takes the countdown, and a button panel using every kind of step.
+fn add_v2_show(st: &AppState, screen: &str) {
+    let dir = st.project_dir().expect("project dir");
+    let cd = st
+        .templates()
+        .create(
+            &dir,
+            "Countdown",
+            &TemplateSource::Preset {
+                preset_id: "countdown".into(),
+            },
+        )
+        .expect("countdown template")
+        .id;
+    // The guest list.
+    let mut src = st.create_source("Guests").expect("source");
+    let row = |name: &str, title: &str| {
+        Fields::from([
+            ("name".to_string(), name.to_string()),
+            ("title".to_string(), title.to_string()),
+        ])
+    };
+    src.meta.kind = serde_json::from_value(serde_json::json!({
+        "kind": "text",
+        "columns": [{"key": "name", "label": "Name"}, {"key": "title", "label": "Title"}],
+        "rows": [row("Kari Nordmann", "Producer"), row("Ola Hansen", "Director"),
+                 row("Ingrid Vale", "Host"), row("Per Berg", "Guest")],
+        "index": 0,
+    }))
+    .expect("source kind");
+    let sid = st.save_source(src).expect("save source").id;
+    // Bind the lower third to it; add the countdown.
+    let mut doc = st.screens().doc(screen).expect("screen");
+    for l in &mut doc.meta.layers {
+        if let ScreenLayerKind::Template { bindings, .. } = &mut l.kind {
+            for col in ["name", "title"] {
+                bindings.insert(
+                    col.into(),
+                    serde_json::from_value(serde_json::json!({"sourceId": sid, "column": col}))
+                        .expect("binding"),
+                );
+            }
+        }
+    }
+    doc.meta.layers.push(ScreenLayer {
+        id: "cd1".into(),
+        name: "Countdown".into(),
+        rect: Rect {
+            x: 0,
+            y: 0,
+            w: 1920,
+            h: 1080,
+        },
+        kind: ScreenLayerKind::Template {
+            template_id: cd,
+            fields: [("title", "Back in")]
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .into(),
+            vars: Fields::new(),
+            bindings: Default::default(),
+            variant: None,
+            sizing: None,
+            opacity: None,
+        },
+        anchor: None,
+    });
+    st.save_screen(doc).expect("save screen");
+    // A cue that takes the countdown.
+    let cue: kinetra_lib::core::model::NewFlow = serde_json::from_value(serde_json::json!({
+        "name": "Countdown on", "armed": true, "retrigger": "restart", "origin": null,
+        "nodes": [
+            {"id": "c", "position": {"x": 0, "y": 0}, "type": "trigger.cue", "config": {}},
+            {"id": "t", "position": {"x": 200, "y": 0}, "type": "action.take",
+             "config": {"screenId": screen, "layerId": "cd1"}},
+        ],
+        "edges": [{"id": "e1", "from": {"node": "c", "port": "fired"},
+                   "to": {"node": "t", "port": "in"}, "kind": "event"}],
+    }))
+    .expect("cue flow");
+    let flow = st.create_flow(cue).expect("create cue").flow.id;
+    // The button panel.
+    let panel: kinetra_lib::core::model::PanelDoc = serde_json::from_value(serde_json::json!({
+        "buttons": [
+            {"id": "b1guest0on", "label": "Guest on", "color": "green",
+             "actions": [{"kind": "take", "screen": screen, "layer": "lt1"}]},
+            {"id": "b2guest0of", "label": "Guest off", "color": "grey",
+             "actions": [{"kind": "clear", "screen": screen, "layer": "lt1"}]},
+            {"id": "b3breaking", "label": "Breaking news", "color": "red", "confirm": true,
+             "actions": [{"kind": "setFields", "screen": screen, "layer": "lt1",
+                          "values": {"name": "Breaking news", "title": "Live from Oslo"}},
+                         {"kind": "take", "screen": screen, "layer": "lt1"}]},
+            {"id": "b4clock0go", "label": "Start clock", "color": "blue",
+             "actions": [{"kind": "timer", "screen": screen, "layer": "cd1",
+                          "field": "countdown", "op": "start"},
+                         {"kind": "runCue", "flow": flow}]},
+            {"id": "b5studio00", "label": "Take Preview", "color": "orange",
+             "actions": [{"kind": "studioTake", "screen": screen, "mode": "take"}]},
+        ]
+    }))
+    .expect("panel");
+    let v = st.save_panel(panel).expect("save panel");
+    println!(
+        "v2 show: guest list {sid}, countdown cd1, cue {flow}, {} buttons, {} panel issues",
+        v.doc.buttons.len(),
+        v.issues.len()
+    );
+}
+
+/// Something to take and edit: a lower third on "Main". Returns the screen id.
+fn add_lower_third(st: &AppState) -> String {
     let dir = st.project_dir().expect("project dir");
     let lt = st
         .templates()
@@ -365,7 +483,9 @@ fn add_lower_third(st: &AppState) {
         },
         anchor: None,
     });
+    let id = doc.id.clone();
     st.save_screen(doc).expect("save screen");
+    id
 }
 
 /// Removes every row for `addr` (pending or joined) and checks none is left.
@@ -400,7 +520,43 @@ fn run_command(rt: &tokio::runtime::Runtime, st: &AppState, addr: &str, line: &s
         .iter()
         .find(|x| x.email.eq_ignore_ascii_case(addr.trim()));
     let (cmd, arg) = line.split_once(' ').unwrap_or((line, ""));
+    let screen = st
+        .project_dir()
+        .ok()
+        .and_then(|d| st.screens().list(&d).ok())
+        .and_then(|l| l.into_iter().find(|s| s.name == "Main"))
+        .map(|s| s.id)
+        .unwrap_or_default();
     match cmd {
+        // This computer's own controls, to watch the control site follow.
+        "studio" => {
+            use kinetra_lib::core::model::{
+                PreviewAfterTake, StudioExit, StudioSettings, TakeTransition, TakeTransitionKind,
+            };
+            let r = st.set_studio(
+                StudioSettings {
+                    enabled: arg.trim() == "on",
+                    preview_after_take: PreviewAfterTake::Keep,
+                    transition: TakeTransition {
+                        kind: TakeTransitionKind::Crossfade,
+                        ms: 300,
+                    },
+                },
+                Some(StudioExit::Discard),
+            );
+            println!("studio {} → {}", arg.trim(), answer(r));
+        }
+        "take" | "clear" => {
+            use kinetra_lib::core::control_actions::ControlInput;
+            use kinetra_lib::core::model::ControlTarget;
+            let r = st.run_control(
+                &ControlTarget::Command {
+                    command_id: format!("live.{cmd}:{screen}/{}", arg.trim()),
+                },
+                ControlInput::Press,
+            );
+            println!("{cmd} {} → {}", arg.trim(), answer(r));
+        }
         "list" => {
             for c in &list.collaborators {
                 println!(

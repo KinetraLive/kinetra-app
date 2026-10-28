@@ -59,6 +59,15 @@
     inviting = true;
   }
 
+  type Panel = typeof import("./panel/PanelEditor.svelte").default;
+  let Panel = $state.raw<Panel | null>(null);
+  let editingPanel = $state(false);
+  async function editPanel() {
+    pop?.hidePopover();
+    Panel ??= (await import("./panel/PanelEditor.svelte")).default;
+    editingPanel = true;
+  }
+
   // "Move it here?" needs an answer: show the choices.
   let asked = false;
   $effect(() => {
@@ -76,11 +85,14 @@
     {#if lines.line}<span class="line" role="status">{lines.line.text}</span>{/if}
   </button>
   <div id="{id}-panel" popover bind:this={pop} class="pop" ontoggle={opened}>
-    <RemotePanel {view} {activity} oninvite={invite} />
+    <RemotePanel {view} {activity} oninvite={invite} onpanel={editPanel} />
   </div>
 {/if}
 {#if Invite}
   <Invite open={inviting} onclose={() => (inviting = false)} crewUrl={view?.crewUrl ?? null} />
+{/if}
+{#if Panel}
+  <Panel open={editingPanel} onclose={() => (editingPanel = false)} />
 {/if}
 
 <style>

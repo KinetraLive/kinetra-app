@@ -330,7 +330,7 @@ impl Inner {
                 }
             }
             // Feedback follows on air in Program, not the out-animation.
-            StateChange::Visible | StateChange::Preview => {}
+            StateChange::Visible | StateChange::Preview | StateChange::View => {}
         }
     }
 }

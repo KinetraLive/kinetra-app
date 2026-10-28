@@ -7,6 +7,8 @@
     Collaborators    Invite collaborator: the app's dialog (lazy) when the server offers invites,
                      else the control site's Collaborators page
     Lock remote take while on
+    Button panel     Edit button panel… (a lazy dialog, $lib/components/remote/panel/PanelEditor.svelte):
+                     buttons collaborators press on the control site; also with remote control off
     Allow remote preview   this project (project.json `remotePreview`, on by default)
     Preview streams  this computer (prefs `remote.previewStreams`, 1–4); both only where the
                      computer can send live pictures (`view.preview`: Windows)
@@ -112,6 +114,14 @@
     }
   }
 
+  type Panel = typeof import("$lib/components/remote/panel/PanelEditor.svelte").default;
+  let Panel = $state.raw<Panel | null>(null);
+  let editingPanel = $state(false);
+  async function editPanel() {
+    Panel ??= (await import("$lib/components/remote/panel/PanelEditor.svelte")).default;
+    editingPanel = true;
+  }
+
   let Confirm = $state.raw<Confirm | null>(null);
   let confirming = $state(false);
   async function askSeparate() {
@@ -166,6 +176,9 @@
         />
       </SettingsRow>
     {/if}
+    <SettingsRow label="Button panel" description="Buttons collaborators can press.">
+      <Button onclick={editPanel}>Edit button panel…</Button>
+    </SettingsRow>
     {#if view?.preview}
       <SettingsRow label="Allow remote preview" description="Collaborators can watch your screens live." for="pref-remote-preview">
         <Switch
@@ -194,6 +207,10 @@
 
 {#if Invite}
   <Invite open={inviting} onclose={() => (inviting = false)} crewUrl={view?.crewUrl ?? null} />
+{/if}
+
+{#if Panel}
+  <Panel open={editingPanel} onclose={() => (editingPanel = false)} />
 {/if}
 
 {#if Confirm && confirming}

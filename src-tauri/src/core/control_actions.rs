@@ -394,7 +394,7 @@ impl AppState {
 
     /// Cues a layer in (`visible`) or out of Preview, back to "as Program" when that is what
     /// Program shows (like Control's cue toggle).
-    fn studio_cue(&self, screen: &str, layer: &str, visible: bool) -> AppResult<()> {
+    pub(crate) fn studio_cue(&self, screen: &str, layer: &str, visible: bool) -> AppResult<()> {
         if is_reserved_screen(screen) {
             return Err(AppError::NotFound(format!("Screen not found: {screen}")));
         }

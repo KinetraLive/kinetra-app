@@ -32,6 +32,7 @@ pub mod midi;
 pub mod model;
 pub mod osc;
 pub mod outputs;
+pub mod panel;
 pub mod persist;
 pub mod polls;
 pub mod presets;

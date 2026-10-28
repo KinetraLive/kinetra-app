@@ -10,9 +10,9 @@
     lock      Lock remote take: remote take / clear / GO and on-air edits are refused
     activity  recent remote actions of this run (in memory only)
     actions   Invite collaborator (`oninvite`: the app's dialog, or the control site's page while
-              the server doesn't offer invites), Connection details (Preferences), End remote
-              control (the switch stays on: Start again)
-  Props: view (RemoteView), activity (RemoteActivity[], newest first), oninvite.
+              the server doesn't offer invites), Edit button panel… (`onpanel`), Connection
+              details (Preferences), End remote control (the switch stays on: Start again)
+  Props: view (RemoteView), activity (RemoteActivity[], newest first), oninvite, onpanel.
 -->
 <script lang="ts">
   import Button from "$lib/components/Button.svelte";
@@ -25,7 +25,12 @@
   import ControlLink from "./ControlLink.svelte";
   import { summaryOf } from "./permissions";
 
-  let { view, activity, oninvite }: { view: RemoteView; activity: RemoteActivity[]; oninvite: () => void } = $props();
+  let {
+    view,
+    activity,
+    oninvite,
+    onpanel,
+  }: { view: RemoteView; activity: RemoteActivity[]; oninvite: () => void; onpanel?: () => void } = $props();
   const clock = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
   let busy = $state(false);
@@ -136,6 +141,9 @@
   <div class="row links">
     {#if view.invites || view.crewUrl}
       <Button size="sm" onclick={oninvite}>Invite collaborator{view.invites ? "…" : " ↗"}</Button>
+    {/if}
+    {#if onpanel}
+      <Button size="sm" onclick={onpanel}>Edit button panel…</Button>
     {/if}
     <Button size="sm" variant="ghost" onclick={() => void openPreferences("remote")}>Connection details</Button>
   </div>

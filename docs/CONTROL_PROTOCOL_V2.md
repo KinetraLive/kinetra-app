@@ -1,4 +1,4 @@
-<!-- A copy of kinetra-cloud `docs/CONTROL_PROTOCOL_V2.md` (control-preview d4d4054, 2026-10-27; a DRAFT, server phases 1 and 3 built). kinetra-cloud's version wins; refresh this copy when it changes. -->
+<!-- A copy of kinetra-cloud `docs/CONTROL_PROTOCOL_V2.md` (control-phase2 0814624, 2026-10-28; a DRAFT, server phases 1, 2 and 3 built). kinetra-cloud's version wins; refresh this copy when it changes. -->
 
 # Kinetra cloud control protocol 2 (draft)
 
@@ -7,7 +7,9 @@ Server phase 1 deployed with `main` (2026-10-27): negotiation, `features`
 (`permissions`, `invites`), permissions and the protocol 1 mapping (§2, §8), the
 collaborators API (§9). Server phase 3 built on `control-preview` (2026-10-27): live
 preview (§6, §7), announced as `preview`; marked **(phase 3)** below: what it settles that
-the draft left open.**
+the draft left open. Server phase 2 built on `control-phase2` (2026-10-28): state v2 and
+the new commands (§4, §5), announced as `timers`, `variants`, `rows`, `studio`, `panel`;
+marked **(phase 2)** below.**
 (kinetra-private `docs/HANDOFF_TO_CLOUD_CONTROL_V2.md`, f174944). Remote control v1.1. Plan
 and decisions: `docs/PLAN.md` → Remote control v1.1. What the app builds, in order:
 `docs/APP_HANDOFF_CONTROL_V2.md`.
@@ -322,6 +324,28 @@ buttons 48 (labels ≤ 40), variants per template 12, preview streams 4 (§6.1).
   app's remote panel lists the press. PANIC and Clear all are never button actions or
   commands: they stay local-only.
 
+**(phase 2) What the server checks before forwarding,** in this order (the app checks
+again, and alone checks stale, existence and values):
+
+1. Size (`too_large`); the command's feature announced (`unsupported` "That isn't
+   available yet."; never forwarded); the permission (`permission`); the show machine
+   connected (`show_offline`).
+2. A protocol 1 app → `app_too_old` for every command of this table but protocol 1's four.
+3. Media layers: `timer` and `set_variant` → `read_only` (like take/clear/update). `timer`
+   on a field that isn't a `timer` field of the layer's template → `invalid`.
+4. Studio commands outside Studio mode (`studio_mode: false` in the server's copy) →
+   `busy` "Studio mode is off on the show machine.", the app's text.
+5. The lock (§2), with "changes what's on air" from the table: `select_row`/`step_row`
+   when any layer listing the source in `layers.*.sources` is on air; `press_button` by
+   the button's `on_air` (a button the state doesn't have counts as on air).
+
+Results, including `details: {step, steps}` from a button, reach the browser as the app
+sent them. State v2 is validated like the rest of the state (§4.6 limits, ids unique per
+template, source and panel; every referenced id exists): a layer's `variant` /
+`variant_next` must be one of its template's variants, `layers.*.sources` and
+`source_order` must name listed sources, and a source's `current` must be one of its rows
+unless the source is `truncated`. Media layers have no `variant` or `sources`.
+
 ### What the app checks [§8, "What the app checks"]
 
 Unchanged order; step 4 becomes **Permission** (per the table above; `on_air` for
@@ -339,7 +363,9 @@ and the action needs protocol 2 (§8); it never reaches the app.
 
 As protocol 1, plus the permission used. For `press_button`: the button id, not its actions.
 For rows: the source and row ids, never labels. For timers and variants: the field key or
-variant id.
+variant id. **(phase 2)** `control_audit` gets `screen`, `source` and `item` (the variant,
+row or button id; the timer op; `next`/`previous` for `step_row`; `take`/`cut`), next to
+`layer` and `fields` (a timer's field key).
 
 ## 6. Live preview (new)
 

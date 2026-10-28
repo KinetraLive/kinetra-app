@@ -1519,6 +1519,7 @@ impl Session<'_> {
                 take_locked: input.take_locked,
                 model: &m,
                 assets: &input.assets,
+                parts: input.parts,
             };
             let r = commands::run(&st, &ctx, &c);
             let labels = match (&r, c.args["layer"].as_str()) {

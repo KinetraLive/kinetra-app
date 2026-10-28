@@ -27,6 +27,8 @@ import type {
   BrandKit,
   ControlApiView,
   ControlsDoc,
+  PanelTargets,
+  PanelView,
   ControlViewState,
   DisplayInfo,
   FlowInfo,
@@ -173,6 +175,9 @@ export interface MockScenario {
   remoteActivity?: RemoteActivity[];
   /** The show's collaborators (`remote_collaborators`); changed by invite / set / remove. */
   collaborators?: Collaborators;
+  /** Remote control's button panel: the stored buttons with their issues, and what the editor's
+   *  pickers offer; default none. `save_panel` keeps the doc (issues of removed buttons go). */
+  panel?: { view: PanelView; targets: PanelTargets };
   cueNext?: string | null;
   /** The Control API (Preferences › Network & API): the switch and connected programs; default off.
    *  `control_api_set` switches it (emits `control-api`), `control_api_disconnect` drops one. */
@@ -1559,6 +1564,7 @@ export function installMockTauri(s: MockScenario): void {
 
   // ---- MIDI / OSC control ------------------------------------------------------------------------
   let controlsDoc: ControlsDoc = s.controls ?? { mappings: [] };
+  let panelView: PanelView = s.panel?.view ?? { doc: { buttons: [] }, issues: [] };
   let learnTimer: ReturnType<typeof setTimeout> | undefined;
   const midiHandlers: Record<string, (args: Record<string, unknown>) => unknown> = {
     list_midi_devices: () => s.midiDevices ?? [],
@@ -1566,6 +1572,13 @@ export function installMockTauri(s: MockScenario): void {
     watch_midi_devices: () => null,
     osc_status: () => s.oscStatus ?? { state: "listening", port: 9000, lan: false },
     get_controls: () => controlsDoc,
+    get_panel: () => panelView,
+    save_panel: (a) => {
+      const doc = a.doc as PanelView["doc"];
+      panelView = { doc, issues: panelView.issues.filter((i) => doc.buttons.some((b) => b.id === i.button)) };
+      return panelView;
+    },
+    panel_targets: () => s.panel?.targets ?? { screens: [], cues: [], sources: [] },
     save_controls: (a) => {
       controlsDoc = a.doc as ControlsDoc;
       setTimeout(() => emit("controls-changed", controlsDoc), 0);

@@ -105,6 +105,97 @@ export interface ControlsDoc {
   mappings: ControlMapping[];
 }
 
+// ---- Button panel (panel.json; mirrors model.rs) --------------------------------------------
+
+/** Remote control's button panel: at most this many buttons, actions per button, label characters. */
+export const PANEL_BUTTONS_MAX = 48;
+export const PANEL_ACTIONS_MAX = 8;
+export const PANEL_LABEL_MAX = 40;
+
+export type PanelColor = "grey" | "red" | "orange" | "yellow" | "green" | "blue" | "purple";
+export const PANEL_COLORS: readonly PanelColor[] = ["grey", "red", "orange", "yellow", "green", "blue", "purple"];
+
+export type PanelTimerOp = "start" | "pause" | "reset";
+export type PanelTakeMode = "take" | "cut";
+
+/** One step of a button. Layers are the screen's own ids; `selectRow`'s `row` is a row id from `panel_rows`. */
+export type PanelAction =
+  | { kind: "take"; screen: string; layer: string }
+  | { kind: "clear"; screen: string; layer: string }
+  | { kind: "runCue"; flow: string }
+  | { kind: "setFields"; screen: string; layer: string; values: Record<string, string> }
+  | { kind: "setVariant"; screen: string; layer: string; variant: string }
+  | { kind: "timer"; screen: string; layer: string; field: string; op: PanelTimerOp }
+  | { kind: "selectRow"; source: string; row: string }
+  | { kind: "studioTake"; screen: string; mode: PanelTakeMode };
+
+export type PanelActionKind = PanelAction["kind"];
+
+export interface PanelButton {
+  id: string;
+  label: string;
+  color: PanelColor;
+  confirm: boolean;
+  actions: PanelAction[];
+}
+
+/** `<project>/panel.json`. */
+export interface PanelDoc {
+  buttons: PanelButton[];
+}
+
+/** A step whose target is missing (`step` is 1-based). */
+export interface PanelIssue {
+  button: string;
+  step: number;
+  message: string;
+}
+
+/** `get_panel` / `save_panel` / event `panel-changed`. */
+export interface PanelView {
+  doc: PanelDoc;
+  issues: PanelIssue[];
+}
+
+export interface PanelRow {
+  id: string;
+  label: string;
+}
+
+/** A table source's rows for the row picker. */
+export interface PanelSourceRows {
+  id: string;
+  name: string;
+  rows: PanelRow[];
+}
+
+/** `panel_targets` (mirrors core/panel.rs): what the editor's pickers offer. */
+export interface PanelTargets {
+  screens: PanelScreen[];
+  /** Cue flows (`label` = the cue's name). */
+  cues: PanelRow[];
+  sources: PanelSourceRows[];
+}
+
+export interface PanelScreen {
+  id: string;
+  name: string;
+  /** Top first, as Control lists them. */
+  layers: PanelLayer[];
+}
+
+export interface PanelLayer {
+  id: string;
+  name: string;
+  /** Video / image / audio: only take and clear. */
+  media: boolean;
+  fields: FieldDef[];
+  /** Field keys fed by a data source. */
+  bound: string[];
+  /** The template's looks (`label` = the name). */
+  variants: PanelRow[];
+}
+
 /** One captured MIDI message while learning (event `midi-learn`). */
 export interface MidiLearned {
   device: string;
@@ -736,7 +827,7 @@ export interface BackupInfo {
   bytes: number;
 }
 
-export type SettingsSection = "prefs" | "project" | "uiState" | "controls";
+export type SettingsSection = "prefs" | "project" | "uiState" | "controls" | "panel";
 
 export interface FieldChange {
   /** Dotted path, e.g. `backup.intervalMinutes`. */
@@ -1610,7 +1701,7 @@ export interface ScreenState {
 
 // ---- Project files watcher ------------------------------------------------------------------
 
-export type FileKind = "template" | "screen" | "source" | "asset" | "flow" | "controls";
+export type FileKind = "template" | "screen" | "source" | "asset" | "flow" | "controls" | "panel";
 /** `invalid`: changed but failed to load; the last good state is kept (`message` says why). */
 export type FileChange = "changed" | "removed" | "invalid";
 

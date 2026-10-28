@@ -1276,12 +1276,14 @@ fn a_change_backs_up_after_the_interval_and_nothing_waits_at_rest() {
     wait_until("timer", || e.st.cloud_timer_waiting());
     wait_until("auto backup", || reasons(&e) == ["auto"]);
     e.wait_done();
-    // Said in full when it fails (it timed out on macOS only: what re-armed the timer?).
+    // A change during the backup (its flush) armed a timer the backup then covered: it stops.
     let t = Instant::now();
     while e.st.cloud_timer_waiting() {
         assert!(
             t.elapsed() < Duration::from_secs(5),
-            "timed out: nothing waits; backups {:?}, pending {}, log {:?}",
+            "timed out: nothing waits; due in {:?}, backups {:?}, pending {}, log {:?}",
+            e.st.cloud_timer_due()
+                .map(|d| d.saturating_duration_since(Instant::now())),
             reasons(&e),
             e.st.cloud_record().unwrap().pending,
             e.log()
@@ -1299,16 +1301,25 @@ fn a_change_backs_up_after_the_interval_and_nothing_waits_at_rest() {
 #[test]
 fn many_changes_make_one_backup_after_the_last() {
     let e = env();
-    e.st.set_test_cloud_interval(Some(Duration::from_millis(600)));
+    // Long enough that no write of the burst (a disk flush can stall under load) lets it fire.
+    e.st.set_test_cloud_interval(Some(Duration::from_secs(60)));
     e.rt_block(e.st.cloud_refresh(false)).unwrap();
+    let mut due = None;
     for i in 0..5 {
         own_write(&e, &format!("assets/{i}.txt"), b"x");
-        std::thread::sleep(Duration::from_millis(60));
+        wait_until("timer", || e.st.cloud_timer_due() > due);
+        // Each change moves the deadline: the backup waits for the last one.
+        due = e.st.cloud_timer_due();
+        std::thread::sleep(Duration::from_millis(5));
     }
+    assert!(reasons(&e).is_empty());
+    // Due now: the waiting timer starts again with the short interval and fires.
+    e.st.set_test_cloud_interval(Some(Duration::from_millis(50)));
     wait_until("auto backup", || reasons(&e).len() == 1);
     e.wait_done();
-    std::thread::sleep(Duration::from_millis(700));
+    std::thread::sleep(Duration::from_millis(300));
     assert_eq!(reasons(&e), ["auto"], "one backup for the burst");
+    assert!(!e.st.cloud_timer_waiting());
     let paths = e.paths();
     assert!((0..5).all(|i| paths.contains(&format!("assets/{i}.txt"))));
 }

@@ -1849,5 +1849,7 @@ fn a_local_preview_cue_reaches_remote_browsers() {
     });
 }
 
+mod commands_v2;
 mod preview;
+mod state_v2;
 mod v2;

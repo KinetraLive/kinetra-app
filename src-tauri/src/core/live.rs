@@ -542,6 +542,10 @@ pub struct LiveLayerView {
     /// The variant shown (with `pending`, the staged one); `""` when there is none.
     #[serde(default)]
     pub variant: String,
+    /// The variant the output shows now (with `pending`, the one before the staged change).
+    /// Remote control's `variant` / `variant_next`; not sent to the UI.
+    #[serde(skip)]
+    pub on_air_variant: String,
     /// Media layers only: playback (Program), readiness and the file's duration.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub media: Option<MediaLayerView>,
@@ -1973,6 +1977,7 @@ impl LayerLive {
             field_defs: template.fields.clone(),
             pending: staged.is_some(),
             variant: variant.clone(),
+            on_air_variant: self.variant.clone(),
             media: self.media.as_ref().map(|m| MediaLayerView {
                 playback: self.playback,
                 readiness: self.readiness.clone(),
