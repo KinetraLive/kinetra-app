@@ -1,4 +1,5 @@
-# Canary: nightly at 03:00 UTC when main has changed since the canary that is out, or by hand
+# Canary: nightly at 03:00 UTC when main has changed since the canary that is out and
+# CHANGELOG.md's Unreleased notes are new, or by hand
 # (Run workflow, main only) → X.Y.Z-canary.YYYYMMDD.N, fast tests, Kinetra Canary builds,
 # uploaded to releases/canary/<version>/ and updates/latest-canary.json. docs/RELEASING.md.
 name: Canary release
@@ -21,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.v.outputs.version }}
-      changed: ${{ steps.changed.outputs.changed }}
+      changed: ${{ steps.notes.outputs.build }}
     steps:
       - name: Main only
         if: github.ref != 'refs/heads/main'
@@ -43,9 +44,11 @@ jobs:
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
-      - name: Release notes updated?
-        # CHANGELOG.md's Unreleased section must change for each canary (docs/RELEASING.md). A
-        # manual run stops; the nightly one builds with a warning.
+      - id: notes
+        name: Release notes updated?
+        # CHANGELOG.md's Unreleased section holds only what's new in this canary and must change
+        # for each one (docs/RELEASING.md), so users never see commit subjects. A manual run
+        # stops; the nightly one skips the build until notes are written.
         if: steps.changed.outputs.changed == 'true'
         env:
           EVENT: ${{ github.event_name }}
@@ -60,10 +63,13 @@ jobs:
           esac
           if [ -n "${msg:-}" ]; then
             if [ "$EVENT" = "workflow_dispatch" ]; then echo "::error::$msg"; exit 1; fi
-            echo "::warning::$msg"
+            echo "::warning::$msg No canary tonight."
+            echo "build=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "build=true" >> "$GITHUB_OUTPUT"
           fi
       - id: v
-        if: steps.changed.outputs.changed == 'true'
+        if: steps.notes.outputs.build == 'true'
         env:
           RUN: ${{ github.run_number }}
         run: node .github/scripts/release.mjs version --channel canary --run "$RUN"

@@ -1,13 +1,19 @@
 # Changelog
 
-Release notes for Kinetra, newest first. A stable release vX.Y.Z uses its "X.Y.Z" section below
-as the update notes (shown in Help › Check for updates); canary builds use the "Unreleased"
-section when it has text, else the commit subjects. See docs/RELEASING.md.
+Release notes for Kinetra, newest first, shown in Help › Check for updates. See docs/RELEASING.md.
+
+- "Unreleased" is the next canary's notes: only what's new since the canary that is out. Write it
+  before each canary; after it ships, move its paragraphs into "Next stable release" and leave
+  "Unreleased" empty. (A nightly canary without new notes isn't built.)
+- "Next stable release" collects everything since the last stable release. A stable release
+  vX.Y.Z renames it to "X.Y.Z" (rewritten for it) and starts a new empty one.
 
 Written for Kinetra's users (what they gain, not internal changes) and shown as plain text in the
 update panel: one paragraph per line, no Markdown.
 
 ## Unreleased
+
+## Next stable release
 
 Send screens over NDI® (Windows, every plan): add an NDI® output in Preferences › Outputs and the screen shows up in vMix, OBS and other NDI® tools on your network, with transparency and tally. Setup, frame rates and known limits: docs.kinetra.live/ndi
 
