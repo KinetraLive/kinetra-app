@@ -580,14 +580,14 @@ describe("source editor: image columns", () => {
 });
 
 describe("sources page: schedules", () => {
-  it("New source offers Data table, Schedule, CSV link or API; Schedule calls createSchedule", async () => {
+  it("New source offers Data table, Schedule, CSV link, API or Live data; Schedule calls createSchedule", async () => {
     const onclose = vi.fn();
     const oncreated = vi.fn();
     render(NewSourceDialog, { open: true, onclose, oncreated, names: [] });
     await tick();
     const group = screen.getByRole("radiogroup", { name: "Kind" });
     const radios = within(group).getAllByRole("radio") as HTMLInputElement[];
-    expect(radios.map((r) => r.value)).toEqual(["text", "schedule", "csv", "api"]);
+    expect(radios.map((r) => r.value)).toEqual(["text", "schedule", "csv", "api", "socket"]);
     expect(radios[0].checked).toBe(true);
     await fireEvent.click(radios[1]);
     await fireEvent.input(screen.getByLabelText("Name"), { target: { value: "Day one" } });
