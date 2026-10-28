@@ -103,7 +103,9 @@ fn main() {
     }
     println!(
         "project: {}",
-        st.project_dir().map(|d| d.display().to_string()).unwrap_or_default()
+        st.project_dir()
+            .map(|d| d.display().to_string())
+            .unwrap_or_default()
     );
 
     // Remote control on: protocol 2 and its features.
