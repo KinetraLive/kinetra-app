@@ -380,6 +380,9 @@ struct Notifier {
     /// Run after a flush that emitted a Preview view (remote control and the Control API show
     /// Preview; its changes don't go through the live hook, which follows Program).
     preview_hook: RwLock<Option<LiveHook>>,
+    /// Run after a flush that emitted a changed Program view: content can change without an
+    /// on-air change (a take applying staged content), which the live hook doesn't follow.
+    view_hook: RwLock<Option<LiveHook>>,
 }
 
 impl Notifier {
@@ -396,6 +399,7 @@ impl Notifier {
             cues_dirty: AtomicBool::new(false),
             cues_hook: RwLock::new(None),
             preview_hook: RwLock::new(None),
+            view_hook: RwLock::new(None),
         }
     }
 
@@ -536,6 +540,7 @@ impl Notifier {
             .unwrap_or_else(PoisonError::into_inner)
             .clone();
         let mut preview = false;
+        let mut view = false;
         if let Some(sink) = sink {
             let _gate = lock(&self.gate);
             loop {
@@ -545,7 +550,10 @@ impl Notifier {
                 }
                 for note in batch {
                     let (name, v) = match note {
-                        Note::Live(v) => (names::LIVE_CHANGED, serde_json::to_value(&v)),
+                        Note::Live(v) => {
+                            view = true;
+                            (names::LIVE_CHANGED, serde_json::to_value(&v))
+                        }
                         Note::Preview(v) => {
                             preview = true;
                             (names::PREVIEW_CHANGED, serde_json::to_value(&v))
@@ -561,6 +569,16 @@ impl Notifier {
         if self.cues_dirty.swap(false, AtomicOrdering::SeqCst) {
             let hook = self
                 .cues_hook
+                .read()
+                .unwrap_or_else(PoisonError::into_inner)
+                .clone();
+            if let Some(h) = hook {
+                h();
+            }
+        }
+        if view {
+            let hook = self
+                .view_hook
                 .read()
                 .unwrap_or_else(PoisonError::into_inner)
                 .clone();
@@ -731,6 +749,16 @@ impl LiveHub {
         *self
             .notifier
             .preview_hook
+            .write()
+            .unwrap_or_else(PoisonError::into_inner) = Some(hook);
+    }
+
+    /// Installs the callback run (with no hub lock held) after a Program view changed (`live-changed`
+    /// went out), on air or not.
+    pub fn set_view_hook(&self, hook: LiveHook) {
+        *self
+            .notifier
+            .view_hook
             .write()
             .unwrap_or_else(PoisonError::into_inner) = Some(hook);
     }

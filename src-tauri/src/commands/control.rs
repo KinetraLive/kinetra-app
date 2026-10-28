@@ -8,7 +8,8 @@
 use tauri::State;
 
 use crate::core::live::{LiveLayerView, LiveScreenView};
-use crate::core::model::ControlsDoc;
+use crate::core::model::{ControlsDoc, PanelDoc, PanelView};
+use crate::core::panel::PanelTargets;
 use crate::core::protocol::Fields;
 use crate::core::state::AppState;
 use crate::error::AppResult;
@@ -64,4 +65,24 @@ pub fn get_controls(state: State<'_, AppState>) -> AppResult<ControlsDoc> {
 #[tauri::command]
 pub fn save_controls(state: State<'_, AppState>, doc: ControlsDoc) -> AppResult<ControlsDoc> {
     state.save_controls(doc)
+}
+
+/// The open project's button panel (remote control) and its missing targets. `noProject`
+/// without a project.
+#[tauri::command]
+pub fn get_panel(state: State<'_, AppState>) -> AppResult<PanelView> {
+    state.get_panel()
+}
+
+/// Validates and stores the button panel (written coalesced); `invalid` for a bad button.
+/// Emits `panel-changed` when something changed.
+#[tauri::command]
+pub fn save_panel(state: State<'_, AppState>, doc: PanelDoc) -> AppResult<PanelView> {
+    state.save_panel(doc)
+}
+
+/// What the panel editor's pickers offer: screens and layers, cues, table sources' rows.
+#[tauri::command]
+pub fn panel_targets(state: State<'_, AppState>) -> AppResult<PanelTargets> {
+    state.panel_targets()
 }

@@ -401,6 +401,142 @@ pub struct ControlsDoc {
     pub mappings: Vec<ControlMapping>,
 }
 
+// ---- Button panel (panel.json) --------------------------------------------------------------
+
+/// Remote control's button panel (protocol 2 §4.3): at most this many buttons, actions per
+/// button and characters per label.
+pub const PANEL_BUTTONS_MAX: usize = 48;
+pub const PANEL_ACTIONS_MAX: usize = 8;
+pub const PANEL_LABEL_MAX: usize = 40;
+
+/// `<project>/panel.json`: buttons collaborators press on the control site. Configured here
+/// (Simple and Advanced); the actions never leave the app (the state carries labels only).
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct PanelDoc {
+    pub buttons: Vec<PanelButton>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PanelButton {
+    pub id: String,
+    /// 1–40 characters.
+    pub label: String,
+    #[serde(default)]
+    pub color: PanelColor,
+    /// The browser asks for a second tap.
+    #[serde(default)]
+    pub confirm: bool,
+    /// 1–8, run in order; the first failure stops the button.
+    pub actions: Vec<PanelAction>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PanelColor {
+    #[default]
+    Grey,
+    Red,
+    Orange,
+    Yellow,
+    Green,
+    Blue,
+    Purple,
+}
+
+/// One step of a button. Layers are the screen's own ids; `selectRow`'s `row` is a row id as
+/// remote control derives it (`core::remote::state::row_ids`), so an edited row is reported
+/// missing instead of picking another one.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum PanelAction {
+    Take {
+        screen: String,
+        layer: String,
+    },
+    Clear {
+        screen: String,
+        layer: String,
+    },
+    RunCue {
+        flow: String,
+    },
+    SetFields {
+        screen: String,
+        layer: String,
+        values: crate::core::protocol::Fields,
+    },
+    SetVariant {
+        screen: String,
+        layer: String,
+        variant: String,
+    },
+    Timer {
+        screen: String,
+        layer: String,
+        field: String,
+        op: PanelTimerOp,
+    },
+    SelectRow {
+        source: String,
+        row: String,
+    },
+    StudioTake {
+        screen: String,
+        mode: PanelTakeMode,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PanelTimerOp {
+    Start,
+    Pause,
+    Reset,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PanelTakeMode {
+    Take,
+    Cut,
+}
+
+/// A button step whose target is missing (shown on the button in the editor; never a load
+/// failure). `step` is 1-based.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PanelIssue {
+    pub button: String,
+    pub step: u32,
+    pub message: String,
+}
+
+/// `get_panel`: the buttons and what's missing; plus the rows a `selectRow` step can pick.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PanelView {
+    pub doc: PanelDoc,
+    pub issues: Vec<PanelIssue>,
+}
+
+/// A table source's rows for the editor's row picker (ids as `selectRow` stores them).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PanelSourceRows {
+    pub id: String,
+    pub name: String,
+    pub rows: Vec<PanelRow>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PanelRow {
+    pub id: String,
+    pub label: String,
+}
+
 /// One captured MIDI message while learning (event `midi-learn`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -1479,6 +1615,8 @@ pub enum SettingsSection {
     UiState,
     /// The project's MIDI mappings (`controls.json`).
     Controls,
+    /// Remote control's button panel (`panel.json`).
+    Panel,
 }
 
 pub const SETTINGS_EXPORT_KIND: &str = "kinetra/settings";
@@ -4209,6 +4347,8 @@ pub enum FileKind {
     Flow,
     /// `controls.json` (MIDI mappings; id = the file name).
     Controls,
+    /// `panel.json` (remote control's button panel; id = the file name).
+    Panel,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

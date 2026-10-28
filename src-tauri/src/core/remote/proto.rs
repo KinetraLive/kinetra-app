@@ -63,6 +63,12 @@ pub const TEMPLATES_MAX: usize = 200;
 pub const CUES_MAX: usize = 500;
 pub const ASSETS_MAX: usize = 1000;
 pub const NAME_MAX: usize = 100;
+/// Protocol 2 §4.6: sources, rows per source (labels ≤ [`NAME_MAX`]).
+pub const SOURCES_MAX: usize = 32;
+pub const ROWS_MAX: usize = 1000;
+/// All sources' row lists together (ids and labels), so rows alone can't push a snapshot past
+/// its 2 MB: a source that doesn't fit is `truncated`.
+pub const ROWS_BYTES_MAX: usize = 512 * 1024;
 pub const LIST_VALUE_MAX: usize = 64 * 1024;
 pub const VALUE_MAX: usize = 16 * 1024;
 /// Keys in one `update_fields` (§8).

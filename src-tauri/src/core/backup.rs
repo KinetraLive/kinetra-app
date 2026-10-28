@@ -32,11 +32,12 @@ use crate::core::project::BACKUPS_DIR;
 use crate::error::AppError;
 
 /// Top-level files of the config set.
-pub const CONFIG_FILES: [&str; 4] = [
+pub const CONFIG_FILES: [&str; 5] = [
     "project.json",
     "ui-state.json",
     "macros.json",
     "controls.json",
+    "panel.json",
 ];
 /// Top-level directories of the config set (copied recursively).
 pub const CONFIG_DIRS: [&str; 6] = [

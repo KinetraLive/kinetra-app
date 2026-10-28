@@ -55,6 +55,8 @@ pub mod names {
     /// Payload: `ControlsDoc` after `controls.json` was saved, reloaded from disk (watcher,
     /// restore, import) or a project opened or closed (closed: no mappings).
     pub const CONTROLS_CHANGED: &str = "controls-changed";
+    /// The button panel changed (save, watcher, project open / close): `PanelView`.
+    pub const PANEL_CHANGED: &str = "panel-changed";
     /// Payload: `{ source: MidiSource, mappingIds: string[] }` when an input matches conflicting
     /// mappings (neither runs); at most once per 2 s per source.
     pub const CONTROL_CONFLICT: &str = "control-conflict";

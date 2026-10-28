@@ -104,6 +104,7 @@ export interface EventPayloads {
   "midi-learn": import("../types").MidiLearned;
   /** controls.json changed (a save, an external edit). */
   "controls-changed": import("../types").ControlsDoc;
+  "panel-changed": import("../types").PanelView;
   /** An input matched two or more mappings: none ran (≤ 1 per 2 s per source). */
   "control-conflict": { source: import("../types").MidiSource; mappingIds: string[] };
   /** The OSC listener started, stopped or couldn't bind its port. */

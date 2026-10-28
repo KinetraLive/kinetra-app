@@ -19,6 +19,7 @@ export const SECTION_LABELS: Record<SettingsSection, string> = {
   project: "Project settings",
   uiState: "Control & layout",
   controls: "MIDI mappings",
+  panel: "Button panel",
 };
 
 export const RESET_DONE: Record<ResetScope, string> = {

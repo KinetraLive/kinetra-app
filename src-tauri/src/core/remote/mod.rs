@@ -507,9 +507,14 @@ impl AppState {
     /// The tree's inputs besides the app state: the lock, the last cue run and the assets
     /// (read from disk only after a media change). Call from a thread that may block.
     pub(crate) fn remote_build_input(&self) -> state::BuildInput {
-        let (take_locked, last_cue, cached) = {
+        let (take_locked, last_cue, cached, parts) = {
             let g = lock(&self.remote().inner);
-            (g.view.take_locked, g.last_cue.clone(), g.assets.clone())
+            (
+                g.view.take_locked,
+                g.last_cue.clone(),
+                g.assets.clone(),
+                state::Parts::of(&g.view.features),
+            )
         };
         let assets = match cached {
             Some(a) => a,
@@ -524,6 +529,7 @@ impl AppState {
             last_cue,
             assets: assets.as_ref().clone(),
             flavor: state::Flavor::Remote,
+            parts,
         }
     }
 

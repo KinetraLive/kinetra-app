@@ -868,6 +868,7 @@ impl AppState {
                 FileKind::Asset => Some(self.asset_file_changed(dir, &id)),
                 FileKind::Flow => self.reload_flow(dir, &id),
                 FileKind::Controls => self.reload_controls(dir),
+                FileKind::Panel => self.reload_panel(dir),
             };
             if let Some(c) = change {
                 emit_files_changed(&**self.events(), &c);

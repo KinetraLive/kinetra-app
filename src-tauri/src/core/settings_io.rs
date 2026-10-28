@@ -1,5 +1,5 @@
 //! Settings export/import: one JSON file holding app prefs plus, when a project is open, its
-//! settings, UI state and MIDI mappings (`controls`). Secrets are never part of it (see the key-set test).
+//! settings, UI state, MIDI mappings (`controls`) and the button panel (`panel`). Secrets are never part of it (see the key-set test).
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -12,8 +12,8 @@ use serde_json::{Map, Value};
 
 use crate::core::fsx;
 use crate::core::model::{
-    BackupReason, ControlsDoc, FieldChange, ImportPreview, Prefs, ProjectSettings, SectionDiff,
-    SettingsSection, UiState, LEGACY_SETTINGS_EXPORT_KINDS, SETTINGS_EXPORT_KIND,
+    BackupReason, ControlsDoc, FieldChange, ImportPreview, PanelDoc, Prefs, ProjectSettings,
+    SectionDiff, SettingsSection, UiState, LEGACY_SETTINGS_EXPORT_KINDS, SETTINGS_EXPORT_KIND,
 };
 use crate::core::state::{clamp_prefs, clamp_ui_state, validate_project_settings, AppState};
 use crate::error::{AppError, AppResult};
@@ -37,10 +37,17 @@ struct ExportFile<'a> {
     ui_state: Option<&'a UiState>,
     #[serde(skip_serializing_if = "Option::is_none")]
     controls: Option<&'a ControlsDoc>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    panel: Option<&'a PanelDoc>,
 }
 
-/// The open project's part of the settings: settings, UI state and MIDI mappings.
-type ProjectPart<'a> = (&'a ProjectSettings, &'a UiState, &'a ControlsDoc);
+/// The open project's part of the settings: settings, UI state, MIDI mappings and panel.
+type ProjectPart<'a> = (
+    &'a ProjectSettings,
+    &'a UiState,
+    &'a ControlsDoc,
+    &'a PanelDoc,
+);
 
 /// The export document. `project` is the open project's settings, UI state and mappings, if any.
 pub fn export_value(prefs: &Prefs, project: Option<ProjectPart<'_>>) -> AppResult<Value> {
@@ -53,24 +60,26 @@ pub fn export_value(prefs: &Prefs, project: Option<ProjectPart<'_>>) -> AppResul
         project: project.map(|p| p.0),
         ui_state: project.map(|p| p.1),
         controls: project.map(|p| p.2),
+        panel: project.map(|p| p.3),
     };
     Ok(serde_json::to_value(&file)?)
 }
 
-type ProjectOwned = (ProjectSettings, UiState, ControlsDoc);
+type ProjectOwned = (ProjectSettings, UiState, ControlsDoc, PanelDoc);
 
 /// In-memory settings of `state`: prefs plus the open project's settings, UI state and mappings.
 fn current(state: &AppState) -> (Prefs, Option<ProjectOwned>) {
     let project = state.current_project().and_then(|p| {
         let ui = state.ui_state().ok()?;
         let controls = state.get_controls().ok()?;
-        Some((p.settings, ui, controls))
+        let panel = (*state.panel_doc().ok()?).clone();
+        Some((p.settings, ui, controls, panel))
     });
     (state.prefs(), project)
 }
 
 fn borrowed(p: &Option<ProjectOwned>) -> Option<ProjectPart<'_>> {
-    p.as_ref().map(|(s, u, c)| (s, u, c))
+    p.as_ref().map(|(s, u, c, b)| (s, u, c, b))
 }
 
 /// Writes the export file to `path` atomically. Reads only memory, then writes one file.
@@ -90,6 +99,7 @@ pub struct ImportFile {
     pub project: Option<ProjectSettings>,
     pub ui_state: Option<UiState>,
     pub controls: Option<ControlsDoc>,
+    pub panel: Option<PanelDoc>,
 }
 
 impl ImportFile {
@@ -99,6 +109,7 @@ impl ImportFile {
             SettingsSection::Project => self.project.is_some(),
             SettingsSection::UiState => self.ui_state.is_some(),
             SettingsSection::Controls => self.controls.is_some(),
+            SettingsSection::Panel => self.panel.is_some(),
         }
     }
 }
@@ -167,6 +178,7 @@ pub fn parse(bytes: &[u8]) -> AppResult<ImportFile> {
         project: section(&mut obj, "project")?,
         ui_state: section::<UiState>(&mut obj, "uiState")?.map(clamp_ui_state),
         controls: section(&mut obj, "controls")?,
+        panel: section(&mut obj, "panel")?,
     })
 }
 
@@ -226,7 +238,7 @@ pub fn preview_against(
             changes: diff(prefs, p)?,
         });
     }
-    if let Some((settings, ui, controls)) = project {
+    if let Some((settings, ui, controls, panel)) = project {
         if let Some(p) = &file.project {
             sections.push(SectionDiff {
                 section: SettingsSection::Project,
@@ -243,6 +255,12 @@ pub fn preview_against(
             sections.push(SectionDiff {
                 section: SettingsSection::Controls,
                 changes: diff(controls, c)?,
+            });
+        }
+        if let Some(b) = &file.panel {
+            sections.push(SectionDiff {
+                section: SettingsSection::Panel,
+                changes: diff(panel, b)?,
             });
         }
     }
@@ -293,11 +311,15 @@ pub fn apply(state: &AppState, file: &ImportFile, sections: &[SettingsSection]) 
         .controls
         .clone()
         .filter(|_| want(SettingsSection::Controls));
+    let panel = file.panel.clone().filter(|_| want(SettingsSection::Panel));
     if let Some(p) = &project {
         validate_project_settings(p)?;
     }
     if let Some(c) = &controls {
         crate::core::controls::validate(c)?;
+    }
+    if let Some(b) = &panel {
+        crate::core::panel::validate(b)?;
     }
 
     if project_open {
@@ -315,6 +337,9 @@ pub fn apply(state: &AppState, file: &ImportFile, sections: &[SettingsSection]) 
     if let Some(c) = controls {
         state.save_controls(c)?;
     }
+    if let Some(b) = panel {
+        state.save_panel(b)?;
+    }
     state.flush_all();
     Ok(())
 }
@@ -325,6 +350,7 @@ fn section_name(s: SettingsSection) -> &'static str {
         SettingsSection::Project => "project",
         SettingsSection::UiState => "UI state",
         SettingsSection::Controls => "MIDI mappings",
+        SettingsSection::Panel => "button panel",
     }
 }
 
@@ -388,11 +414,12 @@ mod tests {
         st.set_ui_state(UiState::default()).unwrap();
     }
 
-    const ALL: [SettingsSection; 4] = [
+    const ALL: [SettingsSection; 5] = [
         SettingsSection::Prefs,
         SettingsSection::Project,
         SettingsSection::UiState,
         SettingsSection::Controls,
+        SettingsSection::Panel,
     ];
 
     #[test]
@@ -411,7 +438,7 @@ mod tests {
         assert_eq!(snapshot(&st), before);
         // A second preview shows no changes.
         let pv = preview(&st, &parsed).unwrap();
-        assert_eq!(pv.sections.len(), 4);
+        assert_eq!(pv.sections.len(), 5);
         assert!(pv.sections.iter().all(|s| s.changes.is_empty()));
     }
 
@@ -443,6 +470,7 @@ mod tests {
                 "controls",
                 "exportedAt",
                 "kind",
+                "panel",
                 "prefs",
                 "project",
                 "schemaVersion",

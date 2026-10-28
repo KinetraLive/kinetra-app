@@ -64,8 +64,8 @@ use crate::core::fsx;
 use crate::core::live::LiveState;
 use crate::core::live_hub::LiveHub;
 use crate::core::model::{
-    BackupInfo, BackupPrefs, BackupReason, ControlsDoc, MidiPrefs, OscSettings, Prefs, Project,
-    ProjectFile, ProjectSettings, RecentProject, UiState, BACKUP_INTERVAL_RANGE,
+    BackupInfo, BackupPrefs, BackupReason, ControlsDoc, MidiPrefs, OscSettings, PanelDoc, Prefs,
+    Project, ProjectFile, ProjectSettings, RecentProject, UiState, BACKUP_INTERVAL_RANGE,
     BACKUP_RETENTION_RANGE, CLOUD_LIMIT_KBPS, COMMAND_ID_MAX, KEYBINDINGS_CAP, KEYS_PER_COMMAND,
     MIDI_DEVICES_CAP, MIDI_NAME_MAX, OSC_ALLOW_CAP, OSC_HOST_MAX, PALETTE_RECENT_CAP,
     PREVIEW_STREAMS, SCREEN_CROP_OVERLAYS, SCREEN_GRID_SIZE_RANGE, ZOOM_RANGE, ZOOM_STEP,
@@ -187,6 +187,9 @@ pub enum StateChange<'a> {
     /// The Studio Preview changed (cues or staged content) without a Program change: remote control
     /// and the Control API show it.
     Preview,
+    /// A layer's view changed (`live-changed` went out), also without an on-air change: a take
+    /// applying staged content, field edits. Remote control and the Control API show it.
+    View,
 }
 
 /// Called on the thread that made the change. For `Live` no state lock is held; `FlowRun` comes
@@ -230,6 +233,8 @@ struct OpenProject {
     ui: Tracked<UiState>,
     /// `controls.json` (MIDI mappings); shared read-only with the MIDI input path.
     controls: Tracked<Arc<ControlsDoc>>,
+    /// `panel.json` (remote control's button panel).
+    panel: Tracked<Arc<PanelDoc>>,
 }
 
 impl OpenProject {
@@ -620,6 +625,12 @@ impl AppState {
         inner.live.set_preview_hook(Arc::new(move || {
             if let Some(inner) = weak.upgrade() {
                 AppState { inner }.notify_change(StateChange::Preview);
+            }
+        }));
+        let weak = Arc::downgrade(&inner);
+        inner.live.set_view_hook(Arc::new(move || {
+            if let Some(inner) = weak.upgrade() {
+                AppState { inner }.notify_change(StateChange::View);
             }
         }));
         // The Studio Preview's cues are kept in ui-state.json (coalesced like every store write).
@@ -1039,6 +1050,7 @@ impl AppState {
         self.notify_project();
         self.emit_ui_state_changed();
         self.controls_announce();
+        self.panel_announce();
         // Cloud backup: a copied folder gets its own cloud ID; registers in the background.
         self.cloud_project_opened();
         Ok(project)
@@ -1106,6 +1118,7 @@ impl AppState {
         }
         self.notify_project();
         self.controls_announce();
+        self.panel_announce();
         self.cloud_project_closed();
     }
 
@@ -1132,6 +1145,7 @@ impl AppState {
         self.notify_project();
         self.emit_ui_state_changed();
         self.controls_announce();
+        self.panel_announce();
         self.cloud_project_opened();
         Ok(project)
     }
@@ -1289,6 +1303,7 @@ impl AppState {
             op.file.dirty = true;
             op.ui.dirty = true;
             op.controls.dirty = true;
+            op.panel.dirty = true;
             (old, op.to_project())
         };
         self.inner.flush_locked();
@@ -1366,6 +1381,37 @@ impl AppState {
 
     pub(crate) fn midi_rt(&self) -> &crate::core::midi::Midi {
         &self.inner.midi
+    }
+
+    // ---- Button panel (panel.json) -----------------------------------------------------------
+
+    /// The open project's button panel (a cheap `Arc` clone), or `NoProject`.
+    pub fn panel_doc(&self) -> AppResult<Arc<PanelDoc>> {
+        read(&self.inner.project)
+            .as_ref()
+            .map(|p| p.panel.value.clone())
+            .ok_or(AppError::NoProject)
+    }
+
+    /// Replaces the open project's panel in memory (already validated) and schedules a
+    /// coalesced write when it changed (`write` false: a watcher reload, already on disk).
+    /// Returns whether anything changed.
+    pub(crate) fn replace_panel(&self, doc: Arc<PanelDoc>, write_file: bool) -> AppResult<bool> {
+        let changed = {
+            let mut g = write(&self.inner.project);
+            let op = g.as_mut().ok_or(AppError::NoProject)?;
+            if *op.panel.value == *doc {
+                false
+            } else {
+                op.panel.value = doc;
+                op.panel.dirty |= write_file;
+                true
+            }
+        };
+        if changed && write_file {
+            self.inner.schedule();
+        }
+        Ok(changed)
     }
 
     /// The control runtime (listeners, value pacing; see `core::controls`).
@@ -1461,6 +1507,7 @@ impl AppState {
         self.notify_project();
         self.emit_ui_state_changed();
         self.controls_announce();
+        self.panel_announce();
         self.emit_backup_created(&pre);
         Ok(project)
     }
@@ -1499,6 +1546,7 @@ impl AppState {
         self.notify_project();
         self.emit_ui_state_changed();
         self.controls_announce();
+        self.panel_announce();
         self.cloud_project_opened();
         Ok(project)
     }
@@ -1662,17 +1710,20 @@ impl Inner {
                 op.file.take_dirty(),
                 op.ui.take_dirty(),
                 op.controls.take_dirty(),
+                op.panel.take_dirty(),
             )
         });
-        if let Some((dir, file, ui, controls)) = snapshot {
+        if let Some((dir, file, ui, controls, panel)) = snapshot {
             let file_failed = file.is_some_and(|f| !self.save(&dir, &f));
             let ui_failed = ui.is_some_and(|u| !self.save(&dir, &u));
             let controls_failed = controls.is_some_and(|c| !self.save(&dir, &*c));
-            if file_failed || ui_failed || controls_failed {
+            let panel_failed = panel.is_some_and(|p| !self.save(&dir, &*p));
+            if file_failed || ui_failed || controls_failed || panel_failed {
                 if let Some(op) = write(&self.project).as_mut().filter(|op| op.dir == dir) {
                     op.file.dirty |= file_failed;
                     op.ui.dirty |= ui_failed;
                     op.controls.dirty |= controls_failed;
+                    op.panel.dirty |= panel_failed;
                 }
             }
         }
@@ -1715,6 +1766,16 @@ impl Inner {
         }
     }
 
+    /// `panel.json`, sanitized (invalid buttons dropped and logged; see `core::panel`).
+    fn load_panel(&self, dir: &Path) -> Tracked<Arc<PanelDoc>> {
+        let t = load_tracked::<PanelDoc>(dir, &*self.events);
+        Tracked {
+            value: Arc::new(crate::core::panel::sanitize(t.value)),
+            dirty: false,
+            read_only: t.read_only,
+        }
+    }
+
     fn load_ui_state(&self, dir: &Path) -> Tracked<UiState> {
         let mut ui = load_tracked::<UiState>(dir, &*self.events);
         ui.value = clamp_ui_state(ui.value);
@@ -1727,11 +1788,13 @@ impl Inner {
         let brand = file.settings.brand.clone();
         self.close_locked();
         let controls = self.load_controls(&dir);
+        let panel = self.load_panel(&dir);
         let op = OpenProject {
             dir,
             file: Tracked::clean(file),
             ui,
             controls,
+            panel,
         };
         let project = op.to_project();
         let dir = op.dir.clone();
@@ -1784,6 +1847,7 @@ impl Inner {
         let file = self.open_project_file(&dir)?;
         let ui = self.load_ui_state(&dir);
         let controls = self.load_controls(&dir);
+        let panel = self.load_panel(&dir);
         // Files may have been replaced on disk (restore, import).
         self.templates.forget();
         let mode = ui.value.control.live_edit;
@@ -1796,6 +1860,7 @@ impl Inner {
             op.file = Tracked::clean(file);
             op.ui = ui;
             op.controls = controls;
+            op.panel = panel;
             op.to_project()
         };
         // Running automation stops; flows and recipes are read again by the caller. API polling
