@@ -29,8 +29,8 @@ MIDI / OSC ─────────────────────▶ co
   Tauri's runtime. Long-running work stops through a `oneshot` or `watch` channel.
 - **The output server follows the open project:** no project, no listening socket. It binds to
   `127.0.0.1` (default port 7770) unless LAN access is turned on.
-- **Network calls happen in Rust.** API sources and polls are fetched by the core and pushed to
-  renderers; renderers never fetch external URLs, and secrets never reach the browser.
+- **Network calls happen in Rust.** API sources, live data (WebSocket) sources and polls are
+  fetched by the core and pushed to renderers; renderers never fetch external URLs, and secrets never reach the browser.
 - **Outside clients are read-only** (the WebSocket only pushes), except OSC, which is accepted
   from this computer and, with LAN access on, from allowlisted addresses.
 
@@ -66,7 +66,7 @@ A project is a plain folder of JSON, HTML and CSS, portable and git-friendly:
   controls.json           MIDI mappings
   screens/<id>.json       a screen: size, background, layers
   templates/<id>/         template.json + variants/<variantId>/{template.html, template.css}
-  sources/<id>.json       data tables, schedules, API sources, polls
+  sources/<id>.json       data tables, schedules, API sources, live data sources (settings only), polls
   flows/<id>.json         automation graphs
   recipes/<id>.json       installed recipes
   assets/                 images, video and audio, served at /assets/<name>
@@ -114,7 +114,9 @@ A project is a plain folder of JSON, HTML and CSS, portable and git-friendly:
 ## Sources and automation
 
 - **Sources** are tables a layer's fields bind to: data tables, schedules (`core/schedule.rs`),
-  API sources (`core/api_poll.rs`, `core/api_map.rs`) and live polls (`core/polls.rs`). A change
+  API sources (`core/api_poll.rs`, `core/api_map.rs`), live data sources (`core/socket_source.rs`:
+  a WebSocket on this computer or the local network, mapped like API sources, paced to 1–30
+  updates a second, rows kept in memory only) and live polls (`core/polls.rs`). A change
   re-applies every bound screen through the live rules.
 - **Flows** (`core/flows.rs`, `core/flow_engine.rs`) are the one automation model: a graph of
   trigger, data, logic and action nodes joined by event wires (control flow) and data wires

@@ -4,7 +4,7 @@ Kinetra runs on macOS 11 (Big Sur) or later, on Apple silicon and Intel Macs. Wi
 Windows 10 or later.
 
 Most of Kinetra works the same on both systems: templates, screens, Control, Studio mode,
-sources (data tables, schedules, CSV and JSON links, API sources), flows and recipes, live
+sources (data tables, schedules, CSV and JSON links, API sources, live data), flows and recipes, live
 polls, AI templates, OSC, sign-in and licensing, updates. **Browser sources for OBS and vMix work
 on macOS** exactly as on Windows: that is the way to get Kinetra graphics into your production
 on a Mac today.
