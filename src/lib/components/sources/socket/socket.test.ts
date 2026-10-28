@@ -170,9 +170,9 @@ describe("live data source checks", () => {
     expect(urlIssue("ws://[2001:4860::8888]/")).toBe(NOT_LOCAL);
     expect(urlIssue("not a url")).toBe("Enter a ws:// or wss:// address.");
     // As the backend's is_local_ip.
-    for (const ok of ["127.0.0.1", "10.0.0.1", "172.16.0.1", "172.31.0.1", "192.168.0.1", "169.254.1.1", "fd00::1", "fe80::1", "::1"])
+    for (const ok of ["127.0.0.1", "100.64.0.1", "100.127.1.1", "10.0.0.1", "172.16.0.1", "172.31.0.1", "192.168.0.1", "169.254.1.1", "fd00::1", "fe80::1", "::1"])
       expect(localIp(ok), ok).toBe(true);
-    for (const no of ["8.8.8.8", "172.32.0.1", "100.64.0.1", "2001:db8::1", "::ffff:8.8.8.8"]) expect(localIp(no), no).toBe(false);
+    for (const no of ["8.8.8.8", "172.32.0.1", "100.63.0.1", "100.128.0.1", "2001:db8::1", "::ffff:8.8.8.8"]) expect(localIp(no), no).toBe(false);
     expect(localIp("example.local")).toBeNull();
   });
 

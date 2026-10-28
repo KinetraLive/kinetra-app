@@ -89,11 +89,18 @@ fn next_gen() -> u64 {
 // ---- Settings ----------------------------------------------------------------------------------
 
 /// An address on this computer or the local network: loopback, the private IPv4 ranges
-/// (10/8, 172.16/12, 192.168/16), link-local (169.254/16, fe80::/10) and unique local IPv6
-/// (fc00::/7). IPv4-mapped IPv6 addresses count as their IPv4 address.
+/// (10/8, 172.16/12, 192.168/16), shared address space (100.64/10: Tailscale and similar VPNs,
+/// owner 2026-10-29), link-local (169.254/16, fe80::/10) and unique local IPv6 (fc00::/7).
+/// IPv4-mapped IPv6 addresses count as their IPv4 address.
 pub fn is_local_ip(ip: IpAddr) -> bool {
     match ip {
-        IpAddr::V4(v4) => v4.is_loopback() || v4.is_private() || v4.is_link_local(),
+        IpAddr::V4(v4) => {
+            let [a, b, ..] = v4.octets();
+            v4.is_loopback()
+                || v4.is_private()
+                || v4.is_link_local()
+                || (a == 100 && (64..=127).contains(&b))
+        }
         IpAddr::V6(v6) => {
             if let Some(v4) = v6.to_ipv4_mapped() {
                 return is_local_ip(IpAddr::V4(v4));

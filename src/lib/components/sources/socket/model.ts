@@ -14,7 +14,15 @@ export const NOT_LOCAL = "Live data comes from this computer or your local netwo
 
 function v4Local(parts: number[]): boolean {
   const [a, b] = parts;
-  return a === 127 || a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 169 && b === 254);
+  return (
+    a === 127 ||
+    a === 10 ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 168) ||
+    (a === 169 && b === 254) ||
+    // Shared address space: Tailscale and similar VPNs.
+    (a === 100 && b >= 64 && b <= 127)
+  );
 }
 
 /** Whether an IP literal is on this computer or the local network (as `is_local_ip`); null when
