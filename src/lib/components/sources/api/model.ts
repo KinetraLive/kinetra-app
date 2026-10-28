@@ -12,6 +12,7 @@ import {
   type ApiHeader,
   type ApiMapping,
   type ApiMappingColumn,
+  type SourceColumn,
   type SourceDoc,
 } from "$lib/types";
 import { deriveKey } from "../keys";
@@ -141,8 +142,8 @@ export function columnFor(path: string, taken: readonly ApiMappingColumn[], samp
   };
 }
 
-/** The document's table columns follow the mapping's. */
-export function withMapping(doc: ApiDoc, mapping: ApiMapping): ApiDoc {
+/** The document's table columns follow the mapping's (API and live data sources). */
+export function withMapping<D extends { mapping: ApiMapping; columns: SourceColumn[] }>(doc: D, mapping: ApiMapping): D {
   return {
     ...doc,
     mapping,
@@ -183,18 +184,41 @@ export function apiIssues(doc: ApiDoc): ApiIssues {
   const headers = doc.request.headers.map((h) =>
     h.name.trim() === "" ? "Enter a header name." : HEADER_NAME.test(h.name.trim()) ? null : "Letters, digits and - only.",
   );
-  const cols = doc.mapping.columns;
+  const { columns, table } = columnIssues(doc.mapping.columns, doc.format === "json");
+  return { name, url, headers, columns, table };
+}
+
+/** Per mapping column: what's wrong with it, or null; `table`: too many columns. */
+export function columnIssues(cols: readonly ApiMappingColumn[], json: boolean): { columns: (string | null)[]; table: string | null } {
   const counts = new Map<string, number>();
   for (const c of cols) counts.set(c.key, (counts.get(c.key) ?? 0) + 1);
   const columns = cols.map((c) => {
     if (c.label.trim() === "") return "Enter a label.";
     if (!TEMPLATE_KEY_PATTERN.test(c.key)) return "The key must start with a letter: a–z, 0–9, _ or -.";
     if ((counts.get(c.key) ?? 0) > 1) return "Another column has this key.";
-    if (doc.format === "json" && c.path !== "" && !c.path.startsWith("/")) return "A path starts with /, like /name.";
+    if (json && c.path !== "" && !c.path.startsWith("/")) return "A path starts with /, like /name.";
     return null;
   });
   const table = cols.length > SOURCE_COLUMNS_MAX ? `Up to ${SOURCE_COLUMNS_MAX} columns.` : null;
-  return { name, url, headers, columns, table };
+  return { columns, table };
+}
+
+/** A name's problem, or null. */
+export function nameIssue(name: string): string | null {
+  const trimmed = name.trim();
+  return trimmed === "" ? "Enter a name." : [...trimmed].length > SOURCE_NAME_MAX ? `Up to ${SOURCE_NAME_MAX} characters.` : null;
+}
+
+/** What MappingSection needs of the editor's checks. */
+export type MappingIssues = Pick<ApiIssues, "url" | "columns" | "table">;
+
+/** A test result MappingSection shows: an API test request or a live data test connection. */
+export interface MappingResult {
+  json: unknown | null;
+  error: string | null;
+  httpStatus?: number | null;
+  headers?: [string, string][];
+  csvColumns?: string[] | null;
 }
 
 /** Why the working copy can't be saved, or null. */

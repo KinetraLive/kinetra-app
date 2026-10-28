@@ -10,9 +10,10 @@
   Below: the columns (label, key, Text/Image, path, rows with a value), editable, up to 16.
 
   Props:
-    doc: ApiDoc
-    issues: ApiIssues
-    result: ApiTestResult | null      the last test (null before one)
+    mapping, format, url              the working copy's (API sources; live data sources: JSON)
+    issues: MappingIssues            url, per column, table
+    result: MappingResult | null      the last test (null before one): ApiTestResult or a live test
+    socket?: boolean                  a live data source: "Test connection", a message instead of a response
     testing: boolean
     hits: Record<string, number> | null   per column key, for the rows shown in Preview
     rowCount: number
@@ -27,29 +28,35 @@
   import Button from "$lib/components/Button.svelte";
   import IconButton from "$lib/components/IconButton.svelte";
   import Select from "$lib/components/Select.svelte";
-  import { SOURCE_COLUMNS_MAX, type ApiMapping, type ApiMappingColumn, type ApiTestResult } from "$lib/types";
+  import { SOURCE_COLUMNS_MAX, type ApiFormat, type ApiMapping, type ApiMappingColumn } from "$lib/types";
   import { deriveKey } from "../keys";
   import JsonTree from "./JsonTree.svelte";
-  import { columnFor, markOf, resolve, rowsIsList, withinRow, type ApiDoc, type ApiIssues } from "./model";
+  import { columnFor, markOf, resolve, rowsIsList, withinRow, type MappingIssues, type MappingResult } from "./model";
 
   let {
-    doc,
+    mapping,
+    format,
+    url,
     issues,
     result,
     testing,
     hits,
     rowCount,
     link = false,
+    socket = false,
     ontest,
     onmapping,
   }: {
-    doc: ApiDoc;
-    issues: ApiIssues;
-    result: ApiTestResult | null;
+    mapping: ApiMapping;
+    format: ApiFormat;
+    url: string;
+    issues: MappingIssues;
+    result: MappingResult | null;
     testing: boolean;
     hits: Record<string, number> | null;
     rowCount: number;
     link?: boolean;
+    socket?: boolean;
     ontest: () => void;
     onmapping: (mapping: ApiMapping) => void;
   } = $props();
@@ -60,10 +67,9 @@
     { value: "image", label: "Image" },
   ];
 
-  const mapping = $derived(doc.mapping);
   const cols = $derived(mapping.columns);
   const json = $derived(result?.json ?? null);
-  const isJson = $derived(doc.format === "json" && result !== null && result.json !== null && result.json !== undefined);
+  const isJson = $derived(format === "json" && result !== null && result.json !== null && result.json !== undefined);
   const list = $derived(isJson ? rowsIsList(json, mapping.rows) : true);
   const full = $derived(cols.length >= SOURCE_COLUMNS_MAX);
 
@@ -150,7 +156,7 @@
   function newColumn() {
     if (full) return;
     const label = `Column ${cols.length + 1}`;
-    setColumns([...cols, { key: deriveKey(label, cols.map((c) => c.key)), label, kind: "text", path: doc.format === "json" ? "/" : "" }]);
+    setColumns([...cols, { key: deriveKey(label, cols.map((c) => c.key)), label, kind: "text", path: format === "json" ? "/" : "" }]);
   }
 
   function onLabel(i: number, label: string) {
@@ -168,13 +174,13 @@
 <section class="section" aria-labelledby="{uid}-title">
   <div class="head">
     <h3 class="section-label" id="{uid}-title">Mapping</h3>
-    <Button size="sm" variant={result ? "secondary" : "primary"} loading={testing} disabled={!doc.request.url.trim() || !!issues.url} onclick={ontest}>
+    <Button size="sm" variant={result ? "secondary" : "primary"} loading={testing} disabled={!url.trim() || !!issues.url} onclick={ontest}>
       {#snippet icon()}<FlaskConical size={14} />{/snippet}
-      {link ? "Test link" : "Test request"}
+      {link ? "Test link" : socket ? "Test connection" : "Test request"}
     </Button>
     {#if result && !testing}
       <span class="result small" role="status">
-        {#if result.httpStatus !== null}<span class="mono">HTTP {result.httpStatus}</span>{/if}
+        {#if result.httpStatus != null}<span class="mono">HTTP {result.httpStatus}</span>{/if}
         {#if result.error}<span class="bad">{result.error}</span>{:else}<span class="muted">{rowCount} {rowCount === 1 ? "row" : "rows"}</span>{/if}
       </span>
     {/if}
@@ -183,15 +189,17 @@
   {#if !result}
     <p class="small muted">
       {#if link}
-        {doc.request.url.trim() ? "Test the link, then pick the columns to use." : "Paste the link, then test it."}
+        {url.trim() ? "Test the link, then pick the columns to use." : "Paste the link, then test it."}
+      {:else if socket}
+        {url.trim() ? "Test the connection, then pick rows and columns from a message." : "Enter the URL, then test the connection."}
       {:else}
-        {doc.request.url.trim()
+        {url.trim()
           ? "Test the request, then pick rows and columns from the response."
           : "Enter the URL, then test the request."}
       {/if}
     </p>
   {:else}
-    {#if result.headers.length > 0}
+    {#if result.headers && result.headers.length > 0}
       <details class="resp">
         <summary class="small muted">Response headers ({result.headers.length})</summary>
         <dl class="mono small">
@@ -200,7 +208,7 @@
       </details>
     {/if}
 
-    {#if doc.format === "json"}
+    {#if format === "json"}
       <div class="rows-row">
         <label class="small muted" for="{uid}-rows">Rows</label>
         <span class="input grow vf vf-within">
@@ -248,7 +256,7 @@
         <div class="tree-box">
           <JsonTree
             json={result.json}
-            label="Response"
+            label={socket ? "Message" : "Response"}
             bind:selected
             {reveal}
             mark={(p) => markOf(p, mapping, list)}
@@ -256,7 +264,7 @@
           />
         </div>
       {:else if !result.error}
-        <p class="small muted">The response is too large to show as a tree; type the pointers.</p>
+        <p class="small muted">The {socket ? "message" : "response"} is too large to show as a tree; type the pointers.</p>
       {/if}
     {:else if result.csvColumns}
       <div class="csv" role="group" aria-label="CSV columns">
@@ -267,10 +275,10 @@
             class="chip vf"
             class:mapped={keys.length > 0}
             disabled={full && keys.length === 0}
-            aria-label="Add column {doc.mapping.csv.header ? name : `${i + 1}`}"
-            onclick={() => addColumn(name, undefined, doc.mapping.csv.header ? name : `Column ${i + 1}`)}
+            aria-label="Add column {mapping.csv.header ? name : `${i + 1}`}"
+            onclick={() => addColumn(name, undefined, mapping.csv.header ? name : `Column ${i + 1}`)}
           >
-            <span class="mono">{doc.mapping.csv.header ? name : `#${i + 1}`}</span>
+            <span class="mono">{mapping.csv.header ? name : `#${i + 1}`}</span>
             {#each keys as k (k)}<span class="tag mono">{k}</span>{/each}
           </button>
         {/each}
@@ -292,7 +300,7 @@
         <span class="small muted">Label</span>
         <span class="small muted">Key</span>
         <span class="small muted">Kind</span>
-        <span class="small muted">{doc.format === "json" ? "Path in a row" : "CSV column"}</span>
+        <span class="small muted">{format === "json" ? "Path in a row" : "CSV column"}</span>
         <span class="small muted" title="Rows with a value">Values</span>
         <span></span>
         {#each cols as c, i (i)}

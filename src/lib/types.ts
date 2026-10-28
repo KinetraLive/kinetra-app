@@ -1779,6 +1779,27 @@ export type SourceKind = {
   auto?: AutoAdvance;
   /** RFC 3339 of the last good fetch, or null. */
   fetchedAt: string | null;
+} | {
+  /**
+   * Live data: a WebSocket on this computer or the local network whose JSON messages are mapped
+   * into a table with the API sources' mapping. The rows are live (never in the file).
+   */
+  kind: "socket";
+  url: string;
+  /** The API sources' JSON mapping (`csv` unused). */
+  mapping: ApiMapping;
+  /** Only messages with this value at this pointer become rows; absent = every message. */
+  filter?: SocketFilter;
+  /** Text sent once after each connect (a subscribe message); absent = nothing. */
+  sendOnConnect?: string;
+  /** Updates applied a second, SOCKET_RATE_MIN..SOCKET_RATE_MAX. */
+  rate: number;
+  paused: boolean;
+  columns: SourceColumn[];
+  /** The last mapped rows (live; the core's, a save keeps them). */
+  rows: Record<string, string>[];
+  index: number;
+  auto?: AutoAdvance;
 };
 
 // ---- Live polls (docs/API.md "Polls"; core/polls.rs) ----
@@ -1956,6 +1977,50 @@ export interface ApiPoll {
   paused: boolean;
 }
 
+// ---- Live data (WebSocket) sources (core/socket_source.rs) ----
+
+export const SOCKET_RATE_MIN = 1;
+export const SOCKET_RATE_MAX = 30;
+export const SOCKET_RATE_DEFAULT = 10;
+/** Longest "Send on connect" text, in bytes. */
+export const SOCKET_SEND_MAX = 64 * 1024;
+
+/** Only messages whose value at `pointer` is `equals` (as text; numbers and booleans as JSON) feed the rows. */
+export interface SocketFilter {
+  pointer: string;
+  equals: string;
+}
+
+export type SocketState = "idle" | "connecting" | "waiting" | "connected" | "live" | "stale" | "error" | "paused";
+
+/** Per live data source; in SourceSummary.socket and the source-changed event. */
+export interface SocketStatus {
+  state: SocketState;
+  /** Server epoch ms of the last message. */
+  lastMessageAt: number | null;
+  /** Server epoch ms of the next connect attempt while waiting. */
+  nextAt: number | null;
+  /** What went wrong (for `waiting`, the last reason). */
+  message: string | null;
+  rows: number;
+  /** Messages dropped because they came faster than Kinetra reads (since the last connect). */
+  dropped: number;
+}
+
+/** Result of `testSocketSource`: connect with the draft for up to 10 s, nothing saved. */
+export interface SocketTestResult {
+  /** The first messages (parsed when JSON, else a string), at most 20 and 64 KB. */
+  messages: unknown[];
+  /** The last message the filter let through (for the tree picker), or null. */
+  json: unknown | null;
+  /** Its mapped rows (first 50). */
+  rows: Record<string, string>[];
+  hits: Record<string, number>;
+  seen: number;
+  matched: number;
+  error: string | null;
+}
+
 export type ApiState = "ok" | "fetching" | "error" | "paused" | "backoff" | "secretMissing" | "idle";
 
 /** Per API source; in SourceSummary.api and the source-changed event. */
@@ -1997,7 +2062,7 @@ export type SourceDoc = SourceKind & {
   updatedAt: string;
 };
 
-export type SourceKindName = "text" | "schedule" | "api" | "poll";
+export type SourceKindName = "text" | "schedule" | "api" | "poll" | "socket";
 
 export interface SourceSummary {
   id: string;
@@ -2023,6 +2088,8 @@ export interface SourceSummary {
   format?: ApiFormat | null;
   /** Poll sources: test or linked, connection, state; null for other kinds. */
   poll?: PollSourceView | null;
+  /** Live data sources: connection status; null for other kinds. */
+  socket?: SocketStatus | null;
 }
 
 /**

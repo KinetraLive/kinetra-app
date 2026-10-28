@@ -110,7 +110,7 @@
       layerId: layerId ?? "",
       scheduleId: (own?.kind === "schedule" ? own : ctl.sources.find((s) => s.kind === "schedule"))?.id ?? "",
       textId: (own && own.kind !== "schedule" ? own : ctl.sources.find((s) => s.kind !== "schedule"))?.id ?? "",
-      apiId: ctl.sources.find((s) => s.kind === "api")?.id ?? "",
+      apiId: ctl.sources.find((s) => s.kind === "api" || s.kind === "socket")?.id ?? "",
     };
   });
   const initial = untrack((): LinearFlow | null =>

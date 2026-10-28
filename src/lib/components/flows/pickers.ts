@@ -39,7 +39,7 @@ export const textOptions = (k: Lookups): Opt[] =>
   [...k.sources.values()].filter((s) => s.kind !== "schedule").map((s) => ({ value: s.id, label: s.name }));
 
 export const apiOptions = (k: Lookups): Opt[] =>
-  [...k.sources.values()].filter((s) => s.kind === "api").map((s) => ({ value: s.id, label: s.name }));
+  [...k.sources.values()].filter((s) => s.kind === "api" || s.kind === "socket").map((s) => ({ value: s.id, label: s.name }));
 
 /** API value changed: any change (whole rows) or one column of the current row. */
 export function apiColumnOptions(k: Lookups, sourceId: string, current: string | null): Opt[] {
