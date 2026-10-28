@@ -645,3 +645,11 @@ that doesn't exist → `404 not_found`; inviting a pending address again → `20
 old invite is gone); inviting a joined address → `409 already_collaborator`; a permission change
 reaches a connected collaborator (the control site reconnects by itself); a Data editor's edit of
 a layer off air is accepted. Not seen live: `unknown_permission`, `collaborator_limit`.
+
+Checked against dev again on 2026-10-28 with kinetra-cloud `control-phase2` (0814624), the owner on
+the control site as a collaborator with every permission: `welcome.features` = `permissions`,
+`invites`, `preview`, `timers`, `variants`, `rows`, `studio`, `panel`; state v2 accepted (no
+`invalid_state` resync) with a guest list bound to a lower third, a countdown, a cue and a panel;
+take / clear, `step_row`, `run_cue`, `timer`, `studio_cue` / `studio_uncue`, `studio_take` (take and
+cut) and `press_button` arrived and ran; a Studio button while Studio mode was off → `busy`; a
+button whose set-fields step targets bound fields → `bound`.
