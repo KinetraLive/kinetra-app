@@ -612,9 +612,9 @@ pub(super) fn env() -> Env {
     });
     let secrets = Arc::new(MemorySecrets::default());
     secrets.set(S_SESSION, "kntr_s_test").unwrap();
-    secrets.set("kinetra-activation", "act-1").unwrap();
     st.cloud_service().set_test_env(&base, secrets, MACHINE);
     st.cloud_init();
+    st.cloud_service().set_test_license(None, Some("act-1"));
     st.cloud_service()
         .set_test_entitlements(&["core.app", super::service::PRO_CLOUD], true);
     let parent = tmp.path().join("shows");

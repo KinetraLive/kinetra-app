@@ -2,7 +2,7 @@
 //! refresh, keys / revocations / beta status, the on-air rule, and the read-only
 //! [`LicenseView`] the UI shows.
 //!
-//! - **Startup is local:** the keychain token is verified and evaluated with no network. The
+//! - **Startup is local:** the stored token is verified and evaluated with no network. The
 //!   background loop ([`AppState::cloud_start`]) then fetches keys, revocations and beta
 //!   status and refreshes (activates when signed in without an activation): at start, every
 //!   12 h, backoff 1 min · 5 min · 30 min · 2 h · 12 h after failures. One sleeping task.
@@ -10,9 +10,14 @@
 //!   only reads [`LicenseView`]; no command sets license state.
 //! - **Never on air:** losing access waits while anything is on air (`license::settle`);
 //!   the change listener applies it once nothing is.
-//! - **Secrets** (session, license token, activation id, a copy of the last server time) live
-//!   only in the keychain ([`SecretStore`]); `license.json` holds what isn't secret, and every
-//!   signed document in it is verified again when loaded.
+//! - **Storage:** the session is the one secret, in the keychain ([`SecretStore`]).
+//!   `license.json` holds the rest, the license token and activation id included (owner's
+//!   decision 2026-10-28: a keychain that refused the token left a paying user on Free). That
+//!   is safe because the token is signed and bound to this machine, and every signed document
+//!   in the file is verified again when loaded; the activation id is useless without the
+//!   session. Tokens stored in the keychain by older versions move to the file once at start.
+//!   A failed save is never "offline": the token still applies from memory and
+//!   [`Notice::SaveFailed`] says why.
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
@@ -41,12 +46,18 @@ const FILE: &str = "license.json";
 const SCHEMA: u32 = 1;
 /// Keychain ids (accounts `secret:<id>` under service `Kinetra`).
 pub(crate) const S_SESSION: &str = "kinetra-session";
+/// A best-effort copy of the last server time (anti-rollback; `license.json` is the source).
+const S_SERVER_TIME: &str = "kinetra-server-time";
+/// Where older versions kept the license token (in pieces, see [`CHUNK`]) and activation id:
+/// read once to move them into `license.json`, then deleted.
 const S_TOKEN: &str = "kinetra-license-token";
 const S_ACTIVATION: &str = "kinetra-activation";
-const S_SERVER_TIME: &str = "kinetra-server-time";
-/// Keychain values are split into pieces this long (Windows Credential Manager caps one blob
+/// Keychain values were split into pieces this long (Windows Credential Manager caps one blob
 /// at 2560 bytes).
+#[cfg(test)]
 const CHUNK: usize = 1200;
+/// How long "Check now" waits for its round.
+const CHECK_NOW_TIMEOUT: Duration = Duration::from_secs(20);
 /// Signed key-set updates kept (enough to replay several rotations).
 const KEY_UPDATES_MAX: usize = 8;
 const REFRESH_EVERY: Duration = Duration::from_secs(12 * 3600);
@@ -79,6 +90,12 @@ pub struct AccountInfo {
 #[serde(rename_all = "camelCase", default)]
 struct LicenseFile {
     schema_version: u32,
+    /// This computer's license token (signed, bound to this machine; verified on every load).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    token: Option<String>,
+    /// This computer's activation id (refresh and deactivate also need the session).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    activation: Option<String>,
     /// Signed key-set updates accepted so far (oldest first, at most [`KEY_UPDATES_MAX`]).
     /// Never trusted as such: on load they are applied again, in order, to the embedded set
     /// with `KeySet::apply_update`, so only updates a trusted key vouched for count (editing
@@ -152,6 +169,22 @@ pub enum Notice {
         activations: Vec<api::Activation>,
         backup: bool,
     },
+    /// `license.json` couldn't be written: the license applies this session only. `reason`
+    /// is the system's error, `folder` the config folder Kinetra must be able to write to.
+    SaveFailed { reason: String, folder: String },
+}
+
+/// What a redeemed key did on this computer (`license_redeem`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RedeemResult {
+    /// moved (this computer uses the redeemed license) | saveFailed (it does, but only until
+    /// Kinetra restarts: see the notice) | blocked (the license has no free computer: the
+    /// "free a computer" choice shows) | kept (this computer stays on a license that is as
+    /// good or better) | offline (redeemed; the switch happens on the next check)
+    pub outcome: &'static str,
+    /// The plan name this computer uses now.
+    pub plan_name: Option<String>,
 }
 
 /// Pro features the app has, unlocked or not (from the effective entitlements, decided here
@@ -269,6 +302,10 @@ pub struct Cloud {
     last_on_air: AtomicBool,
     loop_task: Mutex<Option<AbortHandle>>,
     wake: Arc<tokio::sync::Notify>,
+    /// The loop's finished rounds (count, reached the server) and whether one runs now:
+    /// "Check now" waits for a round that started after the click.
+    rounds: tokio::sync::watch::Sender<(u64, bool)>,
+    in_round: AtomicBool,
     signin_task: Mutex<Option<AbortHandle>>,
     /// Tests: the machine fingerprint (production reads `MachineGuid`).
     machine_override: RwLock<Option<String>>,
@@ -299,6 +336,8 @@ impl Default for Cloud {
             last_on_air: AtomicBool::new(false),
             loop_task: Mutex::new(None),
             wake: Arc::new(tokio::sync::Notify::new()),
+            rounds: tokio::sync::watch::Sender::new((0, false)),
+            in_round: AtomicBool::new(false),
             signin_task: Mutex::new(None),
             machine_override: RwLock::new(None),
             ai_jobs: Default::default(),
@@ -342,7 +381,9 @@ impl Cloud {
             .or_else(machine::fingerprint)
     }
 
-    /// A long value in the keychain, in pieces (see [`CHUNK`]).
+    /// A long value in the keychain, in pieces (see [`CHUNK`]): how older versions stored the
+    /// token (tests plant one with it).
+    #[cfg(test)]
     fn put_long(&self, id: &str, value: &str) -> AppResult<()> {
         let s = self.secrets();
         let old = self.get_long(id).ok().flatten();
@@ -391,9 +432,11 @@ impl Cloud {
             .flatten()
             .and_then(|h| h.split_once(':').and_then(|(n, _)| n.parse::<usize>().ok()))
             .unwrap_or(1);
-        let _ = s.delete(id);
-        for i in 1..n {
-            let _ = s.delete(&format!("{id}-{i}"));
+        let ids = std::iter::once(id.to_string()).chain((1..n).map(|i| format!("{id}-{i}")));
+        for id in ids {
+            if let Err(e) = s.delete(&id) {
+                tracing::info!("deleting the old keychain entry {id}: {e}");
+            }
         }
     }
 
@@ -442,6 +485,18 @@ impl Cloud {
         if let Some(s) = lock(&self.st).as_mut() {
             s.effective = effective.iter().map(|e| (*e).to_string()).collect();
             s.effective_access = if full { Access::Full } else { Access::Reduced };
+        }
+    }
+
+    /// Tests and the e2e fixture (debug builds only, like `set_test_entitlements`): the stored
+    /// license token and activation id, as `license.json` would hold them (unverified: what the
+    /// core gates on is decided by `set_test_entitlements`).
+    #[cfg(any(test, debug_assertions))]
+    #[doc(hidden)]
+    pub fn set_test_license(&self, token: Option<&str>, activation: Option<&str>) {
+        if let Some(s) = lock(&self.st).as_mut() {
+            s.file.token = token.map(str::to_string);
+            s.file.activation = activation.map(str::to_string);
         }
     }
 
@@ -520,8 +575,9 @@ impl AppState {
         self.cloud_service()
     }
 
-    /// Loads the stored license (no network): keychain token → verify → evaluate. Call once at
-    /// startup, before anything gates on it. Registers the on-air listener.
+    /// Loads the stored license (no network): `license.json` token (or, once, the one an older
+    /// version left in the keychain) → verify → evaluate. Call once at startup, before anything
+    /// gates on it. Registers the on-air listener.
     pub fn cloud_init(&self) {
         let c = self.cloud();
         *c.config_dir.write().unwrap_or_else(PoisonError::into_inner) =
@@ -559,6 +615,7 @@ impl AppState {
             notice: None,
             no_backup: false,
         });
+        self.license_migrate_keychain();
         self.license_reevaluate(true);
         // Losing access waits for the show to end: apply once nothing is on air.
         self.add_change_listener(Arc::new(|st: &AppState, ch: StateChange<'_>| {
@@ -581,6 +638,53 @@ impl AppState {
         self.cloud_schedule_init();
     }
 
+    /// Moves a license an older version kept in the keychain into `license.json`, once: only a
+    /// token that verifies for this machine is kept; the old entries are deleted after the file
+    /// is written. Any failure just means activating again on the next sync (idempotent for the
+    /// same machine).
+    fn license_migrate_keychain(&self) {
+        let c = self.cloud();
+        if lock(&c.st).as_ref().is_none_or(|s| s.file.token.is_some()) {
+            return;
+        }
+        let token = match c.get_long(S_TOKEN) {
+            Ok(Some(t)) => t,
+            Ok(None) => return,
+            Err(e) => {
+                tracing::info!("reading the license token an older version stored: {e}");
+                return;
+            }
+        };
+        let activation = c.secrets().get(S_ACTIVATION).unwrap_or_else(|e| {
+            tracing::info!("reading the activation id an older version stored: {e}");
+            None
+        });
+        let machine = c.machine();
+        {
+            let mut g = lock(&c.st);
+            let Some(s) = g.as_mut() else { return };
+            let ok = match machine.as_deref() {
+                Some(m) => match kinetra_license::verify_license(&token, &s.keys, m) {
+                    Ok(_) => true,
+                    Err(e) => {
+                        tracing::info!("the license token an older version stored: {e}");
+                        false
+                    }
+                },
+                None => false,
+            };
+            s.file.token = ok.then_some(token);
+            s.file.activation = activation;
+        }
+        if self.save_license_file() {
+            c.delete_long(S_TOKEN);
+            if let Err(e) = c.secrets().delete(S_ACTIVATION) {
+                tracing::info!("deleting the old keychain entry {S_ACTIVATION}: {e}");
+            }
+            tracing::info!("moved the license from the keychain to {FILE}");
+        }
+    }
+
     /// Starts the background loop (keys, revocations, beta, refresh). No-op without a runtime.
     pub fn cloud_start(&self) {
         let Some(rt) = self.live().runtime_handle() else {
@@ -592,7 +696,11 @@ impl AppState {
             let mut fails = 0usize;
             loop {
                 let Some(st) = weak.upgrade() else { return };
+                let c = st.cloud();
+                c.in_round.store(true, Ordering::SeqCst);
                 let ok = st.cloud_sync().await;
+                c.in_round.store(false, Ordering::SeqCst);
+                c.rounds.send_modify(|r| *r = (r.0 + 1, ok));
                 drop(st);
                 let wait = if ok {
                     fails = 0;
@@ -696,9 +804,17 @@ impl AppState {
         }
     }
 
-    /// This computer's activation id (the keychain copy), if it is activated.
+    /// This computer's activation id, if it is activated.
     pub(crate) fn cloud_activation(&self) -> Option<String> {
-        self.cloud().secrets().get(S_ACTIVATION).ok().flatten()
+        lock(&self.cloud().st)
+            .as_ref()
+            .and_then(|s| s.file.activation.clone())
+    }
+
+    fn license_token(&self) -> Option<String> {
+        lock(&self.cloud().st)
+            .as_ref()
+            .and_then(|s| s.file.token.clone())
     }
 
     /// Unix seconds (the test clock in tests).
@@ -720,7 +836,7 @@ impl AppState {
             .read()
             .unwrap_or_else(PoisonError::into_inner)
             .clone();
-        let license_token = c.get_long(S_TOKEN).ok().flatten().unwrap_or_default();
+        let license_token = self.license_token().unwrap_or_default();
         Ok(RemoteCredentials {
             base,
             session,
@@ -739,7 +855,6 @@ impl AppState {
     /// before the app has started).
     fn license_reevaluate(&self, startup: bool) {
         let c = self.cloud();
-        let token = c.get_long(S_TOKEN).ok().flatten();
         let kc_time = c
             .secrets()
             .get(S_SERVER_TIME)
@@ -755,7 +870,7 @@ impl AppState {
             s.file.last_server_time = s.file.last_server_time.max(kc_time);
             s.eval = match machine.as_deref() {
                 Some(m) => license::evaluate_token(
-                    token.as_deref(),
+                    s.file.token.as_deref(),
                     &Context {
                         keys: &s.keys,
                         machine: m,
@@ -908,18 +1023,38 @@ impl AppState {
         self.polls_reconcile();
     }
 
-    fn save_license_file(&self) {
+    /// Writes `license.json`; `false` when that failed. A failure becomes
+    /// [`Notice::SaveFailed`] (the next successful save clears it), never "offline".
+    fn save_license_file(&self) -> bool {
         let c = self.cloud();
         let file = lock(&c.st).as_ref().map(|s| s.file.clone());
-        let Some(mut file) = file else { return };
+        let Some(mut file) = file else { return false };
         file.schema_version = SCHEMA;
         let path = self.config_dir().join(FILE);
-        if let Err(e) = fsx::write_json_atomic(&path, &file) {
-            tracing::warn!("saving {FILE}: {e}");
+        let res = fsx::write_json_atomic(&path, &file);
+        if let Err(e) = &res {
+            tracing::warn!("saving {}: {e}", path.display());
         }
-        let _ = c
+        if let Some(s) = lock(&c.st).as_mut() {
+            match &res {
+                Err(e) => {
+                    s.notice = Some(Notice::SaveFailed {
+                        reason: e.to_string(),
+                        folder: self.config_dir().display().to_string(),
+                    })
+                }
+                Ok(()) if matches!(s.notice, Some(Notice::SaveFailed { .. })) => s.notice = None,
+                Ok(()) => {}
+            }
+        }
+        // Best effort: the file is the source.
+        if let Err(e) = c
             .secrets()
-            .set(S_SERVER_TIME, &file.last_server_time.to_string());
+            .set(S_SERVER_TIME, &file.last_server_time.to_string())
+        {
+            tracing::debug!("the keychain copy of the server time: {e}");
+        }
+        res.is_ok()
     }
 
     fn see_server_time(&self, t: i64) {
@@ -1018,7 +1153,7 @@ impl AppState {
         let Some(machine) = c.machine() else {
             return Err(CallError::Offline);
         };
-        let activation = c.secrets().get(S_ACTIVATION).ok().flatten();
+        let activation = self.cloud_activation();
         let nonce = license::nonce().map_err(|_| CallError::Offline)?;
         let result = match &activation {
             Some(aid) => api.refresh(session, aid, &machine, &nonce, c.now()).await,
@@ -1041,7 +1176,9 @@ impl AppState {
                 if code == "activation_revoked" && activation.is_some() =>
             {
                 // Deactivated elsewhere or replaced: activate again (free and unlimited).
-                c.secrets().delete(S_ACTIVATION).ok();
+                if let Some(s) = lock(&c.st).as_mut() {
+                    s.file.activation = None;
+                }
                 let nonce = license::nonce().map_err(|_| CallError::Offline)?;
                 let a = api
                     .activate(
@@ -1148,14 +1285,11 @@ impl AppState {
             tracing::warn!("activation token rejected: nonce mismatch");
             return Err(CallError::Offline);
         }
-        if c.put_long(S_TOKEN, &a.token).is_err()
-            || c.secrets().set(S_ACTIVATION, &a.activation_id).is_err()
-        {
-            tracing::warn!("the keychain refused the license token");
-            return Err(CallError::Offline);
-        }
         self.see_server_time(a.server_time.max(claims.iat));
+        // Applies from memory at once; the caller saves the file (a failure there is a notice).
         if let Some(s) = lock(&c.st).as_mut() {
+            s.file.token = Some(a.token.clone());
+            s.file.activation = Some(a.activation_id.clone());
             s.file.slot = Some(a.slot.clone());
             s.file.upgrade_blocked = a.upgrade_blocked.clone();
             if a.upgrade_blocked
@@ -1205,9 +1339,10 @@ impl AppState {
                 let next = match res {
                     Ok(tok) => {
                         let c = st.cloud();
-                        if c.secrets().set(S_SESSION, &tok.session_token).is_err() {
+                        if let Err(e) = c.secrets().set(S_SESSION, &tok.session_token) {
+                            tracing::warn!("saving the sign-in: {e}");
                             SigninView::Failed {
-                                message: "The system keychain refused the sign-in.".into(),
+                                message: format!("Couldn't save your sign-in: {}.", e.reason()),
                             }
                         } else {
                             let name = [tok.user.first_name.clone(), tok.user.last_name.clone()]
@@ -1353,11 +1488,11 @@ impl AppState {
         let c = self.cloud();
         let session = self.session()?;
         c.api()?.deactivate(&session, activation_id).await?;
-        let own = c.secrets().get(S_ACTIVATION)?.as_deref() == Some(activation_id);
+        let own = self.cloud_activation().as_deref() == Some(activation_id);
         if own {
-            c.delete_long(S_TOKEN);
-            c.secrets().delete(S_ACTIVATION)?;
             if let Some(s) = lock(&c.st).as_mut() {
+                s.file.token = None;
+                s.file.activation = None;
                 s.file.slot = None;
             }
         }
@@ -1383,13 +1518,35 @@ impl AppState {
         Ok(())
     }
 
-    /// Redeems a license key (any formatting), then refreshes onto the best license.
-    pub async fn license_redeem(&self, key: &str) -> AppResult<()> {
+    /// Redeems a license key (any formatting), then refreshes onto the best license and says
+    /// what that did on this computer.
+    pub async fn license_redeem(&self, key: &str) -> AppResult<RedeemResult> {
         let key = key_format::normalize(key).map_err(|e| key_error(&e))?;
         let session = self.session()?;
-        self.cloud().api()?.redeem(&session, &key).await?;
-        self.cloud_sync().await;
-        Ok(())
+        let redeemed = self.cloud().api()?.redeem(&session, &key).await?;
+        let reached = self.cloud_sync().await;
+        let v = self.license_view();
+        let here = lock(&self.cloud().st)
+            .as_ref()
+            .and_then(|s| s.eval.claims.as_ref().map(|c| c.lid.clone()));
+        let outcome = if here.as_deref() == Some(redeemed.id.as_str()) {
+            if matches!(v.notice, Some(Notice::SaveFailed { .. })) {
+                "saveFailed"
+            } else {
+                "moved"
+            }
+        } else if !reached {
+            "offline"
+        } else if v.upgrade_blocked.is_some() || matches!(v.notice, Some(Notice::SeatsFull { .. }))
+        {
+            "blocked"
+        } else {
+            "kept"
+        };
+        Ok(RedeemResult {
+            outcome,
+            plan_name: v.plan_name,
+        })
     }
 
     /// The account's licenses and computers (`GET /v1/license`), for Preferences.
@@ -1409,9 +1566,39 @@ impl AppState {
         Ok(l.licenses)
     }
 
-    /// Wakes the background loop now ("Check now", after sign-in).
-    pub fn license_check_now(&self) {
-        self.cloud().wake.notify_one();
+    /// "Check now": runs the background loop's next round at once and waits for it (at most
+    /// [`CHECK_NOW_TIMEOUT`]). `Offline` when it couldn't reach the server; anything else it
+    /// found (a seats choice, a failed save) is in the view.
+    pub async fn license_check_now(&self) -> AppResult<()> {
+        let c = self.cloud();
+        if lock(&c.loop_task).is_none() {
+            // No loop (tests): one round here.
+            return if self.cloud_sync().await {
+                Ok(())
+            } else {
+                Err(AppError::Offline)
+            };
+        }
+        // A round already running started before the click: wait for the one after it.
+        let running = c.in_round.load(Ordering::SeqCst);
+        let mut rx = c.rounds.subscribe();
+        let target = rx.borrow().0 + if running { 2 } else { 1 };
+        c.wake.notify_one();
+        let done = async {
+            loop {
+                let (n, ok) = *rx.borrow_and_update();
+                if n >= target {
+                    return ok;
+                }
+                if rx.changed().await.is_err() {
+                    return false;
+                }
+            }
+        };
+        match tokio::time::timeout(CHECK_NOW_TIMEOUT, done).await {
+            Ok(true) => Ok(()),
+            _ => Err(AppError::Offline),
+        }
     }
 }
 

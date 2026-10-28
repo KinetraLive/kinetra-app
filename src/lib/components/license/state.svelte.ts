@@ -5,7 +5,7 @@ import { on } from "$lib/api";
 import * as api from "$lib/api/license";
 import type { LicenseView } from "$lib/types";
 import { toasts } from "$lib/stores/toasts.svelte";
-import { cloudMessage } from "./messages";
+import { cloudMessage, redeemText } from "./messages";
 import { openInBrowser } from "./open";
 
 class LicenseState {
@@ -51,8 +51,7 @@ class LicenseState {
       return false;
     }
     try {
-      await api.licenseRedeem(key);
-      toasts.push({ kind: "info", message: "License key redeemed." });
+      toasts.push(redeemText(await api.licenseRedeem(key)));
       return true;
     } catch (e) {
       toasts.push({ kind: "error", message: cloudMessage(e) });

@@ -172,9 +172,29 @@ struct Env {
     st: AppState,
     mock: Mock,
     secrets: Arc<MemorySecrets>,
+    base: String,
 }
 
 impl Env {
+    /// Changes the stored `license.json` (created when missing), as someone editing it would.
+    fn edit_file(&self, f: impl FnOnce(&mut Value)) {
+        let path = self.st.config_dir().join(FILE);
+        let mut file: Value = std::fs::read_to_string(&path)
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_else(|| json!({"schemaVersion": 1}));
+        f(&mut file);
+        std::fs::create_dir_all(self.st.config_dir()).unwrap();
+        std::fs::write(&path, file.to_string()).unwrap();
+    }
+
+    /// Swaps the keychain for `secrets`.
+    fn use_secrets(&self, secrets: Arc<dyn SecretStore>) {
+        self.st
+            .cloud_service()
+            .set_test_env(&self.base, secrets, MACHINE);
+    }
+
     fn reply(&self, path: &str, replies: Vec<Reply>) {
         self.mock
             .lock()
@@ -254,6 +274,7 @@ fn env_with(beta: Option<&str>) -> Env {
         st,
         mock,
         secrets,
+        base,
     };
     // Public endpoints: an unchanged key set (signed by the trusted key) and an empty list.
     e.reply(
@@ -296,6 +317,50 @@ fn on_air(e: &Env) {
         .unwrap();
     e.st.live().show("main", "clip").unwrap();
     assert!(e.st.live().any_on_air());
+}
+
+/// A keychain that reads what it holds but refuses every write (and, with `reads: false`,
+/// every read): Credential Manager disabled by policy, or the user's broken one.
+struct RefusingSecrets {
+    inner: MemorySecrets,
+    reads: bool,
+}
+
+impl SecretStore for RefusingSecrets {
+    fn get(&self, id: &str) -> Result<Option<String>, crate::core::secrets::SecretError> {
+        if !self.reads {
+            return Err(crate::core::secrets::SecretError::for_tests(
+                "no access to the credential store",
+            ));
+        }
+        self.inner.get(id)
+    }
+    fn set(&self, _: &str, _: &str) -> Result<(), crate::core::secrets::SecretError> {
+        Err(crate::core::secrets::SecretError::for_tests(
+            "the credential store failed",
+        ))
+    }
+    fn delete(&self, id: &str) -> Result<(), crate::core::secrets::SecretError> {
+        self.inner.delete(id)
+    }
+}
+
+/// The license `/v1/license/redeem` answers with.
+fn redeemed(id: &str, plan: &str) -> Reply {
+    Reply::Json(
+        200,
+        json!({"id": id, "plan": plan, "plan_name": "Kinetra Pro (yearly)", "kind": "subscription",
+               "status": "active", "entitlements": [CORE_APP, PRO_AI], "seats": 1, "seats_used": 0,
+               "backup_used": false, "activations": []}),
+    )
+}
+
+fn a_key() -> String {
+    let mut n = 0u8;
+    key_format::generate(|| {
+        n = n.wrapping_add(37);
+        n
+    })
 }
 
 fn wait_until(what: &str, f: impl Fn() -> bool) {
@@ -370,14 +435,15 @@ fn device_flow_signs_in_and_activates_pro() {
         v.features.ai,
         "the view says AI is unlocked (decided in the core)"
     );
-    // The session and the token are in the keychain, never in license.json.
+    // The session is in the keychain, never in license.json; the token is in the file only.
     assert_eq!(
         e.secrets.get(S_SESSION).unwrap().as_deref(),
         Some("kntr_s_abc")
     );
     let file = std::fs::read_to_string(e.st.config_dir().join(FILE)).unwrap();
-    let token = e.st.cloud_service().get_long(S_TOKEN).unwrap().unwrap();
-    assert!(!file.contains("kntr_s_abc") && !file.contains(&token));
+    let token = e.st.license_token().unwrap();
+    assert!(!file.contains("kntr_s_abc") && file.contains(&token));
+    assert!(e.secrets.get(S_TOKEN).unwrap().is_none());
     // The activation sent a fresh nonce, a timestamp and the fingerprint, with the session.
     let (body, bearer) = e.calls("/v1/license/activate").remove(0);
     assert_eq!(bearer.as_deref(), Some("kntr_s_abc"));
@@ -434,10 +500,7 @@ fn refresh_after_deactivation_elsewhere_activates_again() {
         }],
     );
     assert!(e.sync());
-    assert_eq!(
-        e.secrets.get(S_ACTIVATION).unwrap().as_deref(),
-        Some("act-2")
-    );
+    assert_eq!(e.st.cloud_activation().as_deref(), Some("act-2"));
     assert!(e.pro_ok());
 }
 
@@ -456,7 +519,7 @@ fn a_token_with_another_nonce_is_rejected() {
     );
     e.sync();
     assert!(!e.pro_ok());
-    assert!(e.secrets.get(S_TOKEN).unwrap().is_none());
+    assert!(e.st.license_token().is_none());
 }
 
 #[test]
@@ -708,7 +771,7 @@ fn key_rotation_applies_and_a_tampered_file_adds_nothing() {
     let mut c = pro();
     c.aid = "act-k2".into();
     let t = sign_license(&c, "test-k2", &key(2));
-    e.st.cloud_service().put_long(S_TOKEN, &t).unwrap();
+    e.edit_file(|f| f["token"] = json!(t));
     e.restart();
     assert!(e.pro_ok());
     // An attacker edits license.json to trust their own key: ignored.
@@ -722,7 +785,7 @@ fn key_rotation_applies_and_a_tampered_file_adds_nothing() {
         .push(serde_json::to_value(evil_update).unwrap());
     std::fs::write(&path, file.to_string()).unwrap();
     let forged = sign_license(&pro(), "evil", &key(66));
-    e.st.cloud_service().put_long(S_TOKEN, &forged).unwrap();
+    e.edit_file(|f| f["token"] = json!(forged));
     e.restart();
     assert!(
         !e.pro_ok(),
@@ -731,7 +794,7 @@ fn key_rotation_applies_and_a_tampered_file_adds_nothing() {
 }
 
 #[test]
-fn the_last_server_time_survives_a_deleted_file() {
+fn the_last_server_time_survives_a_reset_file() {
     let e = env();
     e.signed_in();
     let mut c = pro();
@@ -742,7 +805,7 @@ fn the_last_server_time_survives_a_deleted_file() {
     e.st.cloud_service().set_test_now(T0 + 10 * DAY);
     e.sync();
     assert!(e.pro_ok());
-    std::fs::remove_file(e.st.config_dir().join(FILE)).unwrap();
+    e.edit_file(|f| f["lastServerTime"] = json!(0));
     // The clock is turned back a week: the keychain copy still catches it.
     e.st.cloud_service().set_test_now(T0 + 3 * DAY);
     e.restart();
@@ -816,6 +879,242 @@ fn redeem_checks_the_key_before_sending() {
         "{err}"
     );
     assert!(e.calls("/v1/license/redeem").is_empty());
+}
+
+// ---- License storage (docs: the license lives in license.json, not the keychain) ----------
+
+#[test]
+fn the_token_and_activation_round_trip_through_the_file() {
+    let e = env();
+    e.signed_in();
+    e.reply("/v1/license/activate", vec![token_reply(pro())]);
+    assert!(e.sync() && e.pro_ok());
+    let file: Value =
+        serde_json::from_str(&std::fs::read_to_string(e.st.config_dir().join(FILE)).unwrap())
+            .unwrap();
+    assert_eq!(file["activation"], "act-1");
+    assert!(file["token"].as_str().is_some_and(|t| !t.is_empty()));
+    assert!(e.secrets.get(S_TOKEN).unwrap().is_none());
+    assert!(e.secrets.get(S_ACTIVATION).unwrap().is_none());
+    // A restart verifies it with no network (the API is gone).
+    e.st.cloud_service()
+        .set_test_env("http://127.0.0.1:1", e.secrets.clone(), MACHINE);
+    e.restart();
+    assert!(e.pro_ok());
+    assert_eq!(e.st.cloud_activation().as_deref(), Some("act-1"));
+}
+
+#[test]
+fn a_copied_or_tampered_token_is_no_license_then_activates_here() {
+    let e = env();
+    // license.json copied from another computer.
+    let mut other = pro();
+    other.machine = "ffff".repeat(16);
+    let copied = sign_license(&other, "test-k1", &key(1));
+    e.edit_file(|f| {
+        f["token"] = json!(copied);
+        f["activation"] = json!("act-other");
+    });
+    e.restart();
+    assert_eq!(e.st.license_view().status, "none");
+    assert!(!e.pro_ok());
+    // An edited token: the signature breaks.
+    let mut t = sign_license(&pro(), "test-k1", &key(1));
+    t.insert(t.len() / 2, 'x');
+    e.edit_file(|f| f["token"] = json!(t));
+    e.restart();
+    assert_eq!(e.st.license_view().status, "none");
+    // The next sync gets this computer its own token (a refresh of the copied activation is
+    // refused, so it activates).
+    e.signed_in();
+    e.reply(
+        "/v1/license/refresh",
+        vec![err(409, "activation_revoked", None)],
+    );
+    e.reply("/v1/license/activate", vec![token_reply(pro())]);
+    assert!(e.sync() && e.pro_ok());
+}
+
+#[test]
+fn a_token_an_older_version_kept_in_the_keychain_moves_to_the_file() {
+    let e = env();
+    // What older versions stored: the token in pieces, the activation id.
+    let mut c = pro();
+    c.ent.extend((0..200).map(|i| format!("x.padding{i}"))); // longer than one piece
+    let t = sign_license(&c, "test-k1", &key(1));
+    assert!(t.len() > CHUNK);
+    let s = e.st.cloud_service();
+    s.put_long(S_TOKEN, &t).unwrap();
+    e.secrets.set(S_ACTIVATION, "act-old").unwrap();
+    e.restart();
+    assert!(e.pro_ok());
+    assert_eq!(e.st.license_token().as_deref(), Some(t.as_str()));
+    assert_eq!(e.st.cloud_activation().as_deref(), Some("act-old"));
+    let file = std::fs::read_to_string(e.st.config_dir().join(FILE)).unwrap();
+    assert!(file.contains(&t));
+    for id in [S_TOKEN, &format!("{S_TOKEN}-1"), S_ACTIVATION] {
+        assert!(e.secrets.get(id).unwrap().is_none(), "{id} deleted");
+    }
+    // Once: a later start reads the file, also with the keychain gone.
+    e.use_secrets(Arc::new(RefusingSecrets {
+        inner: MemorySecrets::default(),
+        reads: false,
+    }));
+    e.restart();
+    assert!(e.pro_ok());
+}
+
+#[test]
+fn an_unreadable_keychain_at_migration_falls_back_to_activating() {
+    let e = env();
+    let refusing = Arc::new(RefusingSecrets {
+        inner: MemorySecrets::default(),
+        reads: false,
+    });
+    e.use_secrets(refusing);
+    e.restart();
+    assert_eq!(e.st.license_view().status, "none");
+    // Signed in again with a keychain that reads (and still refuses writes): it activates.
+    let inner = MemorySecrets::default();
+    inner.set(S_SESSION, "kntr_s_test").unwrap();
+    e.use_secrets(Arc::new(RefusingSecrets { inner, reads: true }));
+    e.reply("/v1/license/activate", vec![token_reply(pro())]);
+    assert!(e.sync() && e.pro_ok());
+    assert_eq!(e.calls("/v1/license/activate").len(), 1);
+}
+
+#[test]
+fn a_keychain_that_refuses_writes_still_gets_the_license() {
+    let e = env();
+    let inner = MemorySecrets::default();
+    inner.set(S_SESSION, "kntr_s_test").unwrap();
+    e.use_secrets(Arc::new(RefusingSecrets { inner, reads: true }));
+    e.reply("/v1/license/activate", vec![token_reply(pro())]);
+    assert!(e.sync() && e.pro_ok());
+    let v = e.st.license_view();
+    assert_eq!((v.status, v.online, v.notice), ("active", Some(true), None));
+    e.restart();
+    assert!(e.pro_ok(), "kept across a restart");
+}
+
+#[test]
+fn a_sign_in_the_keychain_refuses_says_why() {
+    let e = env();
+    e.use_secrets(Arc::new(RefusingSecrets {
+        inner: MemorySecrets::default(),
+        reads: true,
+    }));
+    e.reply(
+        "/v1/auth/device",
+        vec![Reply::Json(
+            200,
+            json!({"device_code": "d", "user_code": "AAAA-BBBB", "verification_uri": "u",
+                   "verification_uri_complete": "u?c", "expires_in": 600, "interval": 1}),
+        )],
+    );
+    e.reply(
+        "/v1/auth/device/token",
+        vec![Reply::Json(
+            200,
+            json!({"session_token": "kntr_s_abc", "token_type": "Bearer", "expires_at": "2027-10-09T20:27:47Z",
+                   "user": {"id": "u1", "email": "ola@example.com"}}),
+        )],
+    );
+    e.rt.block_on(e.st.sign_in_start()).unwrap();
+    wait_until("failed", || {
+        matches!(e.st.license_view().signin, SigninView::Failed { .. })
+    });
+    let SigninView::Failed { message } = e.st.license_view().signin else {
+        unreachable!()
+    };
+    assert_eq!(
+        message,
+        "Couldn't save your sign-in: the credential store failed."
+    );
+}
+
+#[test]
+fn a_license_file_that_cant_be_written_is_a_notice_not_offline() {
+    let e = env();
+    e.signed_in();
+    // A folder where the file should be: every write fails.
+    let path = e.st.config_dir().join(FILE);
+    let _ = std::fs::remove_file(&path);
+    std::fs::create_dir_all(&path).unwrap();
+    e.reply("/v1/license/activate", vec![token_reply(pro())]);
+    assert!(e.sync(), "the server was reached");
+    assert!(e.pro_ok(), "the license applies from memory");
+    let v = e.st.license_view();
+    assert_eq!(v.online, Some(true));
+    let Some(Notice::SaveFailed { reason, folder }) = v.notice else {
+        panic!("{:?}", v.notice)
+    };
+    assert!(!reason.is_empty());
+    assert_eq!(folder, e.st.config_dir().display().to_string());
+    // A redeem then says the license is here but not saved.
+    e.reply("/v1/license/redeem", vec![redeemed("lic-1", "pro_yearly")]);
+    e.reply("/v1/license/refresh", vec![token_reply(pro())]);
+    let r = e.rt.block_on(e.st.license_redeem(&a_key())).unwrap();
+    assert_eq!(r.outcome, "saveFailed");
+    // Writable again: the next save clears the notice.
+    std::fs::remove_dir(&path).unwrap();
+    assert!(e.sync());
+    assert_eq!(e.st.license_view().notice, None);
+    assert!(path.is_file());
+}
+
+#[test]
+fn redeem_says_what_it_did_on_this_computer() {
+    let e = env();
+    e.signed_in();
+    e.reply("/v1/license/activate", vec![token_reply(free())]);
+    e.sync();
+    // The key's license is the one this computer moves to.
+    e.reply("/v1/license/redeem", vec![redeemed("lic-1", "pro_yearly")]);
+    e.reply("/v1/license/refresh", vec![token_reply(pro())]);
+    let r = e.rt.block_on(e.st.license_redeem(&a_key())).unwrap();
+    assert_eq!(
+        (r.outcome, r.plan_name.as_deref()),
+        ("moved", Some("Kinetra Pro (yearly)"))
+    );
+    // Another license: this computer stays on the one it has.
+    e.reply("/v1/license/redeem", vec![redeemed("lic-2", "pro_monthly")]);
+    let r = e.rt.block_on(e.st.license_redeem(&a_key())).unwrap();
+    assert_eq!(r.outcome, "kept");
+    // No free computer on the new license.
+    let blocked = json!({"license_id": "lic-3", "plan": "pro_yearly", "reason": "seats_full",
+                         "activations": [{"id": "a-studio", "machine_name": "STUDIO-PC", "slot": "main"}]});
+    e.reply("/v1/license/redeem", vec![redeemed("lic-3", "pro_yearly")]);
+    e.reply(
+        "/v1/license/refresh",
+        vec![Reply::Token {
+            claims: Box::new(pro()),
+            aid: "act-1".into(),
+            nonce: None,
+            upgrade_blocked: Some(blocked),
+        }],
+    );
+    let r = e.rt.block_on(e.st.license_redeem(&a_key())).unwrap();
+    assert_eq!(r.outcome, "blocked");
+}
+
+#[test]
+fn check_now_waits_for_one_round_and_reports_it() {
+    let e = env();
+    e.signed_in();
+    e.reply("/v1/license/activate", vec![token_reply(pro())]);
+    e.st.cloud_start();
+    wait_until("the first round", || e.pro_ok());
+    let before = e.calls("/v1/license/keys").len();
+    e.rt.block_on(e.st.license_check_now()).unwrap();
+    let after = e.calls("/v1/license/keys").len();
+    assert!(after > before, "a round ran before it returned");
+    // Unreachable: it says so instead of returning at once with nothing.
+    e.st.cloud_service()
+        .set_test_env("http://127.0.0.1:1", e.secrets.clone(), MACHINE);
+    let err = e.rt.block_on(e.st.license_check_now()).unwrap_err();
+    assert!(matches!(err, AppError::Offline), "{err:?}");
+    e.st.cloud_stop();
 }
 
 #[test]

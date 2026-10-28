@@ -23,7 +23,7 @@
     signInCancel,
     signOut,
   } from "$lib/api/license";
-  import { cloudMessage, formatKey, keyComplete } from "$lib/components/license/messages";
+  import { cloudMessage, formatKey, keyComplete, redeemText, saveFailedText } from "$lib/components/license/messages";
   import { openInBrowser } from "$lib/components/license/open";
   import { agoText, dateText, planName, statusIsProblem, statusText } from "$lib/components/license/plans";
   import ProLock from "$lib/components/license/ProLock.svelte";
@@ -40,15 +40,21 @@
   let key = $state("");
   /** A key typed while signed out: redeemed once sign-in completes. */
   let waitingKey = $state<string | null>(null);
-  let keyAdded = $state(false);
+  /** What the last added key did here. */
+  let keyAdded = $state<ReturnType<typeof redeemText> | null>(null);
+  let checking = $state(false);
 
   async function addKey(k: string) {
-    keyAdded = false;
+    keyAdded = null;
     await run(async () => {
-      await licenseRedeem(k);
+      keyAdded = redeemText(await licenseRedeem(k));
       key = "";
-      keyAdded = true;
     });
+  }
+  async function checkNow() {
+    checking = true;
+    await run(licenseCheckNow);
+    checking = false;
   }
   function submitKey(e: SubmitEvent) {
     e.preventDefault();
@@ -113,6 +119,11 @@
     <SettingsRow label="Status">
       <span class:warn={statusIsProblem(v.status)}>{statusText(v.status)}</span>
     </SettingsRow>
+    {#if v.notice?.kind === "saveFailed"}
+      <SettingsRow label="Not saved">
+        <span class="warn" role="alert">{saveFailedText(v.notice)}</span>
+      </SettingsRow>
+    {/if}
     {#if v.pending}
       <SettingsRow label="Pending">
         <span class="warn">A license change applies when the show ends.</span>
@@ -135,7 +146,7 @@
     {/if}
     <SettingsRow label="Last check">
       <span class="tnum">{v.lastCheckAt ? agoText(v.lastCheckAt) : "Never"}{v.online === false ? " · offline now" : ""}</span>
-      <Button size="sm" variant="ghost" disabled={busy} onclick={() => void run(licenseCheckNow)}>Check now</Button>
+      <Button size="sm" variant="ghost" disabled={busy} onclick={() => void checkNow()}>{checking ? "Checking…" : "Check now"}</Button>
     </SettingsRow>
     <SettingsRow label="Pro features">
       <ProLock feature="ai" label="AI templates"><span>AI templates</span></ProLock>
@@ -150,12 +161,12 @@
           placeholder="KNTR-XXXX-XXXX-XXXX"
           value={key}
           oninput={(e) => {
-            keyAdded = false;
+            keyAdded = null;
             key = e.currentTarget.value = formatKey(e.currentTarget.value);
           }}
           onpaste={(e) => {
             e.preventDefault();
-            keyAdded = false;
+            keyAdded = null;
             key = formatKey(e.clipboardData?.getData("text") ?? "");
           }}
         />
@@ -164,7 +175,7 @@
         </Button>
       </form>
       {#if waitingKey}<span class="muted">Sign in to finish adding the key.</span>{/if}
-      {#if keyAdded}<span role="status">License key added.</span>{/if}
+      {#if keyAdded}<span role="status" class:warn={keyAdded.kind === "error"}>{keyAdded.message}</span>{/if}
     </SettingsRow>
   {/if}
 </SettingsSection>
