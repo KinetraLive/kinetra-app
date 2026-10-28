@@ -13,6 +13,10 @@ update panel: one paragraph per line, no Markdown.
 
 ## Unreleased
 
+Remote control (Pro and Team): run your show from a phone, tablet or another computer. Turn it on for a project, invite collaborators by their Kinetra account and choose what each person may do, from full operator to editing text or just watching.
+
+Collaborators see a live picture of what's on air (and Preview in Studio mode), take and clear graphics, edit text, run cues, step through data sources, switch looks, start timers and take Preview. Build a button panel in Kinetra for one-tap actions on their screen. Graphics on air are never interrupted: the live picture is the first thing to pause when your computer is busy.
+
 ## Next stable release
 
 Send screens over NDI® (Windows, every plan): add an NDI® output in Preferences › Outputs and the screen shows up in vMix, OBS and other NDI® tools on your network, with transparency and tally. Setup, frame rates and known limits: docs.kinetra.live/ndi
