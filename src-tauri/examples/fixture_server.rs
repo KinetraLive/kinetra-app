@@ -504,15 +504,15 @@ fn relay_mock_start(rt: &Runtime, state: &AppState) -> Result<u16, String> {
     secrets
         .set("kinetra-session", "kntr_s_fixture")
         .map_err(text)?;
-    secrets
-        .set("kinetra-license-token", "1:fixture-license-token")
-        .map_err(text)?;
     state.cloud_service().set_test_env(
         &format!("http://127.0.0.1:{}", mock.port),
         secrets,
         "857a78b7a23b14cd718a9cbf9b90b0577225543ddcce5ed21854a4985f25ee27",
     );
     state.cloud_init();
+    state
+        .cloud_service()
+        .set_test_license(Some("fixture-license-token"), None);
     state
         .cloud_service()
         .set_test_entitlements(&["core.app", "pro.control"], true);

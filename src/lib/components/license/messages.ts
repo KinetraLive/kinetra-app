@@ -3,6 +3,7 @@
 // The core checks keys for real (`key_format::normalize`); this only formats the field.
 
 import { toAppError } from "$lib/api";
+import type { RedeemResult } from "$lib/types";
 
 /** Every API.md code → what the operator reads. `null` = show the server's own `message`
  * (API.md says "Show `message`"). */
@@ -89,6 +90,29 @@ export function cloudMessage(e: unknown): string {
     if (m !== undefined) return m;
   }
   return err.message;
+}
+
+/** `license.json` couldn't be written (the license applies until Kinetra restarts). */
+export const saveFailedText = (n: { reason: string; folder: string }) =>
+  `Couldn't save the license on this computer: ${n.reason.replace(/\.$/, "")}. Check that Kinetra can write to ${n.folder}.`;
+
+/** What a redeemed key did here: the toast after Add key. */
+export function redeemText(r: RedeemResult): { kind: "info" | "error"; message: string } {
+  switch (r.outcome) {
+    case "moved":
+      return { kind: "info", message: "License key redeemed." };
+    case "saveFailed":
+      return { kind: "error", message: "License key redeemed, but Kinetra couldn't save it on this computer. See Preferences › License." };
+    case "blocked":
+      return { kind: "info", message: "License key redeemed. Free a computer to use it here." };
+    case "kept":
+      return {
+        kind: "info",
+        message: r.planName ? `Redeemed. This computer already uses ${r.planName}.` : "Redeemed. This computer keeps its current license.",
+      };
+    case "offline":
+      return { kind: "info", message: "License key redeemed. This computer switches to it once Kinetra is back online." };
+  }
 }
 
 // ---- License keys (KNTR-XXXX-XXXX-XXXX) -------------------------------------------------------

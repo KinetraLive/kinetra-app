@@ -1,7 +1,8 @@
 //! Release guard: proves the debug-only test overrides don't exist in release builds.
 //!
 //! This example calls every override that must never ship: the entitlement override the e2e
-//! fixture uses to grant Pro (`Cloud::set_test_entitlements`), the template sandbox bypass
+//! fixture uses to grant Pro (`Cloud::set_test_entitlements`) and its planted license token
+//! (`Cloud::set_test_license`), the template sandbox bypass
 //! (`preview::load_unchecked_for_tests`) and the "act as another computer" profile
 //! (`devprofile::dev_profile`), the extra trusted keys (`config::extra_trusted_keys`) and the
 //! corrupt-download hook (`restore::corrupt_downloads`). It compiles in debug builds (`cargo clippy
@@ -29,6 +30,7 @@ fn main() {
     };
     st.cloud_service()
         .set_test_entitlements(&["core.app", "pro.control"], true);
+    st.cloud_service().set_test_license(Some("token"), None);
     let _ = devprofile::dev_profile();
     let _ = kinetra_lib::core::cloud::config::extra_trusted_keys();
     let _ = kinetra_lib::core::cloud::projects::restore::corrupt_downloads();

@@ -1039,7 +1039,15 @@ export type SigninView =
 
 export type LicenseNotice =
   | { kind: "clockWrong"; minutes: number }
-  | { kind: "seatsFull"; code: "seats_full" | "backup_in_use" | "backup_not_included" | string; activations: CloudActivation[]; backup: boolean };
+  | { kind: "seatsFull"; code: "seats_full" | "backup_in_use" | "backup_not_included" | string; activations: CloudActivation[]; backup: boolean }
+  /** license.json couldn't be written: the license applies until Kinetra restarts. */
+  | { kind: "saveFailed"; reason: string; folder: string };
+
+/** What a redeemed key did on this computer. */
+export interface RedeemResult {
+  outcome: "moved" | "saveFailed" | "blocked" | "kept" | "offline";
+  planName: string | null;
+}
 
 export interface BetaView {
   name: string;

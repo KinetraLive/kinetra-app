@@ -441,9 +441,7 @@ fn env() -> Env {
         .set_test_env(&base, secrets.clone(), MACHINE);
     st.cloud_init();
     secrets.set(S_SESSION, SESSION).unwrap();
-    secrets
-        .set("kinetra-license-token", &format!("1:{TOKEN}"))
-        .unwrap();
+    st.cloud_service().set_test_license(Some(TOKEN), None);
     st.cloud_service()
         .set_test_entitlements(&["core.app", PRO_CONTROL], true);
 

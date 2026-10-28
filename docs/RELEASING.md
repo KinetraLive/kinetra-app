@@ -88,7 +88,7 @@ updates/latest-canary.json     (canary updater manifest)
     "darwin-x86_64":  { "signature": "…", "url": ".../Kinetra_0.2.0_universal.app.tar.gz" } } }
 ```
 Notes: the version's section in `CHANGELOG.md` (stable), else the tag message; canary: the
-commit subjects since the previous canary (the `CHANGELOG.md` "Unreleased" section when present).
+`CHANGELOG.md` "Unreleased" section (only what's new since the previous canary).
 
 **`releases/<channel>/latest.json`** (website download page):
 `{ "channel", "version", "commit", "pub_date", "notes", "files": { "windows": {name, url, sha256, size}, "macos": {…} } }`
@@ -184,20 +184,25 @@ minutes, the access token after 60–90, and the signs happen at the end of `tau
 
 ## How to release
 
-**Update CHANGELOG.md's Unreleased section before releasing.** It is what users read in the
-update panel: what they gain since the last canary, plain text, one paragraph per line.
+**Release notes** (`CHANGELOG.md`, plain text, one paragraph per line; what users gain, never
+internal changes): "Unreleased" is the next canary's notes and holds only what's new since the
+canary that is out, so the update panel stays short. Write it before each canary; once the canary
+has shipped, move its paragraphs into "Next stable release" and leave "Unreleased" empty. "Next
+stable release" collects everything since the last stable release (canaries never show it).
 
 **Canary:** merge to `main`; the next nightly run (03:00 UTC) publishes it. For one now: Actions ›
 "Canary release" › Run workflow (branch `main`). It builds, tests, uploads and points
 `latest-canary.json` at it (about 15–25 min). The run compares the Unreleased notes with the
-published canary's: unchanged or empty notes stop a manual run and warn on the nightly one.
+published canary's: unchanged or empty notes stop a manual run, and the nightly one skips the
+build (with a warning) until notes are written, so users never see commit subjects.
 
 **Stable:**
 1. Run `cargo audit` in `src-tauri/` and recheck the ignored advisories in
    `src-tauri/.cargo/audit.toml` (Supply chain, below): drop an ignore once its fix is available.
 2. Bump the version in `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` and `package.json`
    (`pnpm run version:set 0.2.0` does all three) and add a `## 0.2.0` section to `CHANGELOG.md`
-   (the Unreleased notes since the last stable release, rewritten for it).
+   (the "Next stable release" section, plus "Unreleased" if a change hasn't been in a canary,
+   rewritten for it; then start a new empty "Next stable release").
 3. Merge to `main`.
 4. Tag: `git tag -a v0.2.0 -m "Kinetra 0.2.0" && git push origin v0.2.0`.
 5. Watch the "Stable release" workflow; it verifies the download at the end.

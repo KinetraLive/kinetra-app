@@ -25,6 +25,19 @@ pub const SERVICE: &str = if crate::core::model::CANARY_BUILD {
 #[error("The system keychain failed: {0}")]
 pub struct SecretError(String);
 
+impl SecretError {
+    /// What failed, for messages that add their own context ("no access to the credential
+    /// store").
+    pub fn reason(&self) -> &str {
+        &self.0
+    }
+
+    #[cfg(test)]
+    pub(crate) fn for_tests(reason: &str) -> Self {
+        Self(reason.to_string())
+    }
+}
+
 impl From<SecretError> for crate::error::AppError {
     fn from(e: SecretError) -> Self {
         crate::error::AppError::Internal(e.to_string())

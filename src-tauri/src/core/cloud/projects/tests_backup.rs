@@ -612,9 +612,9 @@ pub(super) fn env() -> Env {
     });
     let secrets = Arc::new(MemorySecrets::default());
     secrets.set(S_SESSION, "kntr_s_test").unwrap();
-    secrets.set("kinetra-activation", "act-1").unwrap();
     st.cloud_service().set_test_env(&base, secrets, MACHINE);
     st.cloud_init();
+    st.cloud_service().set_test_license(None, Some("act-1"));
     st.cloud_service()
         .set_test_entitlements(&["core.app", super::service::PRO_CLOUD], true);
     let parent = tmp.path().join("shows");
@@ -1504,8 +1504,20 @@ fn cloud_projects_rename_trash_and_restore() {
 #[test]
 fn the_history_needs_a_backed_up_project() {
     let e = env();
-    let er = e.rt_block(e.st.cloud_versions(None)).unwrap_err();
-    assert_eq!(er.to_string(), "This project has no cloud backup yet.");
+    // The project registers in the background after opening: either order can win.
+    let registered = || e.view().project.is_some_and(|p| p.registered);
+    match e.rt_block(e.st.cloud_versions(None)) {
+        Err(er) => assert_eq!(er.to_string(), "This project has no cloud backup yet."),
+        Ok(page) => assert!(registered() && page.versions.is_empty()),
+    }
+    // Registered with nothing backed up: an empty history.
+    let t = Instant::now();
+    while !registered() {
+        assert!(t.elapsed() < Duration::from_secs(10), "never registered");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    let page = e.rt_block(e.st.cloud_versions(None)).unwrap();
+    assert!(page.versions.is_empty());
 }
 
 fn commits(e: &Env) -> usize {
