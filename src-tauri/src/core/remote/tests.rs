@@ -99,6 +99,80 @@ struct Shared {
     api: Mutex<Vec<(String, String, String, Value)>>,
     /// The collaborators API's next answers (status, body), else 200 with an empty list.
     api_answers: Mutex<Vec<(u16, Value)>>,
+    /// The preview socket (protocol 2 §6.2): what the app sent, in order.
+    preview: Mutex<Vec<PvEv>>,
+    /// `preview_welcome.credit`.
+    preview_credit: Mutex<u64>,
+    to_preview: Mutex<Option<mpsc::UnboundedSender<ToApp>>>,
+}
+
+#[derive(Debug, Clone)]
+enum PvEv {
+    Connected { auth: String, proto: String },
+    Text(Value),
+    Frame(Vec<u8>),
+    Gone,
+}
+
+async fn preview_upgrade(
+    State(sh): State<Arc<Shared>>,
+    headers: HeaderMap,
+    ws: WebSocketUpgrade,
+) -> Response {
+    let h = |k: &str| {
+        headers
+            .get(k)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or_default()
+            .to_string()
+    };
+    sh.preview.lock().unwrap().push(PvEv::Connected {
+        auth: h("authorization"),
+        proto: h("sec-websocket-protocol"),
+    });
+    ws.protocols(["kinetra-control-preview.v1"])
+        .on_upgrade(move |s| preview_session(s, sh))
+}
+
+async fn preview_session(socket: WebSocket, sh: Arc<Shared>) {
+    use futures_util::{SinkExt, StreamExt};
+    let (mut tx, mut rx) = socket.split();
+    let (out, mut out_rx) = mpsc::unbounded_channel::<ToApp>();
+    *sh.to_preview.lock().unwrap() = Some(out.clone());
+    let writer = tokio::spawn(async move {
+        while let Some(m) = out_rx.recv().await {
+            let msg = match m {
+                ToApp::Text(t) => Message::Text(t.into()),
+                ToApp::Close(code, reason) => Message::Close(Some(CloseFrame {
+                    code,
+                    reason: reason.into(),
+                })),
+            };
+            let close = matches!(msg, Message::Close(_));
+            if tx.send(msg).await.is_err() || close {
+                break;
+            }
+        }
+    });
+    while let Some(Ok(m)) = rx.next().await {
+        match m {
+            Message::Text(t) => {
+                let v: Value = serde_json::from_str(t.as_str()).unwrap();
+                if v["t"] == "preview_hello" {
+                    let credit = *sh.preview_credit.lock().unwrap();
+                    let _ = out.send(ToApp::Text(
+                        json!({"t": "preview_welcome", "credit": credit}).to_string(),
+                    ));
+                }
+                sh.preview.lock().unwrap().push(PvEv::Text(v));
+            }
+            Message::Binary(b) => sh.preview.lock().unwrap().push(PvEv::Frame(b.to_vec())),
+            Message::Close(_) => break,
+            _ => {}
+        }
+    }
+    sh.preview.lock().unwrap().push(PvEv::Gone);
+    writer.abort();
 }
 
 #[derive(serde::Deserialize)]
@@ -269,6 +343,8 @@ struct Env {
     secrets: Arc<MemorySecrets>,
     screen: String,
     rec: Arc<Rec>,
+    /// The mock's base URL (`http://127.0.0.1:<port>`).
+    base: String,
 }
 
 fn fast_timing() -> Timing {
@@ -347,6 +423,7 @@ fn env() -> Env {
     let base = format!("http://{}", listener.local_addr().unwrap());
     let app = Router::new()
         .route("/v1/control/app", get(upgrade))
+        .route("/v1/control/app/preview", get(preview_upgrade))
         .route(
             "/v1/control/projects/{project}/collaborators",
             axum::routing::any(collaborators_api),
@@ -408,6 +485,7 @@ fn env() -> Env {
         secrets,
         screen,
         rec,
+        base,
     }
 }
 
@@ -1773,4 +1851,5 @@ fn a_local_preview_cue_reaches_remote_browsers() {
     });
 }
 
+mod preview;
 mod v2;

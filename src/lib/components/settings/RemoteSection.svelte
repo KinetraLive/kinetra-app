@@ -7,6 +7,9 @@
     Collaborators    Invite collaborator: the app's dialog (lazy) when the server offers invites,
                      else the control site's Collaborators page
     Lock remote take while on
+    Allow remote preview   this project (project.json `remotePreview`, on by default)
+    Preview streams  this computer (prefs `remote.previewStreams`, 1–4); both only where the
+                     computer can send live pictures (`view.preview`: Windows)
     Separate show    "Make this a separate show…" once the project has a show (a copied project
                      shares it with the original; this gives it its own link and collaborators)
     Connection details  a lazy chunk (./remote/RemoteDetails.svelte): Test connection, numbers,
@@ -15,6 +18,7 @@
 -->
 <script lang="ts">
   import Button from "$lib/components/Button.svelte";
+  import Select from "$lib/components/Select.svelte";
   import SettingsRow from "$lib/components/SettingsRow.svelte";
   import SettingsSection from "$lib/components/SettingsSection.svelte";
   import Switch from "$lib/components/Switch.svelte";
@@ -27,6 +31,10 @@
   import { openInBrowser } from "$lib/components/license/open";
   import { remote } from "$lib/components/remote/state.svelte";
   import { toasts } from "$lib/stores/toasts.svelte";
+  import { prefs } from "$lib/stores/prefs.svelte";
+  import { project } from "$lib/stores/project.svelte";
+  import { PREVIEW_STREAMS } from "$lib/types";
+  import { saveProjectSettings } from "./save";
 
   type Details = typeof import("./remote/RemoteDetails.svelte").default;
   type Confirm = typeof import("$lib/components/ConfirmDialog.svelte").default;
@@ -85,6 +93,25 @@
     inviting = true;
   }
 
+  const allowPreview = $derived(project.current?.settings.remotePreview ?? true);
+  const STREAMS = ["1", "2", "3", "4"].map((n) => ({ value: n, label: n }));
+  const storedStreams = () => String(prefs.value?.remote?.previewStreams ?? PREVIEW_STREAMS.default);
+  let streams = $state(String(PREVIEW_STREAMS.default));
+  $effect(() => {
+    streams = storedStreams();
+  });
+  async function saveStreams(v: string) {
+    const n = Number(v);
+    const current = prefs.value;
+    if (!current) return;
+    try {
+      await prefs.update({ ...current, remote: { ...current.remote, previewStreams: n } });
+    } catch (e) {
+      toasts.push({ kind: "error", message: `Couldn't save the setting: ${toAppError(e).message}` });
+      streams = storedStreams();
+    }
+  }
+
   let Confirm = $state.raw<Confirm | null>(null);
   let confirming = $state(false);
   async function askSeparate() {
@@ -137,6 +164,20 @@
           disabled={busy}
           onchange={(on) => run(() => remoteLock(on))}
         />
+      </SettingsRow>
+    {/if}
+    {#if view?.preview}
+      <SettingsRow label="Allow remote preview" description="Collaborators can watch your screens live." for="pref-remote-preview">
+        <Switch
+          id="pref-remote-preview"
+          label="Allow remote preview"
+          hideLabel
+          checked={allowPreview}
+          onchange={(on) => saveProjectSettings({ remotePreview: on })}
+        />
+      </SettingsRow>
+      <SettingsRow label="Preview streams" description="Each one uses about 100 MB of memory." for="pref-remote-streams">
+        <Select id="pref-remote-streams" bind:value={streams} options={STREAMS} onchange={saveStreams} />
       </SettingsRow>
     {/if}
     {#if view?.hasShowId}

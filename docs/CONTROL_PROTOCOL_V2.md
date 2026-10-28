@@ -1,11 +1,13 @@
-<!-- A copy of kinetra-cloud `docs/CONTROL_PROTOCOL_V2.md` (control-v1-1 e533011, 2026-10-27; a DRAFT, server phase 1 built). kinetra-cloud's version wins; refresh this copy when it changes. -->
+<!-- A copy of kinetra-cloud `docs/CONTROL_PROTOCOL_V2.md` (control-preview d4d4054, 2026-10-27; a DRAFT, server phases 1 and 3 built). kinetra-cloud's version wins; refresh this copy when it changes. -->
 
 # Kinetra cloud control protocol 2 (draft)
 
 **Status: draft for review, 2026-10-26; updated 2026-10-27 with the app team's answers.
-Server phase 1 built on `control-v1-1` (2026-10-27): negotiation, `features`
+Server phase 1 deployed with `main` (2026-10-27): negotiation, `features`
 (`permissions`, `invites`), permissions and the protocol 1 mapping (§2, §8), the
-collaborators API (§9).**
+collaborators API (§9). Server phase 3 built on `control-preview` (2026-10-27): live
+preview (§6, §7), announced as `preview`; marked **(phase 3)** below: what it settles that
+the draft left open.**
 (kinetra-private `docs/HANDOFF_TO_CLOUD_CONTROL_V2.md`, f174944). Remote control v1.1. Plan
 and decisions: `docs/PLAN.md` → Remote control v1.1. What the app builds, in order:
 `docs/APP_HANDOFF_CONTROL_V2.md`.
@@ -426,7 +428,7 @@ demand → ignored.
 app                                                      server
  |-- upgrade (Bearer, kinetra-control-preview.v1) ---------->|
  |-- {"t":"preview_hello","run_id":"…","ticket":"…"} ------->|   within 10 s
- |<------------------- {"t":"preview_welcome","credit":2} ---|   (or close 4401)
+ |<------------------- {"t":"preview_welcome","credit":4} ---|   (or close 4401)
  |== binary frame ==========================================>|   one per credit
  |<-------------------------------- {"t":"credit","n":1} ----|   when the server is ready for more
  |== binary frame ==========================================>|
@@ -436,14 +438,25 @@ app                                                      server
 
 - The ticket is bound to the run and the session's account, single use, 60 s.
 - **Credit:** the app may send only as many frames as it has credit. The server grants new
-  credit as it forwards frames, so a slow connection simply lowers the frame rate instead of
+  credit as frames arrive, so a slow connection simply lowers the frame rate instead of
   filling buffers. With no credit, drop frames; never queue them. A frame sent without credit
-  → close `4000`.
-- Ping/pong as protocol 1 §10.1 (text). No message for 60 s → dead; reopen only if the demand
-  still asks for streams, with the backoff of §10.2.
+  → close `4000`. **(phase 3)** `preview_welcome.credit` is 2 per demanded stream (at least
+  2); when the demand gains streams, a `credit` tops it up. The server grants credit back
+  at most `fps` × streams a second, so the credit also holds the demand's frame rate.
+  `credit.n` may be more than 1.
+- Ping/pong as protocol 1 §10.1 (text). No message for 60 s → dead.
+- **Reopening (phase 3, answers the app team's question of 2026-10-27):** tickets are single
+  use, so the app never reopens on its own. When the preview socket is lost while the demand
+  still has streams, the server sends a new `preview_demand` (same streams, fresh `ticket`)
+  after a backoff: 2 s, doubling up to 30 s while sockets keep dropping, back to 1 s once a
+  socket lived 30 s. A ticket not used within 60 s gets the same treatment. So: wait for the
+  next demand with a ticket, as the app does today.
 - The server closes the preview socket when the control socket ends, the run ends, or the
   demand becomes empty (the app may also close it then). Close codes as protocol 1 §10
-  (`4401` for a bad or used ticket).
+  (`4401` for a bad or used ticket). **(phase 3)** `1000` with reason `no_demand` after
+  the empty demand, `replaced` when a newer preview socket took over, `ended` when the run
+  ended or a `preview_hello` came after the demand emptied; `4000` with `no_credit` or
+  `bad_frame` (unknown version or codec).
 - Losing the preview socket never affects the control socket, and the other way round only
   ends the preview.
 
@@ -462,8 +475,9 @@ A binary WebSocket message: a 20-byte header (big-endian), then the image.
 | 18–19 | Height in pixels |
 | 20… | The image (baseline JPEG, sRGB) |
 
-At most `limits.preview_frame_bytes` (256 KB) in total; larger → close `1009`. Unknown
-version or codec → close `4000`.
+At most `limits.preview_frame_bytes` (256 KB) in total; larger → close `1009` (or the
+connection is simply dropped: the server stops reading at the limit). Unknown version or
+codec → close `4000`.
 
 #### What the app sends
 
@@ -501,7 +515,11 @@ traffic by a server-wide cap (frame rates drop first, then new watchers get "Pre
   separate browser socket `wss://control.kinetra.live/v1/ws/preview` (ticket in the first
   message, binary frames with the same header, an ack per frame). Per-stream state (the app's
   `preview_state` and the server's "Preview limit reached on the Kinetra computer") is
-  forwarded per stream.
+  forwarded per stream. **(phase 3)** Messages as built: `docs/API.md` → `GET /v1/ws` and
+  `GET /v1/ws/preview`. One slot per (browser, stream): a frame that comes while the
+  previous one isn't acked is skipped, and the latest is sent on the ack. The watchers per
+  run (plan) are the first to start watching; a crew entry's `watching` lists the streams
+  the server demanded for that person.
 
 ## 8. Protocol 1 apps [§14]
 

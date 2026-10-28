@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ScreenInfo, ServerMsg, WireLayer } from "./protocol";
-import { fitBox, KEY_FILTER, output, outputApps, OutputStage, parseOutput, regions } from "./output";
+import { CHECKER, fitBox, KEY_FILTER, output, outputApps, OutputStage, parseOutput, regions } from "./output";
 
 const screen: ScreenInfo = { id: "s", name: "S", width: 1920, height: 1080, background: "transparent" };
 
@@ -99,6 +99,17 @@ describe("OutputStage", () => {
     expect(st.box.style.filter).toBe("");
     expect(st.el.style.width).toBe("1024px");
     expect(st.box.style.transform).toBe(`translate(0px,96px) scale(${1024 / 1920})`);
+  });
+
+  it("checker (the remote preview's capture): dark squares behind transparency", () => {
+    viewport(640, 360);
+    const o = parseOutput(q("output=preview&bg=checker&mute=1"));
+    expect(o).toEqual({ bg: CHECKER, key: false, dual: "" });
+    const st = new OutputStage(o, 0);
+    st.apply(screen);
+    // jsdom drops the conic gradient itself (Edge draws it); the square size stays.
+    expect(st.el.style.backgroundSize).toBe("32px 32px");
+    expect(st.box.style.transform).toBe(`translate(0px,0px) scale(${640 / 1920})`);
   });
 
   it("key: black with the matte filter on the screen box", () => {

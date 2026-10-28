@@ -7,6 +7,8 @@ pub mod frames;
 mod menu;
 pub mod ndi;
 mod outputs;
+#[cfg(windows)]
+pub mod preview;
 pub mod server;
 mod updates;
 mod webview2;
@@ -214,11 +216,14 @@ pub fn run() {
                     language: frames::capture::system_language(),
                 };
                 state.set_ndi_host(Some(ndi::host::NdiOutputs::new(
-                    data,
-                    Some(app_env),
+                    data.clone(),
+                    Some(app_env.clone()),
                     notify,
                     restart,
                 )));
+                // Remote preview pictures (remote control, protocol 2): the same capture
+                // environments; nothing runs until a collaborator watches.
+                state.set_preview_host(Some(preview::PreviewCaptures::new(data, Some(app_env))));
             }
             app.manage(server);
             // OSC control: no task or socket until a project enables it.

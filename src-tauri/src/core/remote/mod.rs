@@ -28,6 +28,7 @@ pub mod commands;
 pub mod diag;
 pub mod ids;
 pub mod perms;
+pub mod preview;
 pub mod proto;
 pub mod state;
 
@@ -143,6 +144,8 @@ pub struct RemoteView {
     /// Screens in the project beyond what remote users see (the protocol shows at most
     /// [`proto::SCREENS_MAX`]): "Collaborators see the first 32 screens". 0 when all show.
     pub screens_hidden: u32,
+    /// This computer can send live pictures (a preview host is set: Windows).
+    pub preview: bool,
 }
 
 /// One accepted remote command (in memory only, this run; gone when the run or app ends).
@@ -164,6 +167,8 @@ pub(crate) enum Ctl {
     NewShow,
     Rename(String),
     Ping(tokio::sync::oneshot::Sender<Result<u64, String>>),
+    /// The preview cap or "Allow remote preview" may have changed.
+    PreviewSettings,
 }
 
 struct Conn {
@@ -215,6 +220,8 @@ pub struct Remote {
     /// The newest connection task that has finished (quit waits for it).
     finished: AtomicU64,
     diag: Mutex<Diag>,
+    /// Captures the live preview (Windows; `None`: this computer can't).
+    preview_host: Mutex<Option<Arc<dyn preview::PreviewHost>>>,
     /// Tests: pretend this build has no remote control.
     #[cfg(test)]
     test_unavailable: AtomicBool,
@@ -336,6 +343,7 @@ impl AppState {
         let mut v = lock(&self.remote().inner).view.clone();
         v.has_show_id = self.project_remote_id().is_some();
         v.available = self.remote_available();
+        v.preview = self.preview_host().is_some();
         v.screens_hidden = u32::try_from(
             self.live()
                 .user_screen_ids()

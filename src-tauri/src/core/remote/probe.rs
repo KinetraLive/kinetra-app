@@ -174,6 +174,7 @@ async fn run(st: &AppState) -> TestResult {
         license_token: creds.license_token.clone(),
         nonce: ids::nonce(),
         timestamp: creds.now,
+        preview: None,
     };
     let mut result = TestResult {
         connect_ms: Some(connect_ms),

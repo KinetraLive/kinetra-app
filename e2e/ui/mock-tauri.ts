@@ -1170,7 +1170,7 @@ export function installMockTauri(s: MockScenario): void {
     ({
       state: "off", on: false, takeLocked: false, crew: [], showId: null, crewUrl: null, controllerUrl: null,
       serverVersion: null, rttMs: null, licenseWarning: null, lastError: null, hasShowId: false,
-      available: true, screensHidden: 0, protocol: null, features: [], invites: false,
+      available: true, screensHidden: 0, protocol: null, features: [], invites: false, preview: true,
       ...remoteState,
     }) as RemoteView;
   const flowState = (id: string, state: string) => ({ id, state, node: null, message: null, at: new Date().toISOString() });

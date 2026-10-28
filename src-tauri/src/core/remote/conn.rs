@@ -26,7 +26,7 @@ use futures_util::{SinkExt, StreamExt};
 use serde_json::Value;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::UnboundedReceiver;
-use tokio::sync::{oneshot, Notify};
+use tokio::sync::{oneshot, watch, Notify};
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::http::{header, HeaderValue};
 use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
@@ -37,6 +37,7 @@ use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
 use super::commands;
 use super::diag::{Dir, MsgRecord, Reconnect, Refusal};
 use super::ids;
+use super::preview::{self, Busy, PreviewPlan, PreviewSink};
 use super::proto::{
     self, close_action, close_code_name, stop_message, CloseAction, CmdResult, EndReason, In,
     Limits, Out, APP_PATH, DIFF_OPS_MAX, SUBPROTOCOLS,
@@ -562,8 +563,10 @@ async fn session(
         fatal: None,
         restart_after: None,
         run_id: resume.take(),
+        preview: PreviewRun::default(),
     };
     let end = s.drive(ctl, dirty, &creds).await;
+    s.preview_stop();
     *resume = s.run_id.clone();
     end
 }
@@ -593,6 +596,7 @@ struct Session<'a> {
     /// `server_restart`: reconnect after this.
     restart_after: Option<Duration>,
     run_id: Option<String>,
+    preview: PreviewRun,
 }
 
 /// What a message handled by [`Session::common`] left for the caller.
@@ -604,6 +608,53 @@ enum Left {
 
 /// Who waits for a ping's round trip (Test connection while live).
 type RttReply = oneshot::Sender<Result<u64, String>>;
+
+/// How often a session with a preview demand samples busy, on air and Studio mode.
+const PREVIEW_TICK: Duration = Duration::from_secs(1);
+/// Shortest time between two `preview_caps` (§6.1).
+const CAPS_GAP: Duration = Duration::from_secs(1);
+
+/// The live preview of one session (protocol 2 §6; see [`preview`]). Empty without a demand:
+/// no capture, no socket, no tick.
+#[derive(Default)]
+struct PreviewRun {
+    demand: proto::PreviewDemand,
+    /// The newest ticket the server sent (single use).
+    ticket: Option<String>,
+    sink: Arc<PreviewSink>,
+    busy: Busy,
+    /// Streams the host couldn't capture (cleared by a new demand).
+    failed: HashMap<u16, String>,
+    /// What the host runs, or is starting.
+    applied: PreviewPlan,
+    applying: Option<tokio::task::JoinHandle<HashMap<u16, String>>>,
+    /// The plan changed while an apply ran: plan again when it is done.
+    again: bool,
+    /// The last `preview_state` sent for the current demand.
+    sent: Option<Vec<proto::StreamState>>,
+    socket: Option<watch::Sender<Option<String>>>,
+    frames: Arc<std::sync::atomic::AtomicU64>,
+    /// The cap last announced (`hello.preview` / `preview_caps`).
+    caps: Option<u8>,
+    caps_at: Option<Instant>,
+    caps_due: Option<Instant>,
+    tick: Option<Instant>,
+}
+
+async fn join_opt<T>(h: &mut Option<tokio::task::JoinHandle<T>>) -> Option<T> {
+    match h {
+        Some(j) => {
+            let r = j.await.ok();
+            *h = None;
+            r
+        }
+        None => std::future::pending().await,
+    }
+}
+
+fn preview_backoff(attempt: u32) -> Duration {
+    backoff(&timing(), attempt, random_unit())
+}
 
 async fn sleep_opt(at: Option<Instant>) {
     match at {
@@ -779,7 +830,13 @@ impl Session<'_> {
         dirty: &Arc<Notify>,
         creds: &crate::core::cloud::service::RemoteCredentials,
     ) -> End {
-        // hello → welcome
+        // hello → welcome (`preview` only from protocol 2 apps that can capture, §1)
+        self.preview.caps = if self.protocol >= 2 {
+            self.st().and_then(|st| st.remote_preview_caps())
+        } else {
+            None
+        };
+        self.preview.caps_at = Some(Instant::now());
         let hello = Out::Hello {
             protocol: self.protocol,
             app_version: env!("CARGO_PKG_VERSION").to_string(),
@@ -787,6 +844,10 @@ impl Session<'_> {
             license_token: creds.license_token.clone(),
             nonce: ids::nonce(),
             timestamp: creds.now,
+            preview: self
+                .preview
+                .caps
+                .map(|max_streams| proto::PreviewCaps { max_streams }),
         };
         if !self.out(&hello).await {
             return End::Retry {
@@ -1029,7 +1090,7 @@ impl Session<'_> {
                     Some(Ctl::Ping(reply)) => {
                         let _ = reply.send(Err("Not connected yet".into()));
                     }
-                    Some(Ctl::Rename(_)) => {}
+                    Some(Ctl::Rename(_) | Ctl::PreviewSettings) => {}
                 },
             }
         }
@@ -1066,6 +1127,11 @@ impl Session<'_> {
                         }
                         self.snapshot_due = Some(Some(corr));
                     }
+                    Left::Msg(In::PreviewDemand(d)) => {
+                        if !self.preview_demand(d).await {
+                            return self.dead();
+                        }
+                    }
                     Left::Msg(_) => {}
                 },
                 c = ctl.recv() => match c {
@@ -1094,7 +1160,34 @@ impl Session<'_> {
                         }
                     }
                     Some(Ctl::Takeover) => {}
+                    Some(Ctl::PreviewSettings) => {
+                        if !self.preview_settings().await {
+                            return self.dead();
+                        }
+                    }
                 },
+                failed = join_opt(&mut self.preview.applying) => {
+                    // A stream that failed stays failed until the next demand.
+                    let failed = failed.unwrap_or_default();
+                    let new = failed.keys().any(|k| !self.preview.failed.contains_key(k));
+                    self.preview.failed.extend(failed);
+                    if (std::mem::take(&mut self.preview.again) || new)
+                        && !self.preview_refresh().await
+                    {
+                        return self.dead();
+                    }
+                }
+                () = sleep_opt(self.preview.tick) => {
+                    if !self.preview_tick().await {
+                        return self.dead();
+                    }
+                }
+                () = sleep_opt(self.preview.caps_due) => {
+                    self.preview.caps_due = None;
+                    if !self.preview_settings().await {
+                        return self.dead();
+                    }
+                }
                 () = sleep_opt(snapshot_at) => {
                     let corr = self.snapshot_due.take().flatten();
                     if let Err(e) = self.snapshot(corr).await {
@@ -1123,6 +1216,163 @@ impl Session<'_> {
                 }
             }
         }
+    }
+
+    /// A new `preview_demand` (replaces the previous one). `false`: the socket is dead.
+    async fn preview_demand(&mut self, d: proto::PreviewDemand) -> bool {
+        if let Some(t) = d.ticket.clone() {
+            self.preview.ticket = Some(t.clone());
+            if let Some(tx) = &self.preview.socket {
+                tx.send_replace(Some(t));
+            }
+        }
+        self.preview.failed.clear();
+        // A new demand's streams count as active until the app says otherwise (§6.1).
+        self.preview.sent = Some(
+            d.streams
+                .iter()
+                .map(|s| proto::StreamState {
+                    stream: s.stream,
+                    active: true,
+                    reason: None,
+                    message: None,
+                })
+                .collect(),
+        );
+        self.preview.tick = (!d.streams.is_empty()).then(|| Instant::now() + PREVIEW_TICK);
+        self.preview.demand = d;
+        self.preview_refresh().await
+    }
+
+    /// The cap or "Allow remote preview" may have changed: `preview_caps` (at most one per
+    /// second), then the plan again.
+    async fn preview_settings(&mut self) -> bool {
+        let caps = if self.protocol >= 2 {
+            self.st().and_then(|st| st.remote_preview_caps())
+        } else {
+            None
+        };
+        if let Some(n) = caps.filter(|_| caps != self.preview.caps) {
+            let next = self.preview.caps_at.map(|t| t + CAPS_GAP);
+            if next.is_some_and(|t| t > Instant::now()) {
+                self.preview.caps_due = next;
+            } else {
+                if !self.out(&Out::PreviewCaps { max_streams: n }).await {
+                    return false;
+                }
+                self.preview.caps = caps;
+                self.preview.caps_at = Some(Instant::now());
+            }
+        }
+        self.preview_refresh().await
+    }
+
+    /// Every second while there is a demand: busy, on air and Studio mode.
+    async fn preview_tick(&mut self) -> bool {
+        self.preview.tick = Some(Instant::now() + PREVIEW_TICK);
+        let ndi = self.st().is_some_and(|st| st.ndi_dropping());
+        let (late, cpu) = self.preview.sink.reports();
+        self.preview.busy.sample(Instant::now(), ndi, late, cpu);
+        self.preview_refresh().await
+    }
+
+    /// Plans the demand against the machine now: the host's captures (on the blocking pool),
+    /// the pace, the preview socket and `preview_state` when it changed.
+    async fn preview_refresh(&mut self) -> bool {
+        let Some(st) = self.st() else { return true };
+        let cap = st
+            .remote_preview_caps()
+            .unwrap_or(0)
+            .min(self.limits.preview_streams);
+        let input = st.preview_plan_input(
+            cap,
+            self.preview.busy.is_busy(),
+            &self.preview.failed,
+            self.limits.preview_frame_bytes,
+        );
+        let on_air = st.cloud_on_air();
+        let host = st.preview_host();
+        let creds = st.remote_credentials().ok();
+        drop(st);
+        let (plan, states) = preview::plan(&self.preview.demand, &input);
+        let p = &mut self.preview;
+        p.sink.set_interval(preview::interval(
+            p.demand.fps,
+            self.limits.preview_fps,
+            on_air,
+        ));
+        p.sink.set_paused(p.busy.is_busy());
+        let keep: Vec<u16> = plan.captures.iter().map(|c| c.stream).collect();
+        p.sink.retain(&keep);
+        if plan != p.applied {
+            if p.applying.is_some() {
+                p.again = true;
+            } else if let Some(host) = host {
+                let (sink, next) = (p.sink.clone(), plan.clone());
+                p.applied = plan.clone();
+                p.applying = Some(tokio::task::spawn_blocking(move || {
+                    host.apply(&next, &sink)
+                }));
+            } else {
+                p.applied = plan.clone();
+            }
+        }
+        // The preview socket: open while anything is captured (§6.2).
+        if plan.captures.is_empty() {
+            p.socket = None;
+        } else if p.socket.is_none() {
+            match (creds, &self.run_id) {
+                (Some(c), Some(run_id)) if preview::url_allowed(&p.demand.url, &c.base) => {
+                    let (tx, rx) = watch::channel(p.ticket.clone());
+                    let job = preview::SocketJob {
+                        url: p.demand.url.clone(),
+                        session: c.session,
+                        run_id: run_id.clone(),
+                        ticket: rx,
+                        sink: p.sink.clone(),
+                        max_bytes: self.limits.preview_frame_bytes,
+                        heartbeat: self.heartbeat,
+                        silence: self.t.silence,
+                        handshake: self.t.handshake,
+                        backoff: preview_backoff,
+                        sent: p.frames.clone(),
+                    };
+                    tokio::spawn(preview::run_socket(job));
+                    p.socket = Some(tx);
+                }
+                (Some(_), Some(_)) => {
+                    tracing::warn!("remote preview: the server's preview address isn't the API's");
+                }
+                _ => {}
+            }
+        }
+        if p.demand.streams.is_empty() || p.sent.as_ref() == Some(&states) {
+            return true;
+        }
+        p.sent = Some(states.clone());
+        self.out(&Out::PreviewState { streams: states }).await
+    }
+
+    /// The session ended: no socket, and the host stops every capture (after a running apply).
+    fn preview_stop(&mut self) {
+        let p = std::mem::take(&mut self.preview);
+        if p.applied.captures.is_empty() && p.applying.is_none() {
+            return;
+        }
+        let Some(host) = self.st().and_then(|st| st.preview_host()) else {
+            return;
+        };
+        let sink = p.sink.clone();
+        let running = p.applying;
+        tokio::spawn(async move {
+            if let Some(h) = running {
+                let _ = h.await;
+            }
+            let _ = tokio::task::spawn_blocking(move || {
+                host.apply(&PreviewPlan::default(), &sink);
+            })
+            .await;
+        });
     }
 
     fn dead(&self) -> End {

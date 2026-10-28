@@ -16,6 +16,9 @@ export interface ProjectSettings {
   brand?: BrandKit;
   /** OSC control (per project, shown in Preferences → Server). Absent = off. */
   osc?: OscSettings;
+  /** Remote control: collaborators may see live pictures of the screens ("Allow remote
+   * preview"). Absent = on. */
+  remotePreview?: boolean;
 }
 
 // ---- MIDI / OSC control ----
@@ -228,7 +231,18 @@ export interface Prefs {
   controlApi?: ControlApiPrefs;
   /** Cloud backup on this machine. Absent = defaults (new projects back up, the server's on-air policy). */
   cloud?: CloudPrefs;
+  /** Remote control on this machine. Absent = defaults. */
+  remote?: RemotePrefs;
 }
+
+/** `Prefs.remote`. */
+export interface RemotePrefs {
+  /** Live preview streams this computer captures at once (`PREVIEW_STREAMS`, default 2). */
+  previewStreams: number;
+}
+
+/** `RemotePrefs.previewStreams` range. */
+export const PREVIEW_STREAMS = { min: 1, max: 4, default: 2 } as const;
 
 /** `Prefs.cloud`. `onAir` / `limitKbps` absent = the server's defaults. */
 export interface CloudPrefs {
@@ -2502,6 +2516,8 @@ export type RemoteView = RemotePhase & {
   invites: boolean;
   /** Screens beyond what remote users see (the protocol shows the first 32); 0 when all show. */
   screensHidden: number;
+  /** This computer can send live pictures (Windows): the preview settings apply. */
+  preview?: boolean;
 };
 
 /** A show's collaborator (`remote_collaborators`, protocol 2 §9). */

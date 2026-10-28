@@ -49,6 +49,11 @@ pub struct ProjectSettings {
     /// OSC control (shown in Preferences → Server). Absent = off.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub osc: Option<OscSettings>,
+    /// Remote control: collaborators with `watch_preview` may see live pictures of this project's
+    /// screens (Preferences › Remote control, "Allow remote preview"). On by default; written
+    /// only when off.
+    #[serde(skip_serializing_if = "is_true")]
+    pub remote_preview: bool,
 }
 
 /// The project's brand kit. Variable precedence wherever variables resolve: layer override →
@@ -158,8 +163,13 @@ impl Default for ProjectSettings {
             style: None,
             brand: BrandKit::default(),
             osc: None,
+            remote_preview: true,
         }
     }
+}
+
+fn is_true(b: &bool) -> bool {
+    *b
 }
 
 // ---- MIDI / OSC control ---------------------------------------------------------------------
@@ -555,6 +565,33 @@ pub struct Prefs {
     /// Cloud backup on this machine. Omitted while default.
     #[serde(skip_serializing_if = "CloudPrefs::is_default")]
     pub cloud: CloudPrefs,
+    /// Remote control on this machine. Omitted while default.
+    #[serde(skip_serializing_if = "RemotePrefs::is_default")]
+    pub remote: RemotePrefs,
+}
+
+/// `Prefs.remote`: remote control settings of this machine.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct RemotePrefs {
+    /// Live preview streams this computer captures at once ([`PREVIEW_STREAMS`]; each costs
+    /// about 75–100 MB). Owner decision 2026-10-27: 2.
+    pub preview_streams: u8,
+}
+
+/// `RemotePrefs.previewStreams` range (protocol 2 `hello.preview.max_streams`).
+pub const PREVIEW_STREAMS: std::ops::RangeInclusive<u8> = 1..=4;
+
+impl Default for RemotePrefs {
+    fn default() -> Self {
+        Self { preview_streams: 2 }
+    }
+}
+
+impl RemotePrefs {
+    pub fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
 }
 
 /// `Prefs.cloud`: cloud backup settings of this machine (`core::cloud::projects`). The server's
