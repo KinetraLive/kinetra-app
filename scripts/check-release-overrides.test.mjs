@@ -7,11 +7,12 @@ describe("release overrides check", () => {
   it("passes only when every override is missing in the release build", () => {
     const missing = [
       err("E0599", "no method named `set_test_entitlements` found for reference `&Cloud`"),
+      err("E0599", "no method named `set_test_license` found for reference `&Cloud`"),
       err("E0425", "cannot find function `load_unchecked_for_tests` in module `preview`"),
       err("E0425", "cannot find function `dev_profile` in module `devprofile`"),
       err("E0425", "cannot find function `extra_trusted_keys` in module `config`"),
       err("E0425", "cannot find function `corrupt_downloads` in module `restore`"),
-      err(null, "aborting due to 5 previous errors"),
+      err(null, "aborting due to 6 previous errors"),
     ];
     expect(verdict(missing)).toEqual([]);
   });
@@ -21,6 +22,7 @@ describe("release overrides check", () => {
     // Only one override missing: the others are reported.
     const one = [err("E0599", "no method named `set_test_entitlements` found")];
     expect(verdict(one)).toEqual([
+      "set_test_license exists in release builds",
       "load_unchecked_for_tests exists in release builds",
       "dev_profile exists in release builds",
       "extra_trusted_keys exists in release builds",
@@ -31,6 +33,7 @@ describe("release overrides check", () => {
   it("fails on any other error (nothing is proven then)", () => {
     const other = [
       err("E0599", "no method named `set_test_entitlements` found"),
+      err("E0599", "no method named `set_test_license` found"),
       err("E0425", "cannot find function `load_unchecked_for_tests`"),
       err("E0425", "cannot find function `dev_profile`"),
       err("E0425", "cannot find function `extra_trusted_keys`"),

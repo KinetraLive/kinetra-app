@@ -14,6 +14,7 @@ import { resolve } from "node:path";
 /** The overrides release_guard.rs calls; each must be missing in a release build. */
 export const OVERRIDES = [
   "set_test_entitlements",
+  "set_test_license",
   "load_unchecked_for_tests",
   "dev_profile",
   "extra_trusted_keys",

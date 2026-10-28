@@ -2,7 +2,8 @@
   Everything licensing shows by itself (main window, mounted once on <body> by load.ts):
   - the first-launch Welcome screen;
   - sign-in progress started elsewhere (a modal with the code);
-  - a quiet notice bar: reduced mode, a change waiting for the show to end, a wrong clock;
+  - a quiet notice bar: reduced mode, a change waiting for the show to end, a wrong clock, a
+    license that couldn't be saved;
   - "Pro is active on <computer>. Move Pro here?" and the seats-full choices;
   - the Beta Ended screen (signed end message), only when nothing is on air: beta and canary
     builds stay blocked there ("Download the stable version"); stable builds can Continue (Free).
@@ -12,6 +13,7 @@
   import Button from "$lib/components/Button.svelte";
   import { cloudLinks, licenseActivate, licenseDeactivate, licenseMoveHere, signInCancel } from "$lib/api/license";
   import { openInBrowser } from "./open";
+  import { saveFailedText } from "./messages";
   import AiJobsChip from "$lib/components/ai/AiJobsChip.svelte";
   import SignInCode from "./SignInCode.svelte";
   import Welcome from "./Welcome.svelte";
@@ -27,6 +29,7 @@
       const off = m >= 120 ? `${Math.round(m / 60)} hours` : `${m} min`;
       return `Your computer's date or time is wrong (${off} off). Fix it so Kinetra can check your license.`;
     }
+    if (v.notice?.kind === "saveFailed") return saveFailedText(v.notice);
     if (v.pending) {
       const why =
         v.status === "expired"

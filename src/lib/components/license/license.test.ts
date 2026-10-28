@@ -13,7 +13,7 @@ const api = vi.hoisted(() => ({
   licenseActivate: vi.fn(),
   licenseDeactivate: vi.fn(),
   licenseMoveHere: vi.fn(),
-  licenseRedeem: vi.fn(),
+  licenseRedeem: vi.fn(() => Promise.resolve({ outcome: "moved", planName: null })),
 }));
 vi.mock("$lib/api", () => ({
   on: (name: string, h: (p: unknown) => void) => {

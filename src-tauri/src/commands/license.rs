@@ -7,7 +7,7 @@ use tauri::State;
 
 use crate::core::cloud::api::{License, SlotReq};
 use crate::core::cloud::config;
-use crate::core::cloud::service::{LicenseView, SigninView};
+use crate::core::cloud::service::{LicenseView, RedeemResult, SigninView};
 use crate::core::state::AppState;
 use crate::error::AppResult;
 
@@ -71,7 +71,7 @@ pub async fn license_move_here(state: State<'_, AppState>, activation_id: String
 }
 
 #[tauri::command]
-pub async fn license_redeem(state: State<'_, AppState>, key: String) -> AppResult<()> {
+pub async fn license_redeem(state: State<'_, AppState>, key: String) -> AppResult<RedeemResult> {
     state.inner().clone().license_redeem(&key).await
 }
 
@@ -81,8 +81,8 @@ pub async fn license_list(state: State<'_, AppState>) -> AppResult<Vec<License>>
 }
 
 #[tauri::command]
-pub fn license_check_now(state: State<'_, AppState>) {
-    state.license_check_now();
+pub async fn license_check_now(state: State<'_, AppState>) -> AppResult<()> {
+    state.inner().clone().license_check_now().await
 }
 
 /// The account site's pages (one config place in the core).

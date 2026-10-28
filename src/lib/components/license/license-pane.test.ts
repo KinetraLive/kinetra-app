@@ -8,7 +8,7 @@ const api = vi.hoisted(() => ({
   licenseList: vi.fn(() => Promise.resolve([])),
   licenseCheckNow: vi.fn(() => Promise.resolve()),
   licenseDeactivate: vi.fn(() => Promise.resolve()),
-  licenseRedeem: vi.fn(() => Promise.resolve()),
+  licenseRedeem: vi.fn(() => Promise.resolve({ outcome: "moved", planName: "Pro (yearly)" })),
   signInStart: vi.fn(() => Promise.resolve({ state: "idle" })),
   signInCancel: vi.fn(),
   signOut: vi.fn(() => Promise.resolve()),
@@ -149,7 +149,34 @@ describe("Preferences › License", () => {
     expect(input.value).toBe("KNTR-4B7X-9Q2Z-HHHH");
     await fireEvent.click(screen.getByRole("button", { name: "Add key" }));
     expect(api.licenseRedeem).toHaveBeenCalledWith("KNTR-4B7X-9Q2Z-HHHH");
-    await vi.waitFor(() => expect(screen.getByRole("status").textContent).toBe("License key added."));
+    await vi.waitFor(() => expect(screen.getByRole("status").textContent).toBe("License key redeemed."));
+  });
+
+  it("a redeemed key says what it did on this computer", async () => {
+    api.licenseRedeem.mockResolvedValueOnce({ outcome: "kept", planName: "Kinetra Team" });
+    await mount(view());
+    const input = screen.getByLabelText("License key") as HTMLInputElement;
+    await fireEvent.input(input, { target: { value: "KNTR-4B7X-9Q2Z-HHHH" } });
+    await fireEvent.click(screen.getByRole("button", { name: "Add key" }));
+    await vi.waitFor(() => expect(screen.getByRole("status").textContent).toBe("Redeemed. This computer already uses Kinetra Team."));
+  });
+
+  it("a license that couldn't be saved says why and where", async () => {
+    await mount(view({ notice: { kind: "saveFailed", reason: "Access is denied. (os error 5)", folder: "C:\\Users\\Ola\\AppData\\Roaming\\kinetra" } }));
+    expect(screen.getByRole("alert").textContent).toBe(
+      "Couldn't save the license on this computer: Access is denied. (os error 5). Check that Kinetra can write to C:\\Users\\Ola\\AppData\\Roaming\\kinetra.",
+    );
+  });
+
+  it("Check now waits for the check, then shows its error", async () => {
+    let fail!: (e: unknown) => void;
+    api.licenseCheckNow.mockReturnValueOnce(new Promise((_, reject) => (fail = reject)));
+    await mount(view());
+    await fireEvent.click(screen.getByRole("button", { name: "Check now" }));
+    expect(screen.getByRole("button", { name: "Checking…" })).toBeTruthy();
+    fail({ code: "offline", message: "You're offline. Check your connection and try again." });
+    await vi.waitFor(() => expect(screen.getByRole("alert").textContent).toBe("You're offline. Check your connection and try again."));
+    expect(screen.getByRole("button", { name: "Check now" })).toBeTruthy();
   });
 
   it("a license key while signed out signs in first, then redeems", async () => {
