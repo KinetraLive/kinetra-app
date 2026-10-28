@@ -33,6 +33,8 @@ Better previews: the template gallery shows realistic sample text, and empty fie
 
 Your license, simpler: add a license key in Preferences › License, not only on the welcome screen. Your plan shows by its name, like Kinetra Team, and a backup computer is only offered when your plan includes one.
 
+Your license now stays put: Kinetra keeps it with its own settings, so it works even when Windows Credential Manager won't store it, and your existing license moves over by itself. If Kinetra can't save it, Preferences › License says why. Check now shows the result, and adding a license key tells you whether this computer switched to it.
+
 Help › Documentation now opens docs.kinetra.live.
 
 Auto-out can be set up to 600 seconds.
