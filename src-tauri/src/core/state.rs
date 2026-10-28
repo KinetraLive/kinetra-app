@@ -151,6 +151,7 @@ struct Inner {
     flow_engine: FlowEngine,
     /// API source polling and secrets (see `core::api_poll`).
     api: ApiPoller,
+    socket: crate::core::socket_source::SocketSources,
     /// Live polls: result streams and test simulations (see `core::polls`).
     polls: crate::core::polls::PollService,
     /// Controls: change listeners and value pacing (see `core::controls`).
@@ -581,6 +582,7 @@ impl AppState {
             flows: FlowStore::default(),
             flow_engine: FlowEngine::default(),
             api: ApiPoller::default(),
+            socket: Default::default(),
             polls: Default::default(),
             control_rt: Default::default(),
             change_listeners: RwLock::new(Vec::new()),
@@ -689,6 +691,11 @@ impl AppState {
     /// API source polling and secrets (see `core::api_poll`).
     pub fn api(&self) -> &ApiPoller {
         &self.inner.api
+    }
+
+    /// Live data source connections (see `core::socket_source`).
+    pub fn socket_sources(&self) -> &crate::core::socket_source::SocketSources {
+        &self.inner.socket
     }
 
     /// Live polls: result streams and test simulations (see `core::polls`).
@@ -1867,6 +1874,7 @@ impl Inner {
         // restarts from the reloaded sources (the live reset below reconciles).
         self.automation.stop_all();
         self.api.stop_all();
+        self.socket.stop_all();
         self.polls.stop_all();
         self.flow_engine.forget();
         self.rules.stop_all();
@@ -1989,6 +1997,7 @@ impl Inner {
             self.automation.stop_all();
             self.automation.forget();
             self.api.stop_all();
+            self.socket.stop_all();
             self.polls.stop_all();
             self.flow_engine.forget();
             self.rules.forget();

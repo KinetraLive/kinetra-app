@@ -1,4 +1,4 @@
-//! Sources (project `sources/<id>.json`): text sources. A source change re-applies every
+//! Sources (project `sources/<id>.json`): text, API and live data sources. A source change re-applies every
 //! screen bound to it through the live rules (off air now; on air under `onTake` staged).
 //!
 //! Disk work runs on the blocking pool (`super::project::blocking`). Every command answers
@@ -8,7 +8,7 @@
 
 use tauri::State;
 
-use crate::core::model::{ApiTestResult, SourceDoc, SourceStep, SourceSummary};
+use crate::core::model::{ApiTestResult, SocketTestResult, SourceDoc, SourceStep, SourceSummary};
 use crate::core::state::AppState;
 use crate::error::AppResult;
 
@@ -158,4 +158,59 @@ pub async fn set_api_paused(
 pub async fn watch_api_source(state: State<'_, AppState>, id: String, on: bool) -> AppResult<()> {
     let state = state.inner().clone();
     blocking(move || state.watch_api_source(&id, on)).await
+}
+
+/// A new live data source (no URL yet, the whole message as one row, no columns, 10 updates a
+/// second).
+#[tauri::command]
+pub async fn create_socket_source(
+    state: State<'_, AppState>,
+    name: String,
+) -> AppResult<SourceDoc> {
+    let state = state.inner().clone();
+    blocking(move || state.create_socket_source(&name)).await
+}
+
+/// Connects with the draft (unsaved) settings for up to 10 s; nothing is saved. Connection and
+/// mapping problems are in the result's `error`.
+#[tauri::command]
+pub async fn test_socket_source(
+    state: State<'_, AppState>,
+    doc: SourceDoc,
+) -> AppResult<SocketTestResult> {
+    let state = state.inner().clone();
+    state.test_socket_source(doc).await
+}
+
+/// Connect now (clears a hold and the reconnect wait).
+#[tauri::command]
+pub async fn retry_socket_source(
+    state: State<'_, AppState>,
+    id: String,
+) -> AppResult<SourceSummary> {
+    let state = state.inner().clone();
+    blocking(move || state.retry_socket_source(&id)).await
+}
+
+/// Pauses or resumes the connection (saved in the source file).
+#[tauri::command]
+pub async fn set_socket_paused(
+    state: State<'_, AppState>,
+    id: String,
+    paused: bool,
+) -> AppResult<SourceSummary> {
+    let state = state.inner().clone();
+    blocking(move || state.set_socket_paused(&id, paused)).await
+}
+
+/// The editor shows the source (`on`) or stopped showing it; counted. A watched source
+/// connects.
+#[tauri::command]
+pub async fn watch_socket_source(
+    state: State<'_, AppState>,
+    id: String,
+    on: bool,
+) -> AppResult<()> {
+    let state = state.inner().clone();
+    blocking(move || state.watch_socket_source(&id, on)).await
 }

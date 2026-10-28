@@ -139,6 +139,11 @@ pub fn validate_settings(
             API_POLL_MAX_MS / 60_000
         ));
     }
+    validate_mapping(format, mapping)
+}
+
+/// Hard checks of a mapping (API and live data sources); labels are trimmed in place.
+pub fn validate_mapping(format: ApiFormat, mapping: &mut ApiMapping) -> Result<(), String> {
     if format == ApiFormat::Json && !is_pointer(&mapping.rows) {
         return Err(format!(
             "Rows: \"{}\" is not a JSON Pointer (e.g. /items, or empty for the whole response)",

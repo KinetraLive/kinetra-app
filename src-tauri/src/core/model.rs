@@ -2605,6 +2605,38 @@ pub enum SourceKind {
         #[serde(default)]
         fetched_at: Option<String>,
     },
+    /// Live data (`core::socket_source`): a WebSocket on this computer or the local network whose
+    /// JSON messages are mapped into a table with the API sources' mapping. The rows are live:
+    /// kept in memory (a reconnect keeps them), never written to the file.
+    Socket {
+        #[serde(default)]
+        url: String,
+        /// The API sources' JSON mapping (`csv` unused).
+        #[serde(default)]
+        mapping: ApiMapping,
+        /// Only messages with this value at this pointer become rows; null = every message.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        filter: Option<SocketFilter>,
+        /// Text sent once after each connect (a subscribe message); null = nothing.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        send_on_connect: Option<String>,
+        /// Updates applied a second, `SOCKET_RATE_MIN..=SOCKET_RATE_MAX`.
+        #[serde(default = "socket_rate_default")]
+        rate: u32,
+        #[serde(default)]
+        paused: bool,
+        /// The mapped columns (from `mapping.columns`: key, label, kind).
+        #[serde(default)]
+        columns: Vec<SourceColumn>,
+        /// The last mapped rows (live; never in the file).
+        #[serde(default)]
+        rows: Vec<crate::core::protocol::Fields>,
+        /// The current row, clamped to `rows`.
+        #[serde(default)]
+        index: u32,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        auto: Option<AutoAdvance>,
+    },
     /// A live poll (`core::polls`): one row per answer, the poll's own values on every row.
     /// Linked to a server poll (`link`).
     Poll {
@@ -2617,6 +2649,89 @@ pub enum SourceKind {
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         gone: bool,
     },
+}
+
+// ---- Live data (WebSocket) sources -------------------------------------------------------
+
+pub const SOCKET_RATE_MIN: u32 = 1;
+pub const SOCKET_RATE_MAX: u32 = 30;
+pub const SOCKET_RATE_DEFAULT: u32 = 10;
+/// Largest message (a frame's text), in bytes.
+pub const SOCKET_MESSAGE_MAX: usize = 1024 * 1024;
+/// Longest "Send on connect" text, in bytes.
+pub const SOCKET_SEND_MAX: usize = 64 * 1024;
+/// Longest filter value, in bytes.
+pub const SOCKET_FILTER_VALUE_MAX: usize = 1024;
+/// Messages a test returns.
+pub const SOCKET_TEST_MESSAGES: usize = 20;
+
+fn socket_rate_default() -> u32 {
+    SOCKET_RATE_DEFAULT
+}
+
+/// Only messages whose value at `pointer` (a JSON Pointer) is `equals` (as text: strings as they
+/// are, numbers and booleans as written in JSON) feed the rows.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SocketFilter {
+    pub pointer: String,
+    pub equals: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum SocketState {
+    /// Not connected: nothing uses the source.
+    #[default]
+    Idle,
+    Connecting,
+    /// Refused or closed: retrying (`nextAt`).
+    Waiting,
+    /// Connected, no message yet.
+    Connected,
+    /// A message in the last `SOCKET_STALE` (5 s).
+    Live,
+    /// Connected, no message for 5 s.
+    Stale,
+    /// Held (a bad URL, an address outside the network, a refused upgrade, a message too big)
+    /// until Retry or a save.
+    Error,
+    Paused,
+}
+
+/// Per live data source; in `SourceSummary.socket` and the `source-changed` event.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SocketStatus {
+    pub state: SocketState,
+    /// Server epoch ms of the last message (any message, filtered or not).
+    pub last_message_at: Option<u64>,
+    /// Server epoch ms of the next connect attempt while `waiting`.
+    pub next_at: Option<u64>,
+    /// What went wrong (never contains secret values); for `waiting` the last reason.
+    pub message: Option<String>,
+    pub rows: u32,
+    /// Messages dropped because they came faster than Kinetra reads (since the last connect).
+    pub dropped: u64,
+}
+
+/// Result of `test_socket_source`: connect with the draft for up to 10 s, nothing saved.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SocketTestResult {
+    /// The first messages (parsed when JSON, else as a string), at most `SOCKET_TEST_MESSAGES`
+    /// and 64 KB in all.
+    pub messages: Vec<serde_json::Value>,
+    /// The last message the filter let through (for the tree picker), or null.
+    pub json: Option<serde_json::Value>,
+    /// Its mapped rows (first `API_TEST_ROWS`).
+    pub rows: Vec<crate::core::protocol::Fields>,
+    /// Per mapping column: how many of those rows had a value.
+    pub hits: std::collections::BTreeMap<String, u32>,
+    /// Messages seen / let through by the filter.
+    pub seen: u32,
+    pub matched: u32,
+    pub error: Option<String>,
 }
 
 // ---- API sources ------------------------------------------------------------------------
@@ -3192,6 +3307,7 @@ pub enum SourceKindName {
     Schedule,
     Api,
     Poll,
+    Socket,
 }
 
 /// What lists show.
@@ -3227,6 +3343,9 @@ pub struct SourceSummary {
     /// Poll sources: test or linked, connection, state; null for other kinds.
     #[serde(default)]
     pub poll: Option<PollSourceView>,
+    /// Live data sources: connection status; null for other kinds.
+    #[serde(default)]
+    pub socket: Option<SocketStatus>,
 }
 
 /// For `step_source`.
