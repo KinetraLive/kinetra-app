@@ -1,7 +1,7 @@
 // The remote control chip and its panel: words, the control link, collaborators, Lock remote
 // take, "Move it here?", opening on switch-on and Invite collaborator.
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/svelte";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RemoteView } from "$lib/types";
 
 const api = vi.hoisted(() => ({
@@ -27,6 +27,12 @@ vi.mock("$lib/components/license/open", () => ({ openInBrowser: vi.fn() }));
 import { openInBrowser } from "$lib/components/license/open";
 import RemoteChip from "./RemoteChip.svelte";
 import { remote } from "./state.svelte";
+
+// The invite dialog is a lazy chunk (`import()` on click). Loaded here once, so the tests wait on the
+// dialog, not on Vite compiling it on first use (over waitFor's 1 s under the full suite's load).
+beforeAll(async () => {
+  await import("./InviteDialog.svelte");
+});
 
 const ALL = ["take_clear", "edit_fields", "edit_live_fields", "run_cues", "studio", "timers", "variants", "rows", "button_panel", "watch_preview"];
 
