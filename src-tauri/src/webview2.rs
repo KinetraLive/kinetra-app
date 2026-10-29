@@ -23,7 +23,8 @@
 
 use tauri::WebviewWindow;
 
-/// Why a page died.
+/// Why a page died (reported by WebView2 on Windows).
+#[cfg_attr(not(windows), allow(dead_code))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PageFailure {
     BrowserExited,

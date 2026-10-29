@@ -237,7 +237,10 @@ mod sys {
         if out.is_null() {
             return None;
         }
-        Some(i64::from(tm.tm_gmtoff))
+        // `c_long` is 64-bit on macOS, so the conversion is a no-op there.
+        #[allow(clippy::useless_conversion)]
+        let offset = i64::from(tm.tm_gmtoff);
+        Some(offset)
     }
 }
 
