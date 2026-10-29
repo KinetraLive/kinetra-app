@@ -236,6 +236,18 @@ fn a_virtual_controller_takes_a_layer_on_air() {
     // The input path first: in a learn session the note is reported, nothing runs.
     st.midi_learn(true);
     note();
+    std::thread::sleep(Duration::from_millis(500));
+    {
+        let m = st.midi_rt();
+        let queued = lock(&m.queue.items).len();
+        let open: Vec<String> = lock(&m.ports).inputs.keys().cloned().collect();
+        let waker = m.queue.wake.read().unwrap().is_some();
+        println!(
+            "after the note: queued {queued}, dropped {}, open {open:?}, waker {waker}, service {}",
+            m.queue.dropped.load(Ordering::Relaxed),
+            m.service_running()
+        );
+    }
     wait_for("the note in a learn session", 5, || {
         learned.0.load(std::sync::atomic::Ordering::SeqCst) > 0
     });
