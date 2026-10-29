@@ -2,7 +2,6 @@ mod close;
 mod commands;
 pub mod core;
 pub mod error;
-#[cfg(windows)]
 pub mod frames;
 mod menu;
 pub mod ndi;

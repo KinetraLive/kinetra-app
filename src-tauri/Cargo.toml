@@ -127,6 +127,9 @@ keyring = { version = "3.6.3", default-features = false, features = ["apple-nati
 # The project watcher's macOS backend (FSEvents; notify compiles it on macOS but needs this
 # feature for fsevent-sys). Adds fsevent-sys 4 on macOS only.
 notify = { version = "8.2.0", default-features = false, features = ["macos_fsevent"] }
+# The system region for a new NDI output's default frame rate (NSLocale). The version wry already
+# compiles (owner OK with the macOS parity plan, 2026-10-29).
+objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSLocale", "NSString"] }
 
 [dev-dependencies]
 # Tests sign license tokens with throwaway keys; the app itself never signs.
@@ -134,6 +137,14 @@ kinetra-license = { git = "https://github.com/KinetraLive/kinetra-license", tag 
 # Test signing keys (the version kinetra-license already compiles).
 ed25519-dalek = { version = "3.0.0", default-features = false, features = ["fast", "zeroize"] }
 tempfile = "3"
+
+# examples/mac_capture_spike.rs (macOS parity plan M1): a WKWebView captured several ways
+# (ScreenCaptureKit, layer rendering, snapshots). Objective-C through objc2 and blocks (the
+# versions wry already compiles; owner OK 2026-10-29); the C frameworks are declared by hand. Dev only.
+[target.'cfg(target_os = "macos")'.dev-dependencies]
+objc2 = "0.6.4"
+block2 = "0.6.2"
+objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSGeometry", "NSString"] }
 
 # examples/ndi_probe.rs: the CPU of the capture page's WebView2 processes (a process snapshot) and
 # the probe's own memory. Dev only (not in the app's build).

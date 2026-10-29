@@ -3,7 +3,7 @@
 //! The output clock thread wakes on each tick ([`Ticker`]) and never waits on anything else:
 //! - the page drew something new → convert it on the GPU ([`Converter::submit`]);
 //! - collect the newest finished conversion ([`Converter::collect`]; the GPU had one tick);
-//! - hand the newest frame to every outlet (a latest-wins [`Mailbox`]). Nothing new (still
+//! - hand the newest frame to every outlet (a latest-wins `Mailbox`). Nothing new (still
 //!   graphics, or the GPU not done) → the previous frame again, so receivers see a steady rate.
 //!
 //! A sender that doesn't take a frame before the next one replaces it, and the replaced one is
@@ -17,9 +17,10 @@ use super::capture::{Capture, CaptureOptions, OnFailed, Page};
 use super::clock::{boost_thread, Ticker};
 use super::convert::{Collected, Converter};
 use super::gpu::{self, Adapter, Gpu};
+use super::outlet::Outlet;
 use super::FrameError;
 use crate::core::frame_out::{
-    AlphaMode, Frame, FrameCounters, FrameCountersView, FrameRate, Mailbox, PixelFormat, Pool,
+    AlphaMode, Frame, FrameCounters, FrameCountersView, FrameRate, PixelFormat, Pool,
 };
 
 /// What a source captures and makes.
@@ -42,26 +43,6 @@ pub struct SourceConfig {
     pub browser_args: Option<String>,
     /// The capture environment's language; `None` = WebView2's default.
     pub language: Option<String>,
-}
-
-/// Where one sender takes its frames from.
-pub struct Outlet {
-    pub mailbox: Mailbox<Arc<Frame>>,
-    /// Frames replaced before this outlet's sender took them.
-    pub dropped: AtomicU64,
-    /// The sender wants frames (an NDI sender: a receiver is connected). While no outlet wants
-    /// any, the source skips the GPU conversion and read-back and hands out nothing.
-    pub wanted: AtomicBool,
-}
-
-impl Default for Outlet {
-    fn default() -> Self {
-        Self {
-            mailbox: Mailbox::default(),
-            dropped: AtomicU64::new(0),
-            wanted: AtomicBool::new(true),
-        }
-    }
 }
 
 pub struct FrameSource {

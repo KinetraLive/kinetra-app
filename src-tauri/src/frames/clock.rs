@@ -1,84 +1,36 @@
-//! The output clock: QueryPerformanceCounter time and a ticker on a high-resolution waitable
-//! timer with absolute deadlines from the tick index (`FrameRate::tick_offset_ns`), so the error
-//! never accumulates. Windows 10 before 1803 has no high-resolution timers: a plain waitable timer
-//! is used there (~1 ms coarser wake-ups).
-
-use std::sync::OnceLock;
-
-use windows::Win32::Foundation::{CloseHandle, HANDLE};
-use windows::Win32::System::Performance::{QueryPerformanceCounter, QueryPerformanceFrequency};
-use windows::Win32::System::Threading::{
-    CreateWaitableTimerExW, SetWaitableTimer, WaitForSingleObject,
-    CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, INFINITE, TIMER_ALL_ACCESS,
-};
+//! The output clock: a ticker with absolute deadlines from the tick index
+//! (`FrameRate::tick_offset_ns`), so the error never accumulates. The time source, the sleep and
+//! the thread boost are per platform: Windows QueryPerformanceCounter + a high-resolution waitable
+//! timer + MMCSS (`win.rs`), macOS `mach_absolute_time` + `mach_wait_until` + a time-constraint
+//! thread policy (`mac.rs`).
 
 use crate::core::frame_out::FrameRate;
 
-fn qpc_frequency() -> i64 {
-    static F: OnceLock<i64> = OnceLock::new();
-    *F.get_or_init(|| {
-        let mut f = 0i64;
-        unsafe {
-            let _ = QueryPerformanceFrequency(&mut f);
-        }
-        f.max(1)
-    })
-}
+#[cfg(target_os = "macos")]
+mod mac;
+#[cfg(windows)]
+mod win;
 
-/// Microseconds on the QPC clock (the same in every process on this machine).
-pub fn now_us() -> i64 {
-    let mut c = 0i64;
-    unsafe {
-        let _ = QueryPerformanceCounter(&mut c);
-    }
-    (i128::from(c) * 1_000_000 / i128::from(qpc_frequency())) as i64
-}
+#[cfg(target_os = "macos")]
+use mac as sys;
+#[cfg(windows)]
+use win as sys;
 
-/// The calling thread in the Multimedia Class Scheduler's "Playback" class while this lives
-/// (output clock and senders: scheduled ahead of ordinary work without starving it); where MMCSS
-/// isn't available, above-normal priority instead.
-pub struct Boost(Option<HANDLE>);
-
-pub fn boost_thread() -> Boost {
-    use windows::core::w;
-    use windows::Win32::System::Threading::{
-        AvSetMmThreadCharacteristicsW, GetCurrentThread, SetThreadPriority,
-        THREAD_PRIORITY_ABOVE_NORMAL,
-    };
-    let mut task = 0u32;
-    match unsafe { AvSetMmThreadCharacteristicsW(w!("Playback"), &mut task) } {
-        Ok(h) => Boost(Some(h)),
-        Err(_) => {
-            unsafe {
-                let _ = SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL);
-            }
-            Boost(None)
-        }
-    }
-}
-
-impl Drop for Boost {
-    fn drop(&mut self) {
-        if let Some(h) = self.0.take() {
-            unsafe {
-                let _ = windows::Win32::System::Threading::AvRevertMmThreadCharacteristics(h);
-            }
-        }
-    }
-}
+/// Microseconds on the system's monotonic clock (the same in every process on this machine).
+pub use sys::now_us;
+/// The calling thread scheduled ahead of ordinary work while the returned guard lives (output
+/// clock and senders).
+pub use sys::{boost_thread, Boost};
 
 /// Ticks at a [`FrameRate`] from the moment it's created.
 pub struct Ticker {
-    timer: HANDLE,
+    timer: sys::Timer,
     start_us: i64,
     rate: FrameRate,
     index: i64,
 }
 
-// SAFETY: the timer handle is only used by the thread that owns the ticker.
-unsafe impl Send for Ticker {}
-
-/// One tick: its index, when it was due (µs, QPC), how late the wait returned (µs).
+/// One tick: its index, when it was due (µs, [`now_us`]), how late the wait returned (µs).
 #[derive(Debug, Clone, Copy)]
 pub struct Tick {
     pub index: i64,
@@ -87,25 +39,16 @@ pub struct Tick {
 }
 
 impl Ticker {
-    pub fn new(rate: FrameRate) -> windows::core::Result<Self> {
-        let timer = unsafe {
-            CreateWaitableTimerExW(
-                None,
-                None,
-                CREATE_WAITABLE_TIMER_HIGH_RESOLUTION,
-                TIMER_ALL_ACCESS.0,
-            )
-            .or_else(|_| CreateWaitableTimerExW(None, None, 0, TIMER_ALL_ACCESS.0))?
-        };
+    pub fn new(rate: FrameRate) -> Result<Self, String> {
         Ok(Self {
-            timer,
+            timer: sys::Timer::new()?,
             start_us: now_us(),
             rate,
             index: 0,
         })
     }
 
-    /// When tick `i` is due (µs, QPC).
+    /// When tick `i` is due (µs, [`now_us`]).
     pub fn at(&self, i: i64) -> i64 {
         self.start_us + self.rate.tick_offset_ns(i) / 1000
     }
@@ -123,27 +66,13 @@ impl Ticker {
             }
             due = self.at(self.index);
         }
-        let wait = due - now;
-        if wait > 0 {
-            // Relative time in 100 ns units (negative = relative).
-            let rel = -(wait * 10);
-            unsafe {
-                let _ = SetWaitableTimer(self.timer, &rel, 0, None, None, false);
-                WaitForSingleObject(self.timer, INFINITE);
-            }
+        if due > now {
+            self.timer.sleep_until(due);
         }
         Tick {
             index: self.index,
             due_us: due,
             late_us: now_us() - due,
-        }
-    }
-}
-
-impl Drop for Ticker {
-    fn drop(&mut self) {
-        unsafe {
-            let _ = CloseHandle(self.timer);
         }
     }
 }
@@ -168,5 +97,13 @@ mod tests {
             after.index
         );
         assert!(after.late_us < 17_000, "returned {} µs late", after.late_us);
+    }
+
+    #[test]
+    fn now_is_monotonic_microseconds() {
+        let a = now_us();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        let b = now_us();
+        assert!((15_000..200_000).contains(&(b - a)), "{} µs", b - a);
     }
 }

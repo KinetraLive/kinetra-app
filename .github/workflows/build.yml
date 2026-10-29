@@ -311,6 +311,15 @@ jobs:
         env:
           CHANNEL: ${{ inputs.channel }}
         run: node scripts/check-channel-build.mjs build --channel "$CHANNEL"
+      - name: macOS bundle check (no NDI library inside; the Info.plist keys merged)
+        shell: bash
+        run: |
+          app=$(ls -d src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app | head -n 1)
+          # Kinetra loads the user's NDI Runtime and never ships it (NDI plan §1.2).
+          if find "$app" -iname 'libndi*' | grep -q .; then echo "::error::an NDI library is inside $app"; exit 1; fi
+          plist="$app/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Print :NSLocalNetworkUsageDescription' "$plist"
+          /usr/libexec/PlistBuddy -c 'Print :NSBonjourServices:0' "$plist" | grep -qx '_ndi._tcp'
       - name: Collect
         env:
           CHANNEL: ${{ inputs.channel }}

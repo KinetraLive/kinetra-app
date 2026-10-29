@@ -1,0 +1,65 @@
+# macOS capture spike (kinetra-private docs/MACOS_PARITY_PLAN.md, phase M1): clippy and the
+# frames / NDI tests on macOS, then examples/mac_capture_spike.rs on the runner's display. The
+# report, the captured PNGs and the spike binary (for a tester's Mac) stay as a workflow artifact
+# for 14 days. Uploads nothing anywhere else.
+name: macOS capture spike
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["feature/macos-*"]
+    paths:
+      - "src-tauri/**"
+      - ".github/workflows/macos-spike.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-spike-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "24"
+  PNPM_VERSION: "12.8.1"
+  # objc2 checks every message's argument encodings in debug builds; the spike passes C pointers
+  # (CGImageRef, CMSampleBufferRef) as void pointers, which is ABI-identical. One setting for the
+  # whole job, so clippy, the tests and the spike share one build.
+  CARGO_PROFILE_DEV_DEBUG_ASSERTIONS: "false"
+  CARGO_PROFILE_TEST_DEBUG_ASSERTIONS: "false"
+
+jobs:
+  spike:
+    name: macOS capture spike
+    runs-on: macos-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with: { version: "${{ env.PNPM_VERSION }}" }
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with: { node-version: "${{ env.NODE_VERSION }}", cache: pnpm }
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master 2026-10-09 (no releases)
+        with: { toolchain: stable, components: clippy }
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with: { workspaces: "src-tauri -> target", shared-key: macos-spike }
+      - run: pnpm install --frozen-lockfile
+      - name: Frontend and renderer build
+        run: pnpm build:renderer && pnpm build
+      - name: clippy (the library and the spike, macOS)
+        run: cargo clippy --manifest-path src-tauri/Cargo.toml --locked --lib --example mac_capture_spike -- -D warnings
+      - name: frames and NDI tests (macOS)
+        run: cargo test --manifest-path src-tauri/Cargo.toml --locked --quiet --lib -- frames:: ndi::
+      - name: Build the spike
+        run: cargo build --manifest-path src-tauri/Cargo.toml --locked --example mac_capture_spike
+      - name: Run the spike
+        timeout-minutes: 15
+        run: |
+          sw_vers
+          system_profiler SPDisplaysDataType | sed -n '1,40p' || true
+          src-tauri/target/debug/examples/mac_capture_spike --out spike-out --seconds 4
+          cp src-tauri/target/debug/examples/mac_capture_spike spike-out/
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with: { name: macos-spike, path: spike-out/, retention-days: 14, if-no-files-found: warn }

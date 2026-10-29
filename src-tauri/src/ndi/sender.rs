@@ -80,7 +80,6 @@ impl FrameInbox for Mailbox<Arc<Frame>> {
     }
 }
 
-#[cfg(windows)]
 impl FrameInbox for crate::frames::Outlet {
     fn mailbox(&self) -> &Mailbox<Arc<Frame>> {
         &self.mailbox
@@ -197,7 +196,6 @@ impl Job {
         let mut shown = self.snapshot();
         // (dropped, sent) at the last poll, for the dropping rate.
         let mut counts = (self.inbox.dropped(), 0u64);
-        #[cfg(windows)]
         let _boost = crate::frames::clock::boost_thread();
         while !self.stop.load(Ordering::Relaxed) {
             // NDI encodes every frame it's given, receivers or not (measured: 2.2 ms a 1080p
@@ -229,13 +227,10 @@ impl Job {
                     in_flight = Some(f.clone());
                 }
                 self.stats.send_time.push(spent);
-                #[cfg(windows)]
-                {
-                    let late = crate::frames::clock::now_us() - f.due_us;
-                    self.stats
-                        .tick_to_sent
-                        .push(Duration::from_micros(late.max(0) as u64));
-                }
+                let late = crate::frames::clock::now_us() - f.due_us;
+                self.stats
+                    .tick_to_sent
+                    .push(Duration::from_micros(late.max(0) as u64));
                 self.stats.sent.fetch_add(1, Ordering::Relaxed);
             }
             if polled.elapsed() >= Duration::from_secs(1) {
