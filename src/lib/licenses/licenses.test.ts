@@ -73,7 +73,12 @@ describe("licenses.json", () => {
     }
   });
 
-  it("gives the objc2 crates their MIT text (kept in legal/objc2: the crates ship without one)", () => {
+  it("gives every item a license text (packages without one: legal/licenses/, KEPT_LICENSES)", () => {
+    const without = data.groups.flatMap((g) => g.items.filter((i) => !i.files?.length).map((i) => `${g.id}:${i.name}`));
+    expect(without, "add the text to legal/licenses/ and KEPT_LICENSES in scripts/licenses.mjs").toEqual([]);
+  });
+
+  it("gives the objc2 crates their MIT text (kept in legal/licenses: the crates ship without one)", () => {
     for (const name of ["objc2", "block2", "objc2-foundation", "objc2-app-kit"]) {
       const it = item("rust", name);
       expect(it?.files?.length, name).toBeGreaterThan(0);
