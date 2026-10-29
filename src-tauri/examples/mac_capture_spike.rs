@@ -113,7 +113,15 @@ html,body{margin:0;background:transparent;width:100%;height:100%;overflow:hidden
     #[link(name = "AppKit", kind = "framework")]
     extern "C" {}
     #[link(name = "QuartzCore", kind = "framework")]
-    extern "C" {}
+    extern "C" {
+        fn CACurrentMediaTime() -> f64;
+        static kCARendererMetalCommandQueue: *const AnyObject;
+    }
+
+    #[link(name = "Metal", kind = "framework")]
+    extern "C" {
+        fn MTLCreateSystemDefaultDevice() -> *mut AnyObject;
+    }
 
     #[link(name = "objc")]
     extern "C" {
@@ -717,6 +725,148 @@ html,body{margin:0;background:transparent;width:100%;height:100%;overflow:hidden
         json!({"ms": times, "distinctPictures": hashes.len(), "image": image})
     }
 
+    /// `MTLRegion` (origin x, y, z; size w, h, d).
+    #[repr(C)]
+    #[derive(Clone, Copy)]
+    struct MtlRegion([usize; 6]);
+
+    const SIZE3: Encoding = Encoding::Struct(
+        "?",
+        &[
+            Encoding::ULongLong,
+            Encoding::ULongLong,
+            Encoding::ULongLong,
+        ],
+    );
+
+    // SAFETY: MTLRegion's C layout (Metal/MTLTypes.h): two structs of three NSUInteger.
+    unsafe impl Encode for MtlRegion {
+        const ENCODING: Encoding = Encoding::Struct("?", &[SIZE3, SIZE3]);
+    }
+
+    /// Route B on the GPU: `CARenderer` draws the web view's layer tree into a Metal texture, in
+    /// process (no permission, no window stacking). 60 frames, one per display refresh; each
+    /// frame timed from `beginFrame` to its command buffer completing on our queue (the renderer
+    /// is given that queue, so the wait covers its work); every tenth read back.
+    fn route_gpu(web: &AnyObject, out: &Path, tag: &str) -> Value {
+        let layer: Option<Retained<AnyObject>> = unsafe { msg_send![web, layer] };
+        let Some(layer) = layer else {
+            return json!({"error": "the web view has no layer"});
+        };
+        if AnyClass::get(c"CARenderer").is_none() {
+            return json!({"error": "no CARenderer"});
+        }
+        unsafe {
+            let Some(device) = Retained::from_raw(MTLCreateSystemDefaultDevice()) else {
+                return json!({"error": "no Metal device"});
+            };
+            let name: Retained<NSString> = msg_send![&*device, name];
+            // MTLPixelFormatBGRA8Unorm (80); usage ShaderRead | ShaderWrite | RenderTarget;
+            // storage Shared (Apple silicon: the CPU reads it directly).
+            let desc: Retained<AnyObject> = msg_send![
+                class(c"MTLTextureDescriptor"),
+                texture2DDescriptorWithPixelFormat: 80usize,
+                width: W,
+                height: H,
+                mipmapped: false
+            ];
+            let _: () = msg_send![&*desc, setUsage: 7usize];
+            let _: () = msg_send![&*desc, setStorageMode: 0usize];
+            let tex: Option<Retained<AnyObject>> =
+                msg_send![&*device, newTextureWithDescriptor: &*desc];
+            let queue: Option<Retained<AnyObject>> = msg_send![&*device, newCommandQueue];
+            let (Some(tex), Some(queue)) = (tex, queue) else {
+                return json!({"error": "no texture or command queue"});
+            };
+            let key = kCARendererMetalCommandQueue;
+            let opts: Option<Retained<AnyObject>> = if key.is_null() {
+                None
+            } else {
+                msg_send![
+                    class(c"NSDictionary"),
+                    dictionaryWithObject: &*queue,
+                    forKey: key
+                ]
+            };
+            let renderer: Option<Retained<AnyObject>> = msg_send![
+                class(c"CARenderer"),
+                rendererWithMTLTexture: &*tex,
+                options: opts.as_deref()
+            ];
+            let Some(renderer) = renderer else {
+                return json!({"error": "rendererWithMTLTexture returned nil"});
+            };
+            let superlayer_before: Option<Retained<AnyObject>> = msg_send![&*layer, superlayer];
+            let _: () = msg_send![&*renderer, setLayer: &*layer];
+            let _: () = msg_send![&*renderer, setBounds: rect(0.0, 0.0, W as f64, H as f64)];
+
+            let mut times = Vec::new();
+            let mut hashes = Vec::new();
+            let mut last: Option<Img> = None;
+            let mut buf = vec![0u8; W * H * 4];
+            for i in 0..60 {
+                let t0 = Instant::now();
+                let _: () = msg_send![
+                    &*renderer,
+                    beginFrameAtTime: CACurrentMediaTime(),
+                    timeStamp: null_mut::<c_void>()
+                ];
+                let _: () =
+                    msg_send![&*renderer, addUpdateRect: rect(0.0, 0.0, W as f64, H as f64)];
+                let _: () = msg_send![&*renderer, render];
+                let _: () = msg_send![&*renderer, endFrame];
+                let cb: Option<Retained<AnyObject>> = msg_send![&*queue, commandBuffer];
+                if let Some(cb) = cb {
+                    let _: () = msg_send![&*cb, commit];
+                    let _: () = msg_send![&*cb, waitUntilCompleted];
+                }
+                times.push(t0.elapsed().as_secs_f64() * 1000.0);
+                if i % 10 == 9 {
+                    let region = MtlRegion([0, 0, 0, W, H, 1]);
+                    let _: () = msg_send![
+                        &*tex,
+                        getBytes: buf.as_mut_ptr().cast::<c_void>(),
+                        bytesPerRow: W * 4,
+                        fromRegion: region,
+                        mipmapLevel: 0usize
+                    ];
+                    let mut rgba = vec![0u8; W * H * 4];
+                    for i in (0..rgba.len()).step_by(4) {
+                        rgba[i..i + 4].copy_from_slice(&[
+                            buf[i + 2],
+                            buf[i + 1],
+                            buf[i],
+                            buf[i + 3],
+                        ]);
+                    }
+                    let img = Img { w: W, h: H, rgba };
+                    hashes.push(img.hash());
+                    last = Some(img);
+                }
+                pump(1.0 / 60.0);
+            }
+            let superlayer_after: Option<Retained<AnyObject>> = msg_send![&*layer, superlayer];
+            let _: () = msg_send![&*renderer, setLayer: null_mut::<AnyObject>()];
+            let mut sorted = times.clone();
+            sorted.sort_by(f64::total_cmp);
+            let pct = |p: f64| sorted[((sorted.len() - 1) as f64 * p) as usize];
+            hashes.dedup();
+            let image = last.as_mut().map(|img| {
+                let file = out.join(format!("{tag}-gpu.png"));
+                let saved = img.save_png(&file).err();
+                json!({"analysis": img.analyze(), "png": file.file_name().map(|f| f.to_string_lossy().into_owned()), "saveError": saved})
+            });
+            json!({
+                "device": name.to_string(),
+                "queueOption": !key.is_null(),
+                "frameMs": {"p50": pct(0.5), "p95": pct(0.95), "max": pct(1.0)},
+                "distinctPictures": hashes.len(),
+                "superlayerKept": superlayer_before.is_some() == superlayer_after.is_some(),
+                "image": image,
+            })
+        }
+    }
+
     /// Route B: the web view's layer rendered in process.
     fn route_layer(web: &AnyObject, out: &Path, tag: &str) -> Value {
         let layer: Option<Retained<AnyObject>> = unsafe { msg_send![web, layer] };
@@ -989,6 +1139,8 @@ html,body{margin:0;background:transparent;width:100%;height:100%;overflow:hidden
                 r.insert("snapshot".into(), route_snapshot(&web, &out, p.tag()));
                 r.insert("layer".into(), route_layer(&web, &out, p.tag()));
             }
+            // Last: CARenderer may take the layer out of the window's tree.
+            r.insert("gpu".into(), route_gpu(&web, &out, p.tag()));
             placements.insert(p.tag().into(), Value::Object(r));
             unsafe {
                 let _: () = msg_send![&*window, orderOut: null_mut::<AnyObject>()];
