@@ -13,9 +13,9 @@ update panel: one paragraph per line, no Markdown.
 
 ## Unreleased
 
-WebSocket support, in Advanced mode: a Live data (WebSocket) source connects to a WebSocket feed on this computer or your network and maps its JSON to your graphics' fields. Graphics update live as the data changes, and the "API value changed" flow trigger works with these sources too.
-
 ## Next stable release
+
+WebSocket support, in Advanced mode: a Live data (WebSocket) source connects to a WebSocket feed on this computer or your network and maps its JSON to your graphics' fields. Graphics update live as the data changes, and the "API value changed" flow trigger works with these sources too.
 
 Remote control (Pro and Team): run your show from a phone, tablet or another computer. Turn it on for a project, invite collaborators by their Kinetra account and choose what each person may do, from full operator to editing text or just watching.
 
