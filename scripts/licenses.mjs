@@ -3,8 +3,10 @@
 //   npm   the app's production dependencies (package.json `dependencies`, the renderer's too) and the
 //         Svelte/SvelteKit runtime compiled into the bundle, walked transitively through pnpm's
 //         node_modules/.pnpm layout (`dependencies` + installed `optionalDependencies`);
-//   rust  crates reachable from the kinetra package over normal dependencies on the host target
-//         (`cargo metadata --locked --offline --filter-platform <host>`), proc-macros included;
+//   rust  crates reachable from the kinetra package over normal dependencies on every target we
+//         ship (`cargo metadata --locked --offline --filter-platform <target>`, TARGETS), proc-macros
+//         included; a crate that ships on some platforms only carries `platforms` (the app shows
+//         the running platform's, $lib/licenses `forPlatform`);
 //   fonts the bundled @fontsource families (app UI and renderer).
 //   ndi   the NDI® notices in legal/ndi/ (header license, NDI terms).
 // License texts (LICENSE*, LICENCE*, COPYING*) are deduplicated into `texts`. The output is
@@ -61,6 +63,11 @@ function licenseFiles(dir) {
 const NOTICE_IN_SOURCE = { qrcodegen: "src/lib.rs" };
 /** Copyright holders named in the notice when the package's license file doesn't name one. */
 const COPYRIGHT = { "kinetra-license": "Rørvik Medieteknikk" };
+/**
+ * Repositories whose crates ship without a license file, the text kept in legal/ (README there):
+ * repository URL → the file.
+ */
+const REPO_LICENSE = { "https://github.com/madsmtm/objc2": "legal/objc2/LICENSE-MIT.txt" };
 
 // The leading block comment of a source file, without the comment markers.
 function sourceNotice(dir, file) {
@@ -154,13 +161,18 @@ function npmGroup() {
   return [...seen.values()].sort(byName);
 }
 
-function rustGroup() {
-  const host = /host: (\S+)/.exec(execFileSync("rustc", ["-vV"], { encoding: "utf8" }))?.[1];
-  if (!host) throw new Error("rustc -vV printed no host triple");
+/** The targets we ship, per platform (macOS is a universal build: both architectures). */
+const TARGETS = {
+  windows: ["x86_64-pc-windows-msvc"],
+  macos: ["aarch64-apple-darwin", "x86_64-apple-darwin"],
+};
+
+/** Crates reachable from kinetra over normal dependencies on `target`: package id → package. */
+function cratesFor(target) {
   const meta = JSON.parse(
     execFileSync(
       "cargo",
-      ["metadata", "--format-version", "1", "--locked", "--offline", "--filter-platform", host, "--manifest-path", join(ROOT, "src-tauri", "Cargo.toml")],
+      ["metadata", "--format-version", "1", "--locked", "--offline", "--filter-platform", target, "--manifest-path", join(ROOT, "src-tauri", "Cargo.toml")],
       { encoding: "utf8", maxBuffer: 256 * 1024 * 1024 },
     ),
   );
@@ -179,13 +191,30 @@ function rustGroup() {
     }
   }
   seen.delete(root);
-  return [...seen]
-    .map((id) => {
-      const p = pkgs.get(id);
+  return new Map([...seen].map((id) => [id, pkgs.get(id)]));
+}
+
+function rustGroup() {
+  const platforms = Object.keys(TARGETS);
+  /** package id → { package, platforms it ships on } */
+  const all = new Map();
+  for (const platform of platforms) {
+    for (const target of TARGETS[platform]) {
+      for (const [id, p] of cratesFor(target)) {
+        const e = all.get(id) ?? { p, on: new Set() };
+        e.on.add(platform);
+        all.set(id, e);
+      }
+    }
+  }
+  return [...all.values()]
+    .map(({ p, on }) => {
       const dir = dirname(p.manifest_path);
       let files = licenseFiles(dir);
       if (!files.length && NOTICE_IN_SOURCE[p.name]) files = sourceNotice(dir, NOTICE_IN_SOURCE[p.name]);
       const url = repoUrl(p.repository) ?? p.homepage ?? undefined;
+      const kept = REPO_LICENSE[p.repository?.replace(/\/$/, "")];
+      if (!files.length && kept) files = [{ name: "LICENSE-MIT", text: textRef(readFileSync(join(ROOT, kept), "utf8")) }];
       return {
         name: p.name,
         version: p.version,
@@ -193,6 +222,7 @@ function rustGroup() {
         ...(COPYRIGHT[p.name] ? { copyright: COPYRIGHT[p.name] } : {}),
         ...(url ? { url } : {}),
         ...(files.length ? { files } : {}),
+        ...(on.size < platforms.length ? { platforms: platforms.filter((x) => on.has(x)) } : {}),
       };
     })
     .sort(byName);
@@ -261,7 +291,8 @@ const out = { schemaVersion: 1, depsHash: depsFingerprint(ROOT), groups, texts }
 const json = `${JSON.stringify(out)}\n`;
 writeFileSync(OUT, json);
 const missing = groups.flatMap((g) => g.items.filter((i) => !i.files).map((i) => `${g.id}:${i.name}`));
+const only = (p) => groups[1].items.filter((i) => i.platforms?.length === 1 && i.platforms[0] === p).length;
 console.log(
-  `licenses: ${groups.map((g) => `${g.label} ${g.items.length}`).join(", ")}; ${texts.length} texts, ${(json.length / 1024).toFixed(1)} KB → ${OUT}`,
+  `licenses: ${groups.map((g) => `${g.label} ${g.items.length}`).join(", ")} (Windows only ${only("windows")}, macOS only ${only("macos")}); ${texts.length} texts, ${(json.length / 1024).toFixed(1)} KB → ${OUT}`,
 );
 if (missing.length) console.log(`  without a license file (${missing.length}): ${missing.join(", ")}`);
