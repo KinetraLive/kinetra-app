@@ -18,6 +18,7 @@ use crate::core::model::{
     FileChange, FileKind, FilesChanged, SourceDoc, SourceKind, SourceStep, SourceSummary,
 };
 use crate::core::protocol::Fields;
+use crate::core::socket_source;
 use crate::core::sources::{self, SourceError};
 use crate::core::state::AppState;
 use crate::error::{AppError, AppResult};
@@ -34,6 +35,7 @@ impl AppState {
         s.next_at = self.automation().next_at(&doc.id);
         s.api = self.api_status(doc);
         s.poll = self.poll_view(doc);
+        s.socket = self.socket_status(doc);
         s
     }
 
@@ -51,6 +53,7 @@ impl AppState {
                 s.next_at = self.automation().next_at(&d.id);
                 s.api = self.api_status(d);
                 s.poll = self.poll_view(d);
+                s.socket = self.socket_status(d);
                 s
             })
             .collect();
@@ -117,6 +120,10 @@ impl AppState {
             {
                 rows.clone_from(have);
                 fetched_at.clone_from(at);
+            }
+            // A live data source: the rows are the connection's.
+            if let Some(old) = &old {
+                socket_source::keep_live(&mut doc, old);
             }
             // A poll source: the link and the server's data are the core's.
             if let (
@@ -289,10 +296,18 @@ impl AppState {
             change,
             message,
         };
-        match sources::get(dir, id) {
+        let loaded = self.sources().doc(id);
+        // A live data source's file never holds its rows: keep the ones in memory.
+        let read = sources::get(dir, id).map(|mut doc| {
+            if let Some(old) = &loaded {
+                socket_source::keep_live(&mut doc, old);
+            }
+            doc
+        });
+        match read {
             // Exactly what is in memory already (typically our own write, seen late under load
             // after the own-write memory expired): nothing changed, nothing to announce.
-            Ok(doc) if self.sources().doc(id).as_ref() == Some(&doc) => None,
+            Ok(doc) if loaded.as_ref() == Some(&doc) => None,
             // The file edited outside wins over an unsaved step.
             Ok(doc) => {
                 let before = self.row_mark(id);

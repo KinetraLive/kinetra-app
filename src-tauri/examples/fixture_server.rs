@@ -246,6 +246,15 @@
 //!   `{}` before the first request)
 //! - An unknown name answers 404.
 //!
+//! Live data sources against the WebSocket mock on the same server, `/__mock/ws`:
+//! - `socketsource <SourceDoc json without id>`: `create_socket_source` + `save_source` →
+//!   `OK <sourceId>` (url e.g. `ws://127.0.0.1:<port>/__mock/ws`)
+//! - `socketstatus <sourceId>` → `OK <SocketStatus json>`; `socketapplied` → `OK <row updates
+//!   applied so far>`; `sockettasks` → `OK <connection tasks>`
+//! - `watchsocket <sourceId> <true|false>`: `watch_socket_source` (counted)
+//! - `wspush <text>`: the rest of the line to every connected client → `OK <clients>`
+//! - `wsconns` → `OK <connections so far>`
+//!
 //! A test that opens another project should run on its own fixture server.
 //!
 //! Remote control against a mock of kinetra-cloud's relay (the real `core::remote` connection):
@@ -384,6 +393,49 @@ fn mock_router(mocks: &Mocks) -> axum::Router {
             axum::routing::get(mock_api).post(mock_api),
         )
         .with_state(mocks.clone())
+        .route("/__mock/ws", axum::routing::get(mock_ws))
+}
+
+// ---- The WebSocket mock (`/__mock/ws`) for live data sources ------------------------------------
+// Every connected client gets each `wspush` text; `wsconns` counts connections so far.
+
+struct WsMock {
+    tx: tokio::sync::broadcast::Sender<String>,
+    conns: std::sync::atomic::AtomicU64,
+}
+
+fn ws_mock() -> &'static WsMock {
+    static M: std::sync::OnceLock<WsMock> = std::sync::OnceLock::new();
+    M.get_or_init(|| WsMock {
+        tx: tokio::sync::broadcast::channel(4096).0,
+        conns: Default::default(),
+    })
+}
+
+async fn mock_ws(up: axum::extract::ws::WebSocketUpgrade) -> axum::response::Response {
+    use axum::extract::ws::Message;
+    up.on_upgrade(|mut socket| async move {
+        let mut rx = ws_mock().tx.subscribe();
+        ws_mock()
+            .conns
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        loop {
+            tokio::select! {
+                m = rx.recv() => match m {
+                    Ok(t) => {
+                        if socket.send(Message::Text(t.into())).await.is_err() {
+                            return;
+                        }
+                    }
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {}
+                    Err(_) => return,
+                },
+                got = socket.recv() => if !matches!(got, Some(Ok(_))) {
+                    return;
+                },
+            }
+        }
+    })
 }
 
 // ---- The poll API mock (`pollmock`): JSON answers and a scriptable live stream ------------------
@@ -1759,6 +1811,53 @@ fn run(
             v["kind"] = serde_json::Value::String("api".into());
             let doc: SourceDoc = serde_json::from_value(v).map_err(text)?;
             value = Some(state.save_source(doc).map_err(text)?.id);
+        }
+        "socketsource" => {
+            let mut v: serde_json::Value = json("SourceDoc", arg)?;
+            let name = v
+                .get("name")
+                .and_then(|n| n.as_str())
+                .ok_or("socketsource needs a name")?
+                .to_string();
+            let created = state.create_socket_source(&name).map_err(text)?;
+            v["id"] = serde_json::Value::String(created.id.clone());
+            v["kind"] = serde_json::Value::String("socket".into());
+            let doc: SourceDoc = serde_json::from_value(v).map_err(text)?;
+            value = Some(state.save_source(doc).map_err(text)?.id);
+        }
+        "socketstatus" => {
+            let id = arg.trim();
+            let status = state
+                .list_sources()
+                .map_err(text)?
+                .into_iter()
+                .find(|s| s.id == id)
+                .ok_or_else(|| format!("no source {id}"))?
+                .socket;
+            value = Some(serde_json::to_string(&status).map_err(text)?);
+        }
+        "socketapplied" => value = Some(state.socket_sources().applied().to_string()),
+        "sockettasks" => value = Some(state.socket_sources().task_count().to_string()),
+        "watchsocket" => {
+            let (id, on) = arg
+                .trim()
+                .split_once(' ')
+                .ok_or("usage: watchsocket <sourceId> <true|false>")?;
+            state
+                .watch_socket_source(id, on.trim() == "true")
+                .map_err(text)?
+        }
+        "wspush" => {
+            let n = ws_mock().tx.send(arg.trim().to_string()).unwrap_or(0);
+            value = Some(n.to_string());
+        }
+        "wsconns" => {
+            value = Some(
+                ws_mock()
+                    .conns
+                    .load(std::sync::atomic::Ordering::SeqCst)
+                    .to_string(),
+            )
         }
         "apistatus" => {
             let id = arg.trim();

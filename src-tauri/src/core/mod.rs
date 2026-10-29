@@ -50,6 +50,7 @@ pub mod screen_live;
 pub mod screens;
 pub mod secrets;
 pub mod settings_io;
+pub mod socket_source;
 pub mod source_live;
 pub mod sources;
 pub mod state;

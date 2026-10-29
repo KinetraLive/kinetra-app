@@ -16,6 +16,7 @@
   import TallyDot from "$lib/components/TallyDot.svelte";
   import type { SourceSummary } from "$lib/types";
   import { apiShort } from "./api/status";
+  import { socketShort } from "./socket/status";
   import { itemsLabel, kindLabel, rowsLabel, usedByLabel } from "./model";
 
   let {
@@ -80,6 +81,9 @@
         {#if s.kind === "api"}
           {@const st = apiShort(s.api)}
           <span class="api" data-api-state={s.api?.state ?? "none"}><TallyDot state={st.tally} />{st.text}</span>
+        {:else if s.kind === "socket"}
+          {@const st = socketShort(s.socket)}
+          <span class="api" data-socket-state={s.socket?.state ?? "none"}><TallyDot state={st.tally} />{st.text}</span>
         {/if}
       </span>
       <span class="meta">

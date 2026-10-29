@@ -32,7 +32,7 @@ export const NODES: readonly NodeInfo[] = (
     ["trigger.sourceRow", "The current row of a source changes."],
     ["trigger.runByFlow", "Another flow's Run flow starts this one."],
     ["trigger.rest", "Companion or a script runs this flow."],
-    ["trigger.apiChanged", "An API source's data changes."],
+    ["trigger.apiChanged", "An API or live data source's data changes."],
     ["trigger.midi", "A key, pad or knob on a MIDI controller."],
     ["trigger.osc", "A message from a control surface or app."],
     ["trigger.mediaEnded", "A media layer reaches its out point."],

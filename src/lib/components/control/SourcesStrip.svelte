@@ -95,6 +95,7 @@
   import TallyDot from "$lib/components/TallyDot.svelte";
   import { hold, now } from "$lib/components/sources/api/clock.svelte";
   import { ago, apiShort } from "$lib/components/sources/api/status";
+  import { socketShort } from "$lib/components/sources/socket/status";
   import { toasts } from "$lib/stores/toasts.svelte";
 
   let {
@@ -113,8 +114,8 @@
     onapi?: (s: SourceSummary) => void;
   } = $props();
 
-  // "updated 4 s ago" re-reads once a second, only while an API source shows.
-  const hasApi = $derived(sources.some((s) => s.kind === "api"));
+  // "updated 4 s ago" re-reads once a second, only while an API or live data source shows.
+  const hasApi = $derived(sources.some((s) => s.kind === "api" || s.kind === "socket"));
   $effect(() => {
     if (hasApi) return hold();
   });
@@ -263,6 +264,14 @@
                 {#if paused}<Play size={14} />{:else}<Pause size={14} />{/if}
               </IconButton>
             </span>
+          </span>
+        {:else if s.kind === "socket"}
+          {@const st = socketShort(s.socket)}
+          <span class="api" data-socket-state={s.socket?.state ?? "none"}>
+            <TallyDot state={st.tally} />
+            <span class="api-text">{st.text}</span>
+            {#if s.socket?.lastMessageAt}<span class="muted tnum" title={new Date(s.socket.lastMessageAt).toLocaleString()}>updated {ago(s.socket.lastMessageAt, now())}</span>{/if}
+            {#if s.socket?.message && st.tally === "warning"}<span class="err" title={s.socket.message}>{s.socket.message}</span>{/if}
           </span>
         {/if}
         {#if s.auto && s.nextAt !== null}

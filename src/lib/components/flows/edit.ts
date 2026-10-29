@@ -104,10 +104,10 @@ function layerIssue(c: { screenId: string; layerId: string }, k: Lookups): Issue
 }
 
 function sourceIssue(sourceId: string, k: Lookups, kind?: "text" | "schedule" | "api"): Issue | null {
-  if (!sourceId) return err(kind === "schedule" ? "Choose a schedule." : kind === "api" ? "Choose an API source." : "Choose a source.");
+  if (!sourceId) return err(kind === "schedule" ? "Choose a schedule." : kind === "api" ? "Choose an API or live data source." : "Choose a source.");
   const s = k.sources.get(sourceId);
   if (!s) return warn("This source no longer exists; skipped.");
-  if (kind === "api") return s.kind === "api" ? null : err("Choose an API source.");
+  if (kind === "api") return s.kind === "api" || s.kind === "socket" ? null : err("Choose an API or live data source.");
   if (kind && (s.kind === "schedule") !== (kind === "schedule"))
     return err(kind === "schedule" ? "Choose a schedule." : "Choose a text source.");
   return null;

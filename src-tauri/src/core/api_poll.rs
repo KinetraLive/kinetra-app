@@ -744,8 +744,9 @@ impl AppState {
 
     /// Starts and stops poll tasks (see the module docs). Cheap without API sources.
     pub(crate) fn api_reconcile(&self) {
-        // Poll sources follow the same triggers (bindings, flows, source changes).
+        // Poll and live data sources follow the same triggers (bindings, flows, source changes).
         self.polls_reconcile();
+        self.socket_reconcile();
         let metas = if self.project_dir().is_ok() {
             self.sources().api_metas()
         } else {

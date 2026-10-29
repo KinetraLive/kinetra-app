@@ -423,8 +423,8 @@ describe("API value changed trigger", () => {
   });
 
   it("checks: an API source is required; a gone column is a warning", () => {
-    expect(triggerIssue(t(null, ""), ka)?.message).toBe("Choose an API source.");
-    expect(triggerIssue(t(null, "sp"), ka)).toEqual({ level: "error", message: "Choose an API source." });
+    expect(triggerIssue(t(null, ""), ka)?.message).toBe("Choose an API or live data source.");
+    expect(triggerIssue(t(null, "sp"), ka)).toEqual({ level: "error", message: "Choose an API or live data source." });
     expect(triggerIssue(t(null), ka)).toBeNull();
     expect(triggerIssue(t("score"), ka)).toBeNull();
     expect(triggerIssue(t("away"), ka)?.level).toBe("warning");

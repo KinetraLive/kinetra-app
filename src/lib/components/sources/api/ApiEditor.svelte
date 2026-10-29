@@ -571,7 +571,9 @@
         {#if !jsonHidden}
         <div class="col">
           <MappingSection
-            {doc}
+            mapping={doc.mapping}
+            format={doc.format}
+            url={doc.request.url}
             {issues}
             {result}
             {testing}

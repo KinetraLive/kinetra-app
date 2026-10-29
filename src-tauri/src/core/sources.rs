@@ -39,6 +39,7 @@ use crate::core::persist::{self, PersistError, Recovered, Store};
 use crate::core::polls;
 use crate::core::protocol::Fields;
 use crate::core::schedule;
+use crate::core::socket_source;
 use crate::core::templates::{self, is_id, is_key};
 use crate::error::AppError;
 
@@ -191,6 +192,13 @@ impl SourceKind {
                 index,
                 auto,
                 ..
+            }
+            | SourceKind::Socket {
+                columns,
+                rows,
+                index,
+                auto,
+                ..
             } => Some(Table {
                 columns,
                 rows,
@@ -210,6 +218,13 @@ impl SourceKind {
                 auto,
             }
             | SourceKind::Api {
+                columns,
+                rows,
+                index,
+                auto,
+                ..
+            }
+            | SourceKind::Socket {
                 columns,
                 rows,
                 index,
@@ -249,6 +264,7 @@ pub fn kind_name(doc: &SourceDoc) -> SourceKindName {
         SourceKind::Schedule { .. } => SourceKindName::Schedule,
         SourceKind::Api { .. } => SourceKindName::Api,
         SourceKind::Poll { .. } => SourceKindName::Poll,
+        SourceKind::Socket { .. } => SourceKindName::Socket,
     }
 }
 
@@ -262,6 +278,10 @@ pub fn is_schedule(doc: &SourceDoc) -> bool {
 
 pub fn is_api(doc: &SourceDoc) -> bool {
     matches!(doc.meta.kind, SourceKind::Api { .. })
+}
+
+pub fn is_socket(doc: &SourceDoc) -> bool {
+    matches!(doc.meta.kind, SourceKind::Socket { .. })
 }
 
 /// An image cell: empty, an asset URL (`/assets/<file>`) or an http(s) URL.
@@ -337,6 +357,28 @@ pub fn validate(mut doc: SourceDoc) -> SourceResult<SourceDoc> {
         }
         SourceKind::Poll { link, cache, .. } => {
             polls::validate(link, cache).map_err(invalid)?;
+            return Ok(doc);
+        }
+        SourceKind::Socket {
+            url,
+            mapping,
+            filter,
+            send_on_connect,
+            rate,
+            columns,
+            rows,
+            index,
+            auto,
+            ..
+        } => {
+            socket_source::validate_settings(url, mapping, filter, send_on_connect, *rate)
+                .map_err(invalid)?;
+            if let Some(a) = auto {
+                validate_auto(a)?;
+            }
+            *columns = api_map::columns_of(mapping);
+            api_map::sanitize_rows(columns, rows);
+            *index = clamp_index(*index, rows.len());
             return Ok(doc);
         }
     };
@@ -495,7 +537,7 @@ impl Current {
                 }
             }
             // Tables are handled above.
-            SourceKind::Text { .. } | SourceKind::Api { .. } => Self {
+            SourceKind::Text { .. } | SourceKind::Api { .. } | SourceKind::Socket { .. } => Self {
                 kind: kind_name(doc),
                 columns: Vec::new(),
                 row: None,
@@ -541,7 +583,9 @@ pub type SourceMap = HashMap<String, Current>;
 /// The columns a source exposes (schedules: `SCHEDULE_COLUMNS`).
 pub fn columns_of(doc: &SourceDoc) -> Vec<SourceColumn> {
     match &doc.meta.kind {
-        SourceKind::Text { columns, .. } | SourceKind::Api { columns, .. } => columns.clone(),
+        SourceKind::Text { columns, .. }
+        | SourceKind::Api { columns, .. }
+        | SourceKind::Socket { columns, .. } => columns.clone(),
         SourceKind::Poll { .. } => polls::columns(),
         SourceKind::Schedule { .. } => SCHEDULE_COLUMNS
             .iter()
@@ -557,7 +601,10 @@ pub fn columns_of(doc: &SourceDoc) -> Vec<SourceColumn> {
 pub fn summary(doc: &SourceDoc, used_by: Vec<String>, now: &Now) -> SourceSummary {
     let (rows, index) = position(doc);
     let (now_id, next_id) = match &doc.meta.kind {
-        SourceKind::Text { .. } | SourceKind::Api { .. } | SourceKind::Poll { .. } => (None, None),
+        SourceKind::Text { .. }
+        | SourceKind::Api { .. }
+        | SourceKind::Poll { .. }
+        | SourceKind::Socket { .. } => (None, None),
         SourceKind::Schedule {
             items,
             ripple,
@@ -587,10 +634,15 @@ pub fn summary(doc: &SourceDoc, used_by: Vec<String>, now: &Now) -> SourceSummar
         api: None,
         format: match &doc.meta.kind {
             SourceKind::Api { format, .. } => Some(*format),
-            SourceKind::Text { .. } | SourceKind::Schedule { .. } | SourceKind::Poll { .. } => None,
+            SourceKind::Text { .. }
+            | SourceKind::Schedule { .. }
+            | SourceKind::Poll { .. }
+            | SourceKind::Socket { .. } => None,
         },
         // Filled in by the poll service for poll sources.
         poll: None,
+        // Filled in by the live data service for live data sources.
+        socket: None,
     }
 }
 
@@ -646,9 +698,25 @@ fn write(project: &Path, doc: &SourceDoc) -> SourceResult<()> {
     let path = source_path(project, &doc.id)?;
     let v = Versioned {
         schema_version: SourceMeta::VERSION,
-        meta: &doc.meta,
+        meta: &on_disk(&doc.meta),
     };
     fsx::write_json_atomic(&path, &v).map_err(io_err(&path))
+}
+
+/// What the file holds of `meta`: a live data source's rows are live, so its file holds only the
+/// settings (no rows, index 0).
+fn on_disk(meta: &SourceMeta) -> std::borrow::Cow<'_, SourceMeta> {
+    match &meta.kind {
+        SourceKind::Socket { .. } => {
+            let mut m = meta.clone();
+            if let SourceKind::Socket { rows, index, .. } = &mut m.kind {
+                rows.clear();
+                *index = 0;
+            }
+            std::borrow::Cow::Owned(m)
+        }
+        _ => std::borrow::Cow::Borrowed(meta),
+    }
 }
 
 /// Validates and writes `doc`, setting `updatedAt`. An unchanged document is not written (its
@@ -661,7 +729,7 @@ pub fn save(project: &Path, doc: SourceDoc, create: bool) -> SourceResult<Source
         Ok(old) => {
             let mut same = old.clone();
             same.updated_at = doc.meta.updated_at.clone();
-            if same == doc.meta {
+            if same == *on_disk(&doc.meta) {
                 doc.meta.updated_at = old.updated_at;
                 return Ok(doc);
             }
@@ -871,6 +939,14 @@ impl SourceStore {
     }
 
     /// The API sources, as the poller's reconcile pass needs them (cheap: no rows cloned).
+    pub(crate) fn socket_metas(&self) -> Vec<crate::core::socket_source::SocketMeta> {
+        lock(&self.loaded)
+            .docs
+            .values()
+            .filter_map(crate::core::socket_source::SocketMeta::of)
+            .collect()
+    }
+
     pub(crate) fn api_metas(&self) -> Vec<crate::core::api_poll::ApiMeta> {
         lock(&self.loaded)
             .docs

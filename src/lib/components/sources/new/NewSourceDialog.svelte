@@ -1,8 +1,9 @@
 <!--
   "New source" dialog: a native modal <dialog> (focus trap, Esc, inert background) with the kind
-  (Data table / Schedule / CSV link / API, a radio group; Simple mode hides API) and the name. CSV link
+  (Data table / Schedule / CSV link / API / Live data, a radio group; Simple mode hides API and
+  Live data) and the name. CSV link
   is an API source set to CSV. Create makes a data table (kind `text`, one
-  column "Text", no rows), a schedule (no items) or an API source (no URL yet), closes the dialog and hands the new document to
+  column "Text", no rows), a schedule (no items), an API source or a live data source (no URL yet), closes the dialog and hands the new document to
   `oncreated`. A failed create shows the error inline and keeps the dialog open.
 
   Lazy chunk: open it with `NewSourceLauncher` / `loadNewSourceDialog()` from ./launcher.svelte.ts.
@@ -54,6 +55,12 @@
       value: "api",
       label: "API",
       desc: "JSON or CSV fetched from a URL.",
+      advanced: true,
+    },
+    {
+      value: "socket",
+      label: "Live data (WebSocket)",
+      desc: "JSON pushed from this computer or your network.",
       advanced: true,
     },
   ];
@@ -147,6 +154,8 @@
           ? await createSchedule(n)
           : kind === "api"
             ? await createApiSource(n)
+            : kind === "socket"
+              ? await (await import("$lib/api/socket-sources")).createSocketSource(n)
             : kind === "csv"
               ? await createCsvLink(n)
               : await createSource(n);

@@ -86,7 +86,7 @@ export function defaultsFrom(screens: readonly LiveScreenView[], sources: Lookup
     layerId: view?.layers.at(-1)?.id ?? "",
     scheduleId: src.find((s) => s.kind === "schedule")?.id ?? "",
     textId: src.find((s) => s.kind !== "schedule")?.id ?? "",
-    apiId: src.find((s) => s.kind === "api")?.id ?? "",
+    apiId: src.find((s) => s.kind === "api" || s.kind === "socket")?.id ?? "",
   };
 }
 

@@ -10,14 +10,14 @@
     chunks, by kind: the data table editor starts loading with the page, the schedule and API
     editors on the first source of their kind shown.
   - `?source=<id>` (the palette's "Open <source>") selects that source.
-  - API sources: `source-changed` patches the entry (its fetch status for the list's dot and
-    the API editor's Status); no events at rest.
+  - API and live data sources: `source-changed` patches the entry (the fetch or connection status
+    for the list's dot and the editor's Status); no events at rest.
   - Media: the header's Data / Media switch (`?tab=media`) shows the project's media library (video,
     audio, images; import with progress, codec checks), a lazy chunk.
 -->
 <script module lang="ts">
   import type { Component } from "svelte";
-  import type { ApiStatus, PollSourceView, SourceKindName, SourceSummary } from "$lib/types";
+  import type { ApiStatus, PollSourceView, SocketStatus, SourceKindName, SourceSummary } from "$lib/types";
 
   /** The last selection, so coming back to the page selects the same source. */
   let remembered: string | null = null;
@@ -29,6 +29,8 @@
     api?: ApiStatus | null;
     /** Poll sources: test or linked, connection, state (other editors ignore it). */
     poll?: PollSourceView | null;
+    /** Live data sources: the connection status (other editors ignore it). */
+    socket?: SocketStatus | null;
     onsaved: (summary: SourceSummary) => void;
     onduplicated: (doc: { id: string }) => void;
     ondeleted: () => void;
@@ -40,6 +42,7 @@
     schedule: () => import("$lib/components/sources/schedule/ScheduleEditor.svelte"),
     api: () => import("$lib/components/sources/api/ApiEditor.svelte"),
     poll: () => import("$lib/components/sources/poll/PollSourceEditor.svelte"),
+    socket: () => import("$lib/components/sources/socket/SocketEditor.svelte"),
   };
   /** The editor for a kind (cached; a failed load is retried next time). */
   function loadEditor(kind: SourceKindName): Promise<Editor> {
@@ -137,8 +140,10 @@
   /** A save or step in the editor: patch the entry (name may change the order). */
   function patch(s: SourceSummary) {
     if (!list) return;
-    // A save doesn't know the fetch status: the entry keeps the last one.
-    list = sortSources(list.map((x) => (x.id === s.id ? { ...s, usedBy: x.usedBy, api: s.api ?? x.api } : x)));
+    // A save doesn't know the fetch or connection status: the entry keeps the last one.
+    list = sortSources(
+      list.map((x) => (x.id === s.id ? { ...s, usedBy: x.usedBy, api: s.api ?? x.api, socket: s.socket ?? x.socket } : x)),
+    );
   }
 
   function created(doc: { id: string }) {
@@ -198,6 +203,7 @@
                 usedBy={selected.usedBy}
                 api={selected.api ?? null}
                 poll={selected.poll ?? null}
+                socket={selected.socket ?? null}
                 onsaved={patch}
                 onduplicated={(doc) => void refresh(doc.id)}
                 ondeleted={afterDelete}

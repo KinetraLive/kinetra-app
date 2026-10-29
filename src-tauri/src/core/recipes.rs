@@ -1178,16 +1178,19 @@ impl AppState {
             .ok_or_else(|| AppError::NotFound(format!("Source not found: {source_id}")))?;
         let want = driven_kind(&inst);
         let have = match doc.meta.kind {
-            // An API source is a table too.
-            SourceKind::Text { .. } | SourceKind::Api { .. } => SourceKindName::Text,
+            // API and live data sources are tables too.
+            SourceKind::Text { .. } | SourceKind::Api { .. } | SourceKind::Socket { .. } => {
+                SourceKindName::Text
+            }
             SourceKind::Schedule { .. } => SourceKindName::Schedule,
             SourceKind::Poll { .. } => SourceKindName::Poll,
         };
         if have != want {
             return Err(AppError::Invalid(match want {
-                SourceKindName::Text | SourceKindName::Api | SourceKindName::Poll => {
-                    "This recipe needs a text source".into()
-                }
+                SourceKindName::Text
+                | SourceKindName::Api
+                | SourceKindName::Poll
+                | SourceKindName::Socket => "This recipe needs a text source".into(),
                 SourceKindName::Schedule => "This recipe needs a schedule source".into(),
             }));
         }

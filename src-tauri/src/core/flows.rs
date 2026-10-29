@@ -2082,10 +2082,10 @@ impl AppState {
                 },
                 K::ApiChanged { source_id, column } => match self.sources().doc(source_id) {
                     None => warn(&mut out, n, "Source no longer exists".into()),
-                    Some(d) if !sources::is_api(&d) => warn(
+                    Some(d) if !sources::is_api(&d) && !sources::is_socket(&d) => warn(
                         &mut out,
                         n,
-                        format!("“{}” is not an API source", d.meta.name),
+                        format!("“{}” is not an API or live data source", d.meta.name),
                     ),
                     Some(d) => {
                         if let Some(c) = column.as_deref().filter(|c| !c.is_empty()) {

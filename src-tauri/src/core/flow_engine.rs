@@ -3471,7 +3471,9 @@ impl AppState {
         }
         let n = rows.len();
         let current = match &doc.meta.kind {
-            SourceKind::Text { index, .. } | SourceKind::Api { index, .. } => *index as usize,
+            SourceKind::Text { index, .. }
+            | SourceKind::Api { index, .. }
+            | SourceKind::Socket { index, .. } => *index as usize,
             SourceKind::Schedule {
                 items,
                 ripple,

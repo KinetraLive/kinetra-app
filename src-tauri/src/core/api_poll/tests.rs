@@ -1195,7 +1195,7 @@ fn api_changed_fires_on_column_and_any_row_changes() {
     assert!(check
         .warnings
         .iter()
-        .any(|w| w.message.contains("not an API source")));
+        .any(|w| w.message.contains("not an API or live data source")));
     let check =
         e.st.check_flow_of(
             None,
