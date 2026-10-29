@@ -50,7 +50,7 @@ jobs:
       - name: clippy (the library and the spike, macOS)
         run: cargo clippy --manifest-path src-tauri/Cargo.toml --locked --lib --example mac_capture_spike -- -D warnings
       - name: frames and NDI tests (macOS)
-        run: cargo test --manifest-path src-tauri/Cargo.toml --locked --quiet --lib -- frames:: ndi::
+        run: "cargo test --manifest-path src-tauri/Cargo.toml --locked --quiet --lib -- frames:: ndi::"
       - name: Build the spike
         run: cargo build --manifest-path src-tauri/Cargo.toml --locked --example mac_capture_spike
       - name: Run the spike
