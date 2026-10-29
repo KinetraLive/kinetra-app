@@ -328,7 +328,9 @@ struct InputState {
 #[derive(Default)]
 pub struct Midi {
     backend: RwLock<Option<Arc<dyn MidiBackend>>>,
-    /// The service thread (system backend) and a counter of reconcile requests.
+    /// The service thread (system backend) and a counter of reconcile requests (Windows; the
+    /// macOS service comes with the parity plan's M2).
+    #[cfg_attr(not(windows), allow(dead_code))]
     svc: Mutex<Svc>,
     /// Serializes reconciles.
     reconcile: Mutex<()>,
@@ -347,6 +349,7 @@ pub struct Midi {
 struct Svc {
     #[cfg(windows)]
     handle: Option<service::Service>,
+    #[cfg_attr(not(windows), allow(dead_code))]
     gen: u64,
 }
 
@@ -471,6 +474,7 @@ impl AppState {
     /// Re-evaluates what should be open (see the module docs). Cheap when MIDI is unused and
     /// nothing is open. With the system backend the work happens on the service thread (started
     /// here when needed); otherwise inline.
+    #[cfg_attr(not(windows), allow(clippy::needless_return))]
     pub(crate) fn midi_reconcile(&self) {
         let m = self.midi_rt();
         let Some(b) = m.backend() else { return };

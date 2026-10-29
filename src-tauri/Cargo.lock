@@ -2305,6 +2305,7 @@ name = "kinetra"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "block2",
  "ed25519-dalek",
  "futures-util",
  "getrandom 0.3.4",
@@ -2315,6 +2316,8 @@ dependencies = [
  "midir",
  "nanoid",
  "notify",
+ "objc2",
+ "objc2-foundation",
  "qrcodegen",
  "reqwest",
  "rosc",

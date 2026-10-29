@@ -1,84 +1,36 @@
-//! The output clock: QueryPerformanceCounter time and a ticker on a high-resolution waitable
-//! timer with absolute deadlines from the tick index (`FrameRate::tick_offset_ns`), so the error
-//! never accumulates. Windows 10 before 1803 has no high-resolution timers: a plain waitable timer
-//! is used there (~1 ms coarser wake-ups).
-
-use std::sync::OnceLock;
-
-use windows::Win32::Foundation::{CloseHandle, HANDLE};
-use windows::Win32::System::Performance::{QueryPerformanceCounter, QueryPerformanceFrequency};
-use windows::Win32::System::Threading::{
-    CreateWaitableTimerExW, SetWaitableTimer, WaitForSingleObject,
-    CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, INFINITE, TIMER_ALL_ACCESS,
-};
+//! The output clock: a ticker with absolute deadlines from the tick index
+//! (`FrameRate::tick_offset_ns`), so the error never accumulates. The time source, the sleep and
+//! the thread boost are per platform: Windows QueryPerformanceCounter + a high-resolution waitable
+//! timer + MMCSS (`win.rs`), macOS `mach_absolute_time` + `mach_wait_until` + a time-constraint
+//! thread policy (`mac.rs`).
 
 use crate::core::frame_out::FrameRate;
 
-fn qpc_frequency() -> i64 {
-    static F: OnceLock<i64> = OnceLock::new();
-    *F.get_or_init(|| {
-        let mut f = 0i64;
-        unsafe {
-            let _ = QueryPerformanceFrequency(&mut f);
-        }
-        f.max(1)
-    })
-}
+#[cfg(target_os = "macos")]
+mod mac;
+#[cfg(windows)]
+mod win;
 
-/// Microseconds on the QPC clock (the same in every process on this machine).
-pub fn now_us() -> i64 {
-    let mut c = 0i64;
-    unsafe {
-        let _ = QueryPerformanceCounter(&mut c);
-    }
-    (i128::from(c) * 1_000_000 / i128::from(qpc_frequency())) as i64
-}
+#[cfg(target_os = "macos")]
+use mac as sys;
+#[cfg(windows)]
+use win as sys;
 
-/// The calling thread in the Multimedia Class Scheduler's "Playback" class while this lives
-/// (output clock and senders: scheduled ahead of ordinary work without starving it); where MMCSS
-/// isn't available, above-normal priority instead.
-pub struct Boost(Option<HANDLE>);
-
-pub fn boost_thread() -> Boost {
-    use windows::core::w;
-    use windows::Win32::System::Threading::{
-        AvSetMmThreadCharacteristicsW, GetCurrentThread, SetThreadPriority,
-        THREAD_PRIORITY_ABOVE_NORMAL,
-    };
-    let mut task = 0u32;
-    match unsafe { AvSetMmThreadCharacteristicsW(w!("Playback"), &mut task) } {
-        Ok(h) => Boost(Some(h)),
-        Err(_) => {
-            unsafe {
-                let _ = SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL);
-            }
-            Boost(None)
-        }
-    }
-}
-
-impl Drop for Boost {
-    fn drop(&mut self) {
-        if let Some(h) = self.0.take() {
-            unsafe {
-                let _ = windows::Win32::System::Threading::AvRevertMmThreadCharacteristics(h);
-            }
-        }
-    }
-}
+/// Microseconds on the system's monotonic clock (the same in every process on this machine).
+pub use sys::now_us;
+/// The calling thread scheduled ahead of ordinary work while the returned guard lives (output
+/// clock and senders).
+pub use sys::{boost_thread, Boost};
 
 /// Ticks at a [`FrameRate`] from the moment it's created.
 pub struct Ticker {
-    timer: HANDLE,
+    timer: sys::Timer,
     start_us: i64,
     rate: FrameRate,
     index: i64,
 }
 
-// SAFETY: the timer handle is only used by the thread that owns the ticker.
-unsafe impl Send for Ticker {}
-
-/// One tick: its index, when it was due (µs, QPC), how late the wait returned (µs).
+/// One tick: its index, when it was due (µs, [`now_us`]), how late the wait returned (µs).
 #[derive(Debug, Clone, Copy)]
 pub struct Tick {
     pub index: i64,
@@ -87,86 +39,142 @@ pub struct Tick {
 }
 
 impl Ticker {
-    pub fn new(rate: FrameRate) -> windows::core::Result<Self> {
-        let timer = unsafe {
-            CreateWaitableTimerExW(
-                None,
-                None,
-                CREATE_WAITABLE_TIMER_HIGH_RESOLUTION,
-                TIMER_ALL_ACCESS.0,
-            )
-            .or_else(|_| CreateWaitableTimerExW(None, None, 0, TIMER_ALL_ACCESS.0))?
-        };
+    pub fn new(rate: FrameRate) -> Result<Self, String> {
         Ok(Self {
-            timer,
+            timer: sys::Timer::new()?,
             start_us: now_us(),
             rate,
             index: 0,
         })
     }
 
-    /// When tick `i` is due (µs, QPC).
+    /// When tick `i` is due (µs, [`now_us`]).
     pub fn at(&self, i: i64) -> i64 {
-        self.start_us + self.rate.tick_offset_ns(i) / 1000
+        due_at(self.start_us, self.rate, i)
     }
 
-    /// Sleeps until the next tick. A tick already past returns at once; if the thread fell more
-    /// than a frame behind, the ticks it missed are skipped (never a burst to catch up).
+    /// Sleeps until the next tick ([`next_tick`]): a tick already past returns at once; if the
+    /// thread fell more than a frame behind, the ticks it missed are skipped (never a burst to
+    /// catch up).
     pub fn wait(&mut self) -> Tick {
-        self.index += 1;
         let now = now_us();
-        let mut due = self.at(self.index);
-        if now - due > self.rate.period_ns() / 1000 {
-            // Jump to the newest tick that is already due.
-            while self.at(self.index + 1) <= now {
-                self.index += 1;
-            }
-            due = self.at(self.index);
-        }
-        let wait = due - now;
-        if wait > 0 {
-            // Relative time in 100 ns units (negative = relative).
-            let rel = -(wait * 10);
-            unsafe {
-                let _ = SetWaitableTimer(self.timer, &rel, 0, None, None, false);
-                WaitForSingleObject(self.timer, INFINITE);
-            }
+        let (index, due) = next_tick(self.start_us, self.rate, self.index, now);
+        self.index = index;
+        if due > now {
+            self.timer.sleep_until(due);
         }
         Tick {
-            index: self.index,
+            index,
             due_us: due,
             late_us: now_us() - due,
         }
     }
 }
 
-impl Drop for Ticker {
-    fn drop(&mut self) {
-        unsafe {
-            let _ = CloseHandle(self.timer);
+/// When tick `index` of a ticker started at `start_us` is due (µs). Computed from the index, so
+/// rounding never accumulates.
+fn due_at(start_us: i64, rate: FrameRate, index: i64) -> i64 {
+    start_us + rate.tick_offset_ns(index) / 1000
+}
+
+/// The tick to wait for after tick `prev`, at time `now` (µs): normally `prev + 1`, also when it
+/// is already a little past (the wait returns at once). When `now` is more than a frame past it,
+/// the newest tick already due instead, skipping the ones in between. Returns (index, due).
+fn next_tick(start_us: i64, rate: FrameRate, prev: i64, now: i64) -> (i64, i64) {
+    let mut index = prev + 1;
+    if now - due_at(start_us, rate, index) > rate.period_ns() / 1000 {
+        while due_at(start_us, rate, index + 1) <= now {
+            index += 1;
         }
     }
+    (index, due_at(start_us, rate, index))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    const START: i64 = 1_000_000;
+
+    fn due(rate: FrameRate, i: i64) -> i64 {
+        due_at(START, rate, i)
+    }
+
     #[test]
-    fn ticks_follow_the_rate_and_skip_when_behind() {
-        let mut t = Ticker::new(FrameRate::R60).unwrap();
-        let first = t.wait();
-        let second = t.wait();
-        assert_eq!(second.index, first.index + 1);
-        assert!((second.due_us - first.due_us - 16_666).abs() <= 1);
-        // Fall 100 ms behind: the next wait skips to the newest due tick instead of bursting.
-        std::thread::sleep(std::time::Duration::from_millis(100));
-        let after = t.wait();
-        assert!(
-            after.index >= second.index + 6,
-            "skipped to tick {}",
-            after.index
+    fn on_time_waits_for_the_next_tick() {
+        let r = FrameRate::R60;
+        assert_eq!(next_tick(START, r, 0, START), (1, due(r, 1)));
+        assert_eq!(next_tick(START, r, 7, due(r, 8) - 5_000), (8, due(r, 8)));
+    }
+
+    #[test]
+    fn slightly_late_still_takes_the_next_tick() {
+        let r = FrameRate::R50;
+        let period = r.period_ns() / 1000;
+        // Late, but not by more than a frame: tick 4 now (no sleep), nothing skipped.
+        assert_eq!(next_tick(START, r, 3, due(r, 4) + 1), (4, due(r, 4)));
+        assert_eq!(next_tick(START, r, 3, due(r, 4) + period), (4, due(r, 4)));
+    }
+
+    #[test]
+    fn more_than_a_frame_late_skips_to_the_newest_due_tick() {
+        let r = FrameRate::R60;
+        let period = r.period_ns() / 1000;
+        // Just over a frame late: tick 5 is due as well, so 4 is skipped.
+        assert_eq!(
+            next_tick(START, r, 3, due(r, 4) + period + 1),
+            (5, due(r, 5))
         );
-        assert!(after.late_us < 17_000, "returned {} µs late", after.late_us);
+        // 100 ms behind: the newest tick at or before now, never a burst.
+        let now = due(r, 4) + 100_000;
+        let (i, d) = next_tick(START, r, 3, now);
+        assert!(d <= now && due(r, i + 1) > now, "tick {i}");
+        assert_eq!(i, 10);
+    }
+
+    #[test]
+    fn due_times_follow_the_index() {
+        for r in [
+            FrameRate::R25,
+            FrameRate::R29_97,
+            FrameRate::R59_94,
+            FrameRate::R60,
+        ] {
+            let mut prev = 0;
+            // A day of ticks, waited for on time: every tick, due exactly at its offset.
+            let day = 24 * 3600 * 60;
+            for i in (1..day).step_by(9_973) {
+                let (index, d) = next_tick(START, r, i - 1, due(r, i) - 1);
+                assert_eq!(index, i);
+                assert_eq!(d, START + r.tick_offset_ns(i) / 1000);
+                assert!(d >= prev);
+                prev = d;
+            }
+        }
+    }
+
+    /// The platform timer works: waits come back, in order, not before their tick (loose
+    /// bounds; the tick logic is tested above without a clock).
+    #[test]
+    fn the_platform_timer_wakes_for_ticks() {
+        let t0 = now_us();
+        let mut t = Ticker::new(FrameRate::R60).unwrap();
+        let mut last = 0;
+        for _ in 0..5 {
+            let tick = t.wait();
+            assert!(tick.index > last);
+            assert!(tick.late_us >= -1_000, "woke {} µs early", -tick.late_us);
+            last = tick.index;
+        }
+        let spent = now_us() - t0;
+        assert!((50_000..2_000_000).contains(&spent), "{spent} µs");
+    }
+
+    #[test]
+    fn now_is_monotonic_microseconds() {
+        let a = now_us();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        let b = now_us();
+        assert!((15_000..200_000).contains(&(b - a)), "{} µs", b - a);
     }
 }

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Merged into the app's Info.plist by Tauri (macOS builds only).
+     NSLocalNetworkUsageDescription: the text of macOS' Local Network prompt (macOS 15+), shown the
+     first time Kinetra connects to a device on the network: NDI receivers, live data and API
+     sources at local addresses, OSC feedback.
+     NSBonjourServices: the services Kinetra browses or advertises; NDI discovery is _ndi._tcp. -->
+<plist version="1.0">
+<dict>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Kinetra connects to devices on your network, such as NDI® receivers, data feeds and OSC controllers.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_ndi._tcp</string>
+	</array>
+</dict>
+</plist>

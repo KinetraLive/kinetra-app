@@ -42,7 +42,19 @@ pub fn system_region() -> Option<String> {
     (!s.is_empty()).then(|| s.to_string())
 }
 
-#[cfg(not(windows))]
+/// The system's region as an ISO country code ("NO"), from macOS' region setting (System
+/// Settings › General › Language & Region). `countryCode` rather than `regionCode` (macOS 14+):
+/// Kinetra runs on macOS 11.
+#[cfg(target_os = "macos")]
+pub fn system_region() -> Option<String> {
+    #[allow(deprecated)]
+    let code = objc2_foundation::NSLocale::currentLocale().countryCode()?;
+    let s = code.to_string();
+    let s = s.trim();
+    (!s.is_empty()).then(|| s.to_string())
+}
+
+#[cfg(not(any(windows, target_os = "macos")))]
 pub fn system_region() -> Option<String> {
     None
 }

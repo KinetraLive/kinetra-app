@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- The app's entitlements under the hardened runtime (applied when the macOS build is signed).
+     disable-library-validation: lets Kinetra load the user's installed NDI Runtime
+     (/usr/local/lib/libndi.dylib), which is signed by NDI, not by us (NDI plan decision 11). Kinetra
+     loads it by absolute path only; allow-dyld-environment-variables is NOT set, so
+     DYLD_INSERT_LIBRARIES stays blocked. kinetra-private docs/MACOS_PARITY_PLAN.md §2.4. -->
+<plist version="1.0">
+<dict>
+	<key>com.apple.security.cs.disable-library-validation</key>
+	<true/>
+</dict>
+</plist>

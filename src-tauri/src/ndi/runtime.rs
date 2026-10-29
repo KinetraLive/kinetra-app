@@ -1,7 +1,8 @@
 //! The user's installed NDI® Runtime, loaded at run time. Kinetra ships no NDI binary (plan §1.2):
-//! the runtime comes from NDI Tools or the NDI Runtime installer (ndi.link/NDIRedistV6), which set
-//! `NDI_RUNTIME_DIR_V6` (and `_V5`) to its folder. A Kinetra started before the install doesn't see
-//! that variable, so the installers' default folders are looked at too.
+//! the runtime comes from NDI Tools or the NDI Runtime installer (ndi.link/NDIRedistV6). On Windows
+//! they set `NDI_RUNTIME_DIR_V6` (and `_V5`) to its folder; a Kinetra started before the install
+//! doesn't see that variable, so the installers' default folders are looked at too. On macOS the
+//! runtime is `libndi.dylib` in `/usr/local/lib` ([`candidates`]).
 //!
 //! Every function is looked up by its exported name (the runtime exports them all, alongside
 //! `NDIlib_v5_load`), so a newer runtime's longer function table can't shift anything. The library
@@ -9,7 +10,7 @@
 //! `NDIlib_initialize` / `NDIlib_destroy` follow use: [`Runtime::acquire`] initializes on the first
 //! holder and the last [`Runtime`] dropped destroys.
 
-use std::ffi::{CStr, OsString};
+use std::ffi::{c_void, CStr, OsString};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, Weak};
 
@@ -58,16 +59,30 @@ const DEFAULT_DIRS: [&str; 4] = [
     r"NDI\NDI 5 Runtime\v5",
 ];
 
-/// Where to look for the runtime, best first: the folders NDI's installers put in
-/// `NDI_RUNTIME_DIR_V6` / `_V5`, then (Windows) their default install folders under
-/// `%ProgramFiles%`, so a runtime installed while Kinetra runs is found without a restart.
+/// Where NDI's installers put the runtime on macOS: the NDI Runtime for Apple and NDI Tools install
+/// into `/usr/local/lib` (NDI's docs; macOS has no global environment variables), the NDI SDK for
+/// Apple into its own folder.
+#[cfg(not(windows))]
+const DEFAULT_DIRS: [&str; 2] = ["/usr/local/lib", "/Library/NDI SDK for Apple/lib/macOS"];
+
+/// Where to look for the runtime, best first: the folders named by `NDI_RUNTIME_DIR_V6` / `_V5`
+/// (Windows: set by NDI's installers; macOS: only if set in Kinetra's own environment), then the
+/// installers' default locations, so a runtime installed while Kinetra runs is found without a
+/// restart. Windows: the default folders under `%ProgramFiles%`. macOS: `/usr/local/lib` (NDI's
+/// runtime for Apple and NDI Tools), then the NDI SDK for Apple. Always absolute paths: the
+/// library is never looked up by bare name, so no search path can steer it.
 pub fn candidates(env: impl Fn(&str) -> Option<OsString>) -> Vec<PathBuf> {
     let mut out: Vec<PathBuf> = Vec::new();
+    let mut add = |p: PathBuf| {
+        if !out.contains(&p) {
+            out.push(p);
+        }
+    };
     for var in ["NDI_RUNTIME_DIR_V6", "NDI_RUNTIME_DIR_V5"] {
         if let Some(dir) = env(var).filter(|d| !d.is_empty()) {
-            let p = PathBuf::from(dir).join(LIBRARY);
-            if !out.contains(&p) {
-                out.push(p);
+            let dir = PathBuf::from(dir);
+            if dir.is_absolute() {
+                add(dir.join(LIBRARY));
             }
         }
     }
@@ -77,14 +92,13 @@ pub fn candidates(env: impl Fn(&str) -> Option<OsString>) -> Vec<PathBuf> {
             .filter(|d| !d.is_empty())
             .unwrap_or_else(|| OsString::from(r"C:\Program Files"));
         for dir in DEFAULT_DIRS {
-            let p = PathBuf::from(&pf).join(dir).join(LIBRARY);
-            if !out.contains(&p) {
-                out.push(p);
-            }
+            add(PathBuf::from(&pf).join(dir).join(LIBRARY));
         }
     }
     #[cfg(not(windows))]
-    out.push(PathBuf::from("/usr/local/lib").join(LIBRARY));
+    for dir in DEFAULT_DIRS {
+        add(PathBuf::from(dir).join(LIBRARY));
+    }
     out
 }
 
@@ -99,6 +113,50 @@ pub fn find_installed() -> Option<PathBuf> {
 /// The loaded function table (loaded once per process; a failure is retried next time, so
 /// installing the runtime while Kinetra runs works).
 static API: Mutex<Option<&'static Api>> = Mutex::new(None);
+
+/// Looks every function up by name through `sym` (a null pointer: missing).
+///
+/// # Safety
+/// `sym` must return the addresses of the runtime's exports, which have the signatures of the
+/// header's declarations.
+unsafe fn table(sym: impl Fn(&CStr) -> *const c_void) -> Result<Api, NdiError> {
+    macro_rules! sym {
+        ($name:literal, $ty:ty) => {{
+            let p = sym(
+                match CStr::from_bytes_with_nul(concat!($name, "\0").as_bytes()) {
+                    Ok(c) => c,
+                    Err(_) => return Err(NdiError::Symbol($name)),
+                },
+            );
+            if p.is_null() {
+                return Err(NdiError::Symbol($name));
+            }
+            // SAFETY: the export has the signature of the header's declaration.
+            unsafe { std::mem::transmute::<*const c_void, $ty>(p) }
+        }};
+    }
+    Ok(Api {
+        initialize: sym!("NDIlib_initialize", Initialize),
+        destroy: sym!("NDIlib_destroy", Destroy),
+        version: sym!("NDIlib_version", Version),
+        is_supported_cpu: sym!("NDIlib_is_supported_CPU", IsSupportedCpu),
+        send_create: sym!("NDIlib_send_create", SendCreateFn),
+        send_destroy: sym!("NDIlib_send_destroy", SendDestroy),
+        send_video_v2: sym!("NDIlib_send_send_video_v2", SendVideoV2),
+        send_video_async_v2: sym!("NDIlib_send_send_video_async_v2", SendVideoV2),
+        send_get_tally: sym!("NDIlib_send_get_tally", SendGetTally),
+        send_get_no_connections: sym!("NDIlib_send_get_no_connections", SendGetNoConnections),
+        find_create_v2: sym!("NDIlib_find_create_v2", FindCreateV2),
+        find_destroy: sym!("NDIlib_find_destroy", FindDestroy),
+        find_wait_for_sources: sym!("NDIlib_find_wait_for_sources", FindWaitForSources),
+        find_get_current_sources: sym!("NDIlib_find_get_current_sources", FindGetCurrentSources),
+        recv_create_v3: sym!("NDIlib_recv_create_v3", RecvCreateV3Fn),
+        recv_destroy: sym!("NDIlib_recv_destroy", RecvDestroy),
+        recv_capture_v2: sym!("NDIlib_recv_capture_v2", RecvCaptureV2),
+        recv_free_video_v2: sym!("NDIlib_recv_free_video_v2", RecvFreeVideoV2),
+        recv_get_performance: sym!("NDIlib_recv_get_performance", RecvGetPerformance),
+    })
+}
 
 #[cfg(windows)]
 fn load(path: &std::path::Path) -> Result<&'static Api, NdiError> {
@@ -116,47 +174,42 @@ fn load(path: &std::path::Path) -> Result<&'static Api, NdiError> {
             LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS,
         )
         .map_err(|e| NdiError::Load(e.to_string()))?;
-        macro_rules! sym {
-            ($name:literal, $ty:ty) => {{
-                let p = GetProcAddress(module, PCSTR(concat!($name, "\0").as_ptr()))
-                    .ok_or(NdiError::Symbol($name))?;
-                // SAFETY: the export has the signature of the header's declaration.
-                std::mem::transmute::<unsafe extern "system" fn() -> isize, $ty>(p)
-            }};
-        }
-        let api = Api {
-            initialize: sym!("NDIlib_initialize", Initialize),
-            destroy: sym!("NDIlib_destroy", Destroy),
-            version: sym!("NDIlib_version", Version),
-            is_supported_cpu: sym!("NDIlib_is_supported_CPU", IsSupportedCpu),
-            send_create: sym!("NDIlib_send_create", SendCreateFn),
-            send_destroy: sym!("NDIlib_send_destroy", SendDestroy),
-            send_video_v2: sym!("NDIlib_send_send_video_v2", SendVideoV2),
-            send_video_async_v2: sym!("NDIlib_send_send_video_async_v2", SendVideoV2),
-            send_get_tally: sym!("NDIlib_send_get_tally", SendGetTally),
-            send_get_no_connections: sym!("NDIlib_send_get_no_connections", SendGetNoConnections),
-            find_create_v2: sym!("NDIlib_find_create_v2", FindCreateV2),
-            find_destroy: sym!("NDIlib_find_destroy", FindDestroy),
-            find_wait_for_sources: sym!("NDIlib_find_wait_for_sources", FindWaitForSources),
-            find_get_current_sources: sym!(
-                "NDIlib_find_get_current_sources",
-                FindGetCurrentSources
-            ),
-            recv_create_v3: sym!("NDIlib_recv_create_v3", RecvCreateV3Fn),
-            recv_destroy: sym!("NDIlib_recv_destroy", RecvDestroy),
-            recv_capture_v2: sym!("NDIlib_recv_capture_v2", RecvCaptureV2),
-            recv_free_video_v2: sym!("NDIlib_recv_free_video_v2", RecvFreeVideoV2),
-            recv_get_performance: sym!("NDIlib_recv_get_performance", RecvGetPerformance),
-        };
+        let api = table(|name| {
+            GetProcAddress(module, PCSTR(name.as_ptr().cast()))
+                .map_or(std::ptr::null(), |p| p as *const c_void)
+        })?;
         Ok(Box::leak(Box::new(api)))
     }
 }
 
 #[cfg(not(windows))]
-fn load(_path: &std::path::Path) -> Result<&'static Api, NdiError> {
-    Err(NdiError::Load(
-        "NDI output isn't available on this system yet".into(),
-    ))
+fn load(path: &std::path::Path) -> Result<&'static Api, NdiError> {
+    use std::ffi::{c_char, c_int, CString};
+    use std::os::unix::ffi::OsStrExt;
+    extern "C" {
+        fn dlopen(path: *const c_char, mode: c_int) -> *mut c_void;
+        fn dlsym(handle: *mut c_void, symbol: *const c_char) -> *mut c_void;
+        fn dlerror() -> *const c_char;
+    }
+    /// `RTLD_NOW` (2) | `RTLD_LOCAL` (4 on macOS): resolve everything now, export nothing.
+    const MODE: c_int = 2 | 4;
+    let c = CString::new(path.as_os_str().as_bytes())
+        .map_err(|_| NdiError::Load("the path has a null byte".into()))?;
+    unsafe {
+        let handle = dlopen(c.as_ptr(), MODE);
+        if handle.is_null() {
+            let e = dlerror();
+            let why = if e.is_null() {
+                "dlopen failed".to_string()
+            } else {
+                CStr::from_ptr(e).to_string_lossy().into_owned()
+            };
+            return Err(NdiError::Load(why));
+        }
+        // Never closed: NDI keeps threads (see the module notes).
+        let api = table(|name| dlsym(handle, name.as_ptr()).cast_const())?;
+        Ok(Box::leak(Box::new(api)))
+    }
 }
 
 fn api() -> Result<&'static Api, NdiError> {
@@ -225,17 +278,63 @@ mod tests {
     use super::*;
 
     #[test]
-    fn candidates_prefer_v6_and_skip_empty_or_duplicate_dirs() {
+    fn candidates_prefer_v6_and_skip_empty_relative_or_duplicate_dirs() {
+        let dir = if cfg!(windows) {
+            r"C:\NDI\6"
+        } else {
+            "/opt/ndi6"
+        };
         let env = |v: &str| match v {
-            "NDI_RUNTIME_DIR_V6" => Some(OsString::from(r"C:\NDI\6")),
-            "NDI_RUNTIME_DIR_V5" => Some(OsString::from(r"C:\NDI\6")),
+            "NDI_RUNTIME_DIR_V6" | "NDI_RUNTIME_DIR_V5" => Some(OsString::from(dir)),
             _ => None,
         };
         let c = candidates(env);
-        assert_eq!(c[0], PathBuf::from(r"C:\NDI\6").join(LIBRARY));
-        assert_eq!(c.iter().filter(|p| p.starts_with(r"C:\NDI\6")).count(), 1);
+        assert_eq!(c[0], PathBuf::from(dir).join(LIBRARY));
+        assert_eq!(c.iter().filter(|p| p.starts_with(dir)).count(), 1);
         let none = candidates(|_| Some(OsString::new()));
-        assert!(none.iter().all(|p| !p.starts_with(r"C:\NDI")));
+        assert!(none.iter().all(|p| !p.starts_with(dir)));
+        // A relative folder would be looked up from the current directory: never used.
+        let rel = candidates(|v| (v == "NDI_RUNTIME_DIR_V6").then(|| OsString::from("ndi")));
+        assert!(rel.iter().all(|p| p.is_absolute()));
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn macos_looks_in_usr_local_lib_then_the_sdk() {
+        assert_eq!(
+            candidates(|_| None),
+            [
+                PathBuf::from("/usr/local/lib/libndi.dylib"),
+                PathBuf::from("/Library/NDI SDK for Apple/lib/macOS/libndi.dylib"),
+            ]
+        );
+    }
+
+    /// Every function Kinetra calls is looked up; a missing one is named.
+    #[test]
+    fn a_missing_export_is_named() {
+        let r = unsafe {
+            table(|n| {
+                if n.to_bytes() == b"NDIlib_send_get_tally" {
+                    std::ptr::null()
+                } else {
+                    std::ptr::NonNull::<u8>::dangling()
+                        .as_ptr()
+                        .cast_const()
+                        .cast()
+                }
+            })
+        };
+        assert!(matches!(r, Err(NdiError::Symbol("NDIlib_send_get_tally"))));
+    }
+
+    /// A file that isn't a library fails to load with the system's reason, never a crash.
+    #[test]
+    fn a_broken_library_is_a_load_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join(LIBRARY);
+        std::fs::write(&p, b"not a library").unwrap();
+        assert!(matches!(load(&p), Err(NdiError::Load(_))));
     }
 
     /// A runtime installed while Kinetra runs: the variable isn't in Kinetra's environment, the
