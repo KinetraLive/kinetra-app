@@ -267,3 +267,72 @@ fn a_virtual_controller_takes_a_layer_on_air() {
     });
     st.midi_close_all();
 }
+
+/// Which threads a CoreMIDI input may be opened on: the test thread, a plain thread, and a
+/// run-loop thread like the MIDI service's. Each connection should get the note.
+#[test]
+fn input_opened_on_any_thread_receives() {
+    use crate::core::runloop::{Event as LoopEvent, LoopThread};
+    let pad = VirtualPad::new("Threads");
+    wait_for("the virtual source in the list", 5, || {
+        SystemBackend.ports().inputs.contains(&pad.name)
+    });
+    let got: Arc<Mutex<Vec<&'static str>>> = Arc::default();
+    let open = |tag: &'static str| {
+        let g = got.clone();
+        SystemBackend
+            .open_input(
+                &pad.name,
+                Box::new(move |_bytes: &[u8]| g.lock().unwrap().push(tag)),
+            )
+            .unwrap()
+    };
+    let here = open("test thread");
+    let name = pad.name.clone();
+    let g = got.clone();
+    let plain = std::thread::spawn(move || {
+        SystemBackend
+            .open_input(
+                &name,
+                Box::new(move |_bytes: &[u8]| g.lock().unwrap().push("plain thread")),
+            )
+            .unwrap()
+    })
+    .join()
+    .unwrap();
+    let (tx, rx) = mpsc::channel();
+    let name = pad.name.clone();
+    let g = got.clone();
+    let looped = LoopThread::start(
+        "test-midi-open",
+        0.3,
+        |_| Box::new(()),
+        move |ev| {
+            if ev == LoopEvent::Woken(1) {
+                let g = g.clone();
+                let conn = SystemBackend
+                    .open_input(
+                        &name,
+                        Box::new(move |_bytes: &[u8]| g.lock().unwrap().push("run-loop thread")),
+                    )
+                    .unwrap();
+                let _ = tx.send(Sendable(conn));
+            }
+            true
+        },
+    )
+    .unwrap();
+    looped.waker().wake(1);
+    let conn = rx.recv_timeout(Duration::from_secs(5)).unwrap();
+    std::thread::sleep(Duration::from_millis(200));
+    pad.send(&[0x90, 36, 100]);
+    std::thread::sleep(Duration::from_millis(1000));
+    let mut seen = got.lock().unwrap().clone();
+    seen.sort_unstable();
+    println!("received on connections opened on: {seen:?}");
+    assert_eq!(seen, ["plain thread", "run-loop thread", "test thread"]);
+    drop((here, plain, conn, looped));
+}
+
+/// Moves a connection between threads in this test.
+struct Sendable(super::backend::InputConn);
