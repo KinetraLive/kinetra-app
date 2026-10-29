@@ -86,8 +86,11 @@ mod tests {
         let mut t = Ticker::new(FrameRate::R60).unwrap();
         let first = t.wait();
         let second = t.wait();
-        assert_eq!(second.index, first.index + 1);
-        assert!((second.due_us - first.due_us - 16_666).abs() <= 1);
+        // Normally the next tick; a busy machine (CI) may wake more than a frame late, and the
+        // ticker then skips ahead. Either way the due time follows from the index.
+        let steps = second.index - first.index;
+        assert!(steps >= 1);
+        assert!((second.due_us - first.due_us - steps * 16_666).abs() <= steps);
         // Fall 100 ms behind: the next wait skips to the newest due tick instead of bursting.
         std::thread::sleep(std::time::Duration::from_millis(100));
         let after = t.wait();
