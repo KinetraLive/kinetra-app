@@ -14,11 +14,17 @@
 //!   with `PostMessage` (one of the few calls WinMM allows in a callback). It never blocks: a
 //!   callback that blocks stalls the driver, and closing a port (`midiInReset`) waits for the
 //!   callback, so running actions (screen lock, template reads) there could deadlock.
-//! - ONE service thread ([`service`], Windows only): a message-only window that receives device
+//! - ONE service thread ([`service`]): on Windows a message-only window that receives device
 //!   notifications (`RegisterDeviceNotificationW`, every device interface class; debounced
-//!   300 ms with a window timer) and the input wake-ups, and does the port work (enumerate, open,
-//!   close). It runs actions in arrival order. It exists only while MIDI is in use and blocks in
-//!   `GetMessageW` otherwise: no polling.
+//!   300 ms with a window timer); on macOS a CoreFoundation run loop with a CoreMIDI
+//!   notification client (setup changes, debounced 300 ms with a run-loop timer). Both take the
+//!   input wake-ups and do the port work (enumerate, open, close), run actions in arrival order,
+//!   exist only while MIDI is in use and block at rest (`GetMessageW` / `CFRunLoopRun`): no
+//!   polling. On macOS CoreMIDI's input thread plays WinMM's callback thread's part.
+//!
+//! # Device names
+//! A mapping's or a `trigger.midi`'s saved device name matches a present port exactly, or through
+//! [`device_names::device_is`] (a project from Windows on a Mac and the other way round).
 //!
 //! Tests and the e2e fixture use [`backend::TestBackend`]: its input runs inline, port work
 //! happens on the calling thread, and outputs are recorded. Without a backend (the default in
@@ -46,9 +52,13 @@
 //! closing a project (or MIDI going unused) switches every LED off first.
 
 pub mod backend;
+pub mod device_names;
 pub mod feedback;
 pub mod parse;
 #[cfg(windows)]
+mod service;
+#[cfg(target_os = "macos")]
+#[path = "midi/service_macos.rs"]
 mod service;
 
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -166,13 +176,22 @@ impl Lookup {
         l
     }
 
-    /// The mappings a message triggers.
-    fn matching(&self, device: &str, channel: u8, kind: MidiKind, number: u8) -> Vec<&Entry> {
+    /// The mappings a message triggers (`present`: the input ports present, for device names).
+    fn matching(
+        &self,
+        device: &str,
+        channel: u8,
+        kind: MidiKind,
+        number: u8,
+        present: &[String],
+    ) -> Vec<&Entry> {
         self.map.get(&(kind, number)).map_or_else(Vec::new, |v| {
             v.iter()
                 .filter(|e| {
                     e.channel.is_none_or(|c| c == channel)
-                        && e.device.as_deref().is_none_or(|d| d == device)
+                        && e.device
+                            .as_deref()
+                            .is_none_or(|d| device_names::device_is(d, device, present))
                 })
                 .collect()
         })
@@ -193,13 +212,17 @@ impl Lookup {
 pub(crate) struct InputQueue {
     items: Mutex<VecDeque<(Arc<str>, Vec<u8>)>>,
     /// The service window (0 = none yet).
-    #[cfg_attr(not(windows), allow(dead_code))]
+    #[cfg(windows)]
     hwnd: std::sync::atomic::AtomicIsize,
+    /// Wakes the service's run loop (none yet).
+    #[cfg(target_os = "macos")]
+    wake: RwLock<Option<Arc<service::Waker>>>,
     dropped: std::sync::atomic::AtomicU64,
 }
 
 impl InputQueue {
-    /// Called on WinMM's callback thread: copy, queue, wake the service. Never blocks for long.
+    /// Called on WinMM's callback thread (CoreMIDI's input thread on macOS): copy, queue, wake
+    /// the service. Never blocks for long.
     fn push(&self, device: &Arc<str>, bytes: &[u8]) {
         let wake = {
             let mut q = lock(&self.items);
@@ -213,6 +236,8 @@ impl InputQueue {
         if wake {
             #[cfg(windows)]
             service::post_input(self.hwnd.load(Ordering::Acquire));
+            #[cfg(target_os = "macos")]
+            service::post_input(&self.wake);
         }
     }
 
@@ -248,6 +273,8 @@ struct Feedback {
     last: HashMap<String, HashMap<LedKey, u8>>,
     /// Outputs showing the test pattern (live changes update `last` but aren't sent).
     testing: HashSet<String>,
+    /// The input ports present (device-name matching).
+    present: Arc<Vec<String>>,
     layers: HashMap<(String, String), Led>,
     running: HashSet<String>,
     armed: HashSet<String>,
@@ -273,7 +300,10 @@ impl Feedback {
         for r in &self.routes {
             let w = want.entry(r.output.clone()).or_default();
             for e in &lookup.fb {
-                if e.device.as_deref().is_none_or(|d| d == r.device) {
+                if e.device
+                    .as_deref()
+                    .is_none_or(|d| device_names::device_is(d, &r.device, &self.present))
+                {
                     w.insert(e.key, feedback::velocity(r.profile, self.led(&e.what)));
                 }
             }
@@ -328,13 +358,14 @@ struct InputState {
 #[derive(Default)]
 pub struct Midi {
     backend: RwLock<Option<Arc<dyn MidiBackend>>>,
-    /// The service thread (system backend) and a counter of reconcile requests (Windows; the
-    /// macOS service comes with the parity plan's M2).
-    #[cfg_attr(not(windows), allow(dead_code))]
+    /// The service thread (system backend) and a counter of reconcile requests.
+    #[cfg_attr(not(any(windows, target_os = "macos")), allow(dead_code))]
     svc: Mutex<Svc>,
     /// Serializes reconciles.
     reconcile: Mutex<()>,
     ports: Mutex<Ports>,
+    /// The input ports present at the last reconcile (device-name matching).
+    present: RwLock<Arc<Vec<String>>>,
     lookup: RwLock<Arc<Lookup>>,
     queue: Arc<InputQueue>,
     input: Mutex<InputState>,
@@ -347,15 +378,22 @@ pub struct Midi {
 
 #[derive(Default)]
 struct Svc {
-    #[cfg(windows)]
+    #[cfg(any(windows, target_os = "macos"))]
     handle: Option<service::Service>,
-    #[cfg_attr(not(windows), allow(dead_code))]
+    #[cfg_attr(not(any(windows, target_os = "macos")), allow(dead_code))]
     gen: u64,
 }
 
 impl Midi {
     fn backend(&self) -> Option<Arc<dyn MidiBackend>> {
         self.backend
+            .read()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
+    }
+
+    fn present(&self) -> Arc<Vec<String>> {
+        self.present
             .read()
             .unwrap_or_else(PoisonError::into_inner)
             .clone()
@@ -370,11 +408,11 @@ impl Midi {
 
     /// Whether the service thread runs (tests and diagnostics).
     pub fn service_running(&self) -> bool {
-        #[cfg(windows)]
+        #[cfg(any(windows, target_os = "macos"))]
         {
             lock(&self.svc).handle.is_some()
         }
-        #[cfg(not(windows))]
+        #[cfg(not(any(windows, target_os = "macos")))]
         {
             false
         }
@@ -461,6 +499,11 @@ impl AppState {
         self.midi_reconcile();
     }
 
+    /// Whether the saved device name `saved` means the present input `port` ([`device_names`]).
+    pub(crate) fn midi_device_is(&self, saved: &str, port: &str) -> bool {
+        saved == port || device_names::device_is(saved, port, &self.midi_rt().present())
+    }
+
     /// Whether MIDI is in use (see the module docs).
     fn midi_in_use(&self) -> bool {
         let m = self.midi_rt();
@@ -474,7 +517,7 @@ impl AppState {
     /// Re-evaluates what should be open (see the module docs). Cheap when MIDI is unused and
     /// nothing is open. With the system backend the work happens on the service thread (started
     /// here when needed); otherwise inline.
-    #[cfg_attr(not(windows), allow(clippy::needless_return))]
+    #[cfg_attr(not(any(windows, target_os = "macos")), allow(clippy::needless_return))]
     pub(crate) fn midi_reconcile(&self) {
         let m = self.midi_rt();
         let Some(b) = m.backend() else { return };
@@ -482,7 +525,7 @@ impl AppState {
             self.midi_reconcile_now();
             return;
         }
-        #[cfg(windows)]
+        #[cfg(any(windows, target_os = "macos"))]
         {
             let mut svc = lock(&m.svc);
             svc.gen += 1;
@@ -504,7 +547,7 @@ impl AppState {
     }
 
     /// One event on the service thread. False: the thread ends (MIDI unused, everything closed).
-    #[cfg(windows)]
+    #[cfg(any(windows, target_os = "macos"))]
     fn midi_service_event(&self, ev: service::Event) -> bool {
         match ev {
             service::Event::Input => {
@@ -529,7 +572,7 @@ impl AppState {
     }
 
     /// Runs the queued input in order (service thread).
-    #[cfg_attr(not(windows), allow(dead_code))]
+    #[cfg_attr(not(any(windows, target_os = "macos")), allow(dead_code))]
     fn midi_drain(&self) {
         while let Some((device, bytes)) = self.midi_rt().queue.pop() {
             self.midi_handle(&device, &bytes);
@@ -552,6 +595,8 @@ impl AppState {
         }
         let prefs = self.prefs().midi;
         let present = b.ports();
+        let inputs = Arc::new(present.inputs.clone());
+        *m.present.write().unwrap_or_else(PoisonError::into_inner) = inputs.clone();
 
         // Inputs.
         let mut ports = lock(&m.ports);
@@ -651,6 +696,7 @@ impl AppState {
             .collect();
         fb.armed = armed;
         fb.layers = layers;
+        fb.present = inputs;
         m.fb_active.store(!fb.outputs.is_empty(), Ordering::SeqCst);
         fb.apply(&lookup);
         true
@@ -679,7 +725,7 @@ impl AppState {
             let _g = lock(&m.reconcile);
             self.midi_close_ports();
         }
-        #[cfg(windows)]
+        #[cfg(any(windows, target_os = "macos"))]
         {
             let h = lock(&m.svc).handle.take();
             drop(h);
@@ -797,7 +843,7 @@ impl AppState {
         }
         // Mappings.
         let lookup = m.lookup();
-        let hits = lookup.matching(device, channel, kind, number);
+        let hits = lookup.matching(device, channel, kind, number, &m.present());
         let entry = match hits.as_slice() {
             [] => return,
             [one] => *one,
@@ -952,7 +998,10 @@ impl AppState {
         let mut keys: Vec<LedKey> = lookup
             .all_keys
             .iter()
-            .filter(|(d, _)| d.as_deref().is_none_or(|d| d == device))
+            .filter(|(d, _)| {
+                d.as_deref()
+                    .is_none_or(|d| device_names::device_is(d, device, &m.present()))
+            })
             .map(|(_, k)| *k)
             .collect();
         keys.sort_unstable();
@@ -1023,3 +1072,6 @@ pub fn cc_crossing(prev: u8, value: u8) -> Option<ControlInput> {
 
 #[cfg(test)]
 mod tests;
+#[cfg(all(test, target_os = "macos"))]
+#[path = "midi/tests_macos.rs"]
+mod tests_macos;

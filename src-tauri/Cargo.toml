@@ -130,6 +130,9 @@ notify = { version = "8.2.0", default-features = false, features = ["macos_fseve
 # The system region for a new NDI output's default frame rate (NSLocale). The version wry already
 # compiles (owner OK with the macOS parity plan, 2026-10-29).
 objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSLocale", "NSString"] }
+# MIDI on macOS: CoreMIDI endpoint lists without a client and the hot-plug notification client
+# (the version midir already compiles; owner OK with the macOS parity plan, 2026-10-29).
+coremidi = "0.9.2"
 
 [dev-dependencies]
 # Tests sign license tokens with throwaway keys; the app itself never signs.

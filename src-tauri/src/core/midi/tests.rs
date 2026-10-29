@@ -144,8 +144,9 @@ fn lookup_filters_by_device_and_channel() {
         ],
     };
     let l = Lookup::build(&doc);
+    let present = vec!["Pad".to_string(), "Other".to_string()];
     let ids = |d, ch, k, n| -> Vec<String> {
-        l.matching(d, ch, k, n)
+        l.matching(d, ch, k, n, &present)
             .iter()
             .map(|e| e.id.clone())
             .collect()
@@ -785,6 +786,39 @@ fn trigger_midi_fires_a_flow() {
     assert!(!e.on_air("l1"), "another device or number");
     e.st.inject_midi(PAD, &[0xB0, 1, 5]);
     wait_until("the flow's take", || e.on_air("l1"));
+}
+
+/// A project from Windows on a Mac: the mapping's device is the WinMM name, the port the CoreMIDI
+/// one (`device_names`); the flow trigger resolves names the same way.
+#[test]
+fn a_mapping_from_another_system_finds_its_device() {
+    let e = env();
+    e.backend.set_ports(
+        vec!["APC mini mk2 Control".into(), "APC mini mk2 Notes".into()],
+        vec!["APC mini mk2 Control".into()],
+    );
+    e.st.midi_devices_changed();
+    e.save(vec![mapping(
+        "m1",
+        Some("APC mini mk2"),
+        None,
+        MidiKind::Note,
+        36,
+        &e.toggle("l1"),
+    )]);
+    e.st.inject_midi("APC mini mk2 Notes", &[0x90, 36, 100]);
+    assert!(!e.on_air("l1"), "another port of the controller");
+    e.st.inject_midi("APC mini mk2 Control", &[0x90, 36, 100]);
+    assert!(e.on_air("l1"));
+    assert!(e.st.midi_device_is("APC mini mk2", "APC mini mk2 Control"));
+    // A port with the exact saved name wins once it's present.
+    e.backend.set_ports(
+        vec!["APC mini mk2".into(), "APC mini mk2 Control".into()],
+        vec![],
+    );
+    e.st.midi_devices_changed();
+    assert!(!e.st.midi_device_is("APC mini mk2", "APC mini mk2 Control"));
+    assert!(e.st.midi_device_is("APC mini mk2", "APC mini mk2"));
 }
 
 // ---- The Windows service thread ----------------------------------------------------------------

@@ -1,5 +1,6 @@
-//! Where MIDI ports come from: the system (WinMM through `midir`) or, in tests and the e2e
-//! fixture, an in-memory [`TestBackend`] (Windows has no virtual MIDI ports).
+//! Where MIDI ports come from: the system (WinMM on Windows, CoreMIDI on macOS, through `midir`)
+//! or, in tests and the e2e fixture, an in-memory [`TestBackend`] (Windows has no virtual MIDI
+//! ports; macOS has, and its tests use them: `midi/tests_macos.rs`).
 //!
 //! Port names are what the driver reports (WinMM truncates them to 31 characters). Two ports
 //! with the same name (two identical controllers) are told apart as `Name`, `Name #2`, … in
@@ -58,15 +59,15 @@ pub fn unique_names(names: impl IntoIterator<Item = String>) -> Vec<String> {
         .collect()
 }
 
-// ---- System (WinMM via midir) ----------------------------------------------------------------
+// ---- System (midir: WinMM on Windows, CoreMIDI on macOS) ---------------------------------------
 
-/// The machine's MIDI ports (WinMM on Windows).
+/// The machine's MIDI ports (WinMM on Windows, CoreMIDI on macOS).
 pub struct SystemBackend;
 
 const CLIENT: &str = "Kinetra";
 
-/// WinMM handles may be used and closed from any thread; midir's connection types hold raw
-/// handles, so they aren't `Send` by themselves.
+/// WinMM handles (CoreMIDI ports on macOS) may be used and closed from any thread; midir's
+/// connection types hold raw handles, so they aren't `Send` by themselves.
 struct Sendable<T>(T);
 // SAFETY: a WinMM MIDI handle is a process-wide handle, valid on every thread; midir serializes
 // access to the input handle with its own lock, and we only touch a connection through `&mut`
@@ -80,6 +81,25 @@ impl MidiOut for Sendable<midir::MidiOutputConnection> {
 }
 
 impl MidiBackend for SystemBackend {
+    /// macOS: CoreMIDI's endpoint lists, read without a client (midir makes a CoreMIDI client
+    /// for every `MidiInput::new`, and clients are never disposed; one per open is enough). The
+    /// names are the display names midir uses for the same ports.
+    #[cfg(target_os = "macos")]
+    fn ports(&self) -> Ports {
+        let inputs = unique_names(
+            coremidi::Sources
+                .into_iter()
+                .filter_map(|s| s.display_name()),
+        );
+        let outputs = unique_names(
+            coremidi::Destinations
+                .into_iter()
+                .filter_map(|d| d.display_name()),
+        );
+        Ports { inputs, outputs }
+    }
+
+    #[cfg(not(target_os = "macos"))]
     fn ports(&self) -> Ports {
         let inputs = midir::MidiInput::new(CLIENT)
             .map(|m| unique_names(m.ports().iter().filter_map(|p| m.port_name(p).ok())))

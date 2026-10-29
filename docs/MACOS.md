@@ -5,7 +5,7 @@ Windows 10 or later.
 
 Most of Kinetra works the same on both systems: templates, screens, Control, Studio mode,
 sources (data tables, schedules, CSV and JSON links, API sources, live data), flows and recipes, live
-polls, AI templates, OSC, sign-in and licensing, updates. **Browser sources for OBS and vMix work
+polls, AI templates, MIDI and OSC control, sign-in and licensing, updates. **Browser sources for OBS and vMix work
 on macOS** exactly as on Windows: that is the way to get Kinetra graphics into your production
 on a Mac today.
 
@@ -14,15 +14,14 @@ on a Mac today.
 | Feature | On macOS today |
 |---|---|
 | **Display outputs** (full-screen fill / key on a connected display, test patterns, Identify) | Not available. Preferences › Outputs finds no displays. Use browser sources instead. |
-| **MIDI control** (MIDI mappings, Learn, LED feedback, the MIDI in flow trigger) | Not available. No MIDI devices are found and mappings don't run. OSC works and can drive the same actions. |
 | **Output audio** (choosing the audio device of a display output) | Not available (display outputs aren't). Browser sources play their audio in OBS / vMix as usual. |
 | **Recovering a crashed output window** | Not available (display outputs aren't). |
-| **Hot-plug** (displays and MIDI devices picked up while Kinetra runs) | Not available (display outputs and MIDI aren't). |
+| **Display hot-plug** (displays picked up while Kinetra runs) | Not available (display outputs aren't). |
 | **NDI® output** (sending a screen as an NDI® source) | Not available yet. Use browser sources, or receive NDI® from a Windows computer running Kinetra. |
 
 Projects are the same on both systems: a project made on Windows opens on a Mac and the other
-way round. A project's MIDI mappings are kept on a Mac and run again when the project is opened
-on Windows. Display outputs are set up per computer.
+way round. Display outputs and MIDI device settings (inputs, LED feedback) are set up per
+computer.
 
 ## Different on macOS
 
@@ -31,4 +30,9 @@ on Windows. Display outputs are set up per computer.
 - Some video files play differently in the Mac's web engine than on Windows (for example WebM
   with transparency). The media library shows a warning for each file that won't play on a
   platform, with a command to convert it.
+- **MIDI devices** are found the same way as on Windows, including controllers plugged in while
+  Kinetra runs, Bluetooth MIDI and network MIDI sessions set up in Audio MIDI Setup. A mapping
+  made on Windows works on a Mac and the other way round, even though the two systems name some
+  controllers differently (for example "APC mini mk2" on Windows, "APC mini mk2 Control" on a
+  Mac). If a controller has two ports with similar names, learn the mapping again.
 - The menu has the usual Mac app menu: About Kinetra, Preferences… (⌘,) and Quit.

@@ -1,8 +1,9 @@
-# macOS capture spike (kinetra-private docs/MACOS_PARITY_PLAN.md, phase M1): clippy and the
-# frames / NDI tests on macOS, then examples/mac_capture_spike.rs on the runner's display. The
+# macOS parity (kinetra-private docs/MACOS_PARITY_PLAN.md): clippy and the macOS-specific tests
+# (frames, NDI, MIDI against the real CoreMIDI with virtual endpoints, displays and outputs), then
+# the capture spike (examples/mac_capture_spike.rs, phase M1) on the runner's display. The
 # report, the captured PNGs and the spike binary (for a tester's Mac) stay as a workflow artifact
 # for 14 days. Uploads nothing anywhere else.
-name: macOS capture spike
+name: macOS parity
 
 on:
   workflow_dispatch:
@@ -30,7 +31,7 @@ env:
 
 jobs:
   spike:
-    name: macOS capture spike
+    name: macOS parity tests and capture spike
     runs-on: macos-latest
     timeout-minutes: 90
     steps:
@@ -49,8 +50,8 @@ jobs:
         run: pnpm build:renderer && pnpm build
       - name: clippy (the library and the spike, macOS)
         run: cargo clippy --manifest-path src-tauri/Cargo.toml --locked --lib --example mac_capture_spike -- -D warnings
-      - name: frames and NDI tests (macOS)
-        run: "cargo test --manifest-path src-tauri/Cargo.toml --locked --quiet --lib -- frames:: ndi::"
+      - name: frames, NDI, MIDI, displays and outputs tests (macOS)
+        run: "cargo test --manifest-path src-tauri/Cargo.toml --locked --quiet --lib -- frames:: ndi:: midi displays outputs"
       - name: Build the spike
         run: cargo build --manifest-path src-tauri/Cargo.toml --locked --example mac_capture_spike
       - name: Run the spike
