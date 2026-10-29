@@ -1,10 +1,19 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/svelte";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { SOURCE_COLUMNS_MAX, type FieldDef } from "$lib/types";
 import FieldsForm from "./FieldsForm.svelte";
 import { listDefault, newColumn, relabelColumn } from "./columns";
 import { clockFormatIssue, previewDefault, typeIssues, withFieldType } from "./fieldTypes";
 import { issueWith, validate } from "./model";
+
+// Lazily loaded components these tests open: loaded once here, so the tests wait on them, not on
+// Vite compiling them on first use (CLAUDE.md › Testing policy).
+beforeAll(async () => {
+  await Promise.all([
+    import("$lib/components/templates/editor/ListColumns.svelte"),
+    import("$lib/components/templates/editor/TimerDefault.svelte"),
+  ]);
+});
 
 afterEach(cleanup);
 

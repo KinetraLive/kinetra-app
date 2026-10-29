@@ -1,7 +1,7 @@
 // "Update to the latest look": the flow (confirm, backup + update, toast with Undo), the notice,
 // the templates list card / side pane, and the layout editor's "Fit box to graphic" and hint.
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/svelte";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import ToastHost from "$lib/components/ToastHost.svelte";
 import "$lib/components/templates/list/matchers";
 import { toasts } from "$lib/stores/toasts.svelte";
@@ -42,6 +42,15 @@ import PreviewPane from "./list/PreviewPane.svelte";
 import Inspector from "../screens/editor/Inspector.svelte";
 import MultiInspector from "../screens/editor/MultiInspector.svelte";
 import { fitBox } from "../screens/editor/fitbox";
+
+// Lazily loaded components these tests open: loaded once here, so the tests wait on them, not on
+// Vite compiling them on first use (CLAUDE.md › Testing policy).
+beforeAll(async () => {
+  await Promise.all([
+    import("$lib/components/screens/editor/BindMenu.svelte"),
+    import("$lib/components/templates/UpdateNotice.svelte"),
+  ]);
+});
 
 const DESIGN = { w: 1400, h: 260, x: 101, y: 737, sizing: "fit" as const };
 

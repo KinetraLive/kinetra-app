@@ -43,6 +43,14 @@ import AiEntry from "./AiEntry.svelte";
 import AiJobsChip from "./AiJobsChip.svelte";
 import { jobs } from "./jobs.svelte";
 
+// Lazily loaded components these tests open: loaded once here, so the tests wait on them, not on
+// Vite compiling them on first use (CLAUDE.md › Testing policy).
+beforeAll(async () => {
+  await Promise.all([
+    import("$lib/components/ai/AiDialog.svelte"),
+  ]);
+});
+
 beforeAll(() => {
   // jsdom has no <dialog> methods.
   HTMLDialogElement.prototype.showModal ??= function (this: HTMLDialogElement) {

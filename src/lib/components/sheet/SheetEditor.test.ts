@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/svelte";
 import { tick } from "svelte";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import "../templates/list/matchers";
 import type { SourceColumn } from "$lib/types";
 import type { SheetEditorProps, SheetLimits, SheetRow } from "./types";
@@ -13,6 +13,14 @@ vi.mock("$lib/components/assets/pick", () => picker);
 
 import SheetEditor from "./SheetEditor.svelte";
 import { toasts } from "$lib/stores/toasts.svelte";
+
+// Lazily loaded components these tests open: loaded once here, so the tests wait on them, not on
+// Vite compiling them on first use (CLAUDE.md › Testing policy).
+beforeAll(async () => {
+  await Promise.all([
+    import("$lib/components/sheet/PasteDialog.svelte"),
+  ]);
+});
 
 const COLS: SourceColumn[] = [
   { key: "name", label: "Name" },

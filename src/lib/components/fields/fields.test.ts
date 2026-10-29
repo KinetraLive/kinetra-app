@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/svelte";
 import { tick } from "svelte";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import type { FieldDef, TimerState } from "$lib/types";
 import FieldInputs from "./FieldInputs.svelte";
 import TimerControls from "./TimerControls.svelte";
@@ -16,6 +16,14 @@ import {
   shownMs,
   timerValue,
 } from "./timer";
+
+// Lazily loaded components these tests open: loaded once here, so the tests wait on them, not on
+// Vite compiling them on first use (CLAUDE.md › Testing policy).
+beforeAll(async () => {
+  await Promise.all([
+    import("$lib/components/fields/TimerControls.svelte"),
+  ]);
+});
 
 afterEach(() => {
   cleanup();

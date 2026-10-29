@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/svelte";
 import { tick } from "svelte";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Project, RecentProject } from "$lib/types";
 
 const h = vi.hoisted(() => {
@@ -60,6 +60,15 @@ vi.mock("$lib/api/cloud-restore", () => h.cloud);
 import Page from "./+page.svelte";
 import { project } from "$lib/stores/project.svelte";
 import { uiState } from "$lib/stores/uiState.svelte";
+
+// Lazily loaded components these tests open: loaded once here, so the tests wait on them, not on
+// Vite compiling them on first use (CLAUDE.md › Testing policy).
+beforeAll(async () => {
+  await Promise.all([
+    import("$lib/components/picker/NewProjectForm.svelte"),
+    import("$lib/components/picker/InitFolderPanel.svelte"),
+  ]);
+});
 
 const proj: Project = {
   path: "C:\\Shows\\friday",

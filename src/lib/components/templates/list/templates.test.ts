@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/svelte";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import "./matchers";
 import type { PresetInfo, ServerStatus, TemplateDoc, TemplateSummary } from "$lib/types";
 import Page from "../../../../routes/(app)/templates/+page.svelte";
@@ -64,6 +64,17 @@ vi.stubGlobal("IntersectionObserver", FakeIO);
 vi.stubGlobal("ResizeObserver", FakeRO);
 
 // ---- Fixtures -----------------------------------------------------------------------------------
+
+// Lazily loaded components these tests open: loaded once here, so the tests wait on them, not on
+// Vite compiling them on first use (CLAUDE.md › Testing policy).
+beforeAll(async () => {
+  await Promise.all([
+    import("$lib/components/ConfirmDialog.svelte"),
+    import("$lib/components/ai/AiEntry.svelte"),
+    import("$lib/components/templates/list/CreateFirst.svelte"),
+    import("$lib/components/templates/gallery/Gallery.svelte"),
+  ]);
+});
 
 const running: ServerStatus = {
   state: "running",

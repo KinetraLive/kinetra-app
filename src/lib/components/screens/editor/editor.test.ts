@@ -15,6 +15,15 @@ import type {
 
 // ---- Mocks --------------------------------------------------------------------------------------
 
+// Lazily loaded components these tests open: loaded once here, so the tests wait on them, not on
+// Vite compiling them on first use (CLAUDE.md › Testing policy).
+beforeAll(async () => {
+  await Promise.all([
+    import("$lib/components/ConfirmDialog.svelte"),
+    import("$lib/components/templates/editor/DiskBanner.svelte"),
+  ]);
+});
+
 type Handler = (payload: unknown) => void;
 const events = vi.hoisted(() => ({ handlers: new Map<string, Set<(p: unknown) => void>>() }));
 

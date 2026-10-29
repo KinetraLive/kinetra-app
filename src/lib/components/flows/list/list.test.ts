@@ -8,6 +8,18 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FlowInfo, FlowNode, LiveScreenView, NewFlow, RecipeInstance, UiState } from "$lib/types";
 
+// Lazily loaded components these tests open: loaded once here, so the tests wait on them, not on
+// Vite compiling them on first use (CLAUDE.md › Testing policy).
+beforeAll(async () => {
+  await Promise.all([
+    import("$lib/components/flows/list/summaries.svelte"),
+    import("$lib/components/flows/list/NewFlowDialog.svelte"),
+    import("$lib/components/ConfirmDialog.svelte"),
+    import("$lib/components/recipes/RecipeGallery.svelte"),
+    import("$lib/components/flows/list/FirstFlow.svelte"),
+  ]);
+});
+
 type Handler = (payload: unknown) => void;
 const events = vi.hoisted(() => ({ handlers: new Map<string, Set<Handler>>() }));
 const nav = vi.hoisted(() => ({ goto: vi.fn(), url: new URL("http://localhost/flows") }));

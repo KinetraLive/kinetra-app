@@ -5,6 +5,15 @@ import type { BackupInfo, ImportPreview, MoveProgress, Prefs, Project, UiState }
 
 // ---- Mocks --------------------------------------------------------------------------------------
 
+// Lazily loaded components these tests open: loaded once here, so the tests wait on them, not on
+// Vite compiling them on first use (CLAUDE.md › Testing policy).
+beforeAll(async () => {
+  await Promise.all([
+    import("$lib/components/ConfirmDialog.svelte"),
+    import("$lib/components/settings/midi/Osc.svelte"),
+  ]);
+});
+
 type Handler = (payload: unknown) => void;
 
 const events = vi.hoisted(() => ({

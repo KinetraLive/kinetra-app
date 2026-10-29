@@ -3,7 +3,7 @@
 // source save path.
 
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/svelte";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FieldDef, ScreenDoc, SourceDoc } from "$lib/types";
 import type { SheetEditorProps } from "$lib/components/sheet/types";
 
@@ -23,6 +23,14 @@ vi.mock("$lib/components/sheet/SheetEditor.svelte", async () => ({
 
 import FieldInputs from "./FieldInputs.svelte";
 import { affectsNote, followIndex, layersUsing, LIST_LIMITS, SOURCE_LIMITS, SourceSaver, type LinkedList } from "./drawer";
+
+// Lazily loaded components these tests open: loaded once here, so the tests wait on them, not on
+// Vite compiling them on first use (CLAUDE.md › Testing policy).
+beforeAll(async () => {
+  await Promise.all([
+    import("$lib/components/fields/ListField.svelte"),
+  ]);
+});
 
 const COLS = [
   { key: "name", label: "Name" },

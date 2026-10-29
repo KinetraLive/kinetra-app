@@ -6,7 +6,7 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/svelte";
 import { tick } from "svelte";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   FlowInfo,
   FlowSlot,
@@ -17,6 +17,16 @@ import type {
   SourceSummary,
   TemplateSummary,
 } from "$lib/types";
+
+// Lazily loaded components these tests open: loaded once here, so the tests wait on them, not on
+// Vite compiling them on first use (CLAUDE.md › Testing policy).
+beforeAll(async () => {
+  await Promise.all([
+    import("$lib/components/flows/list/summaries.svelte"),
+    import("$lib/components/flows/list/NewFlowDialog.svelte"),
+    import("$lib/components/flows/list/FirstFlow.svelte"),
+  ]);
+});
 
 type Handler = (payload: unknown) => void;
 const nav = vi.hoisted(() => ({ goto: vi.fn(), url: new URL("http://localhost/flows") }));

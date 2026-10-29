@@ -3,7 +3,7 @@
 // distribute, the aspect lock and the editor's palette commands.
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/svelte";
 import { tick } from "svelte";
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi, onTestFinished } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import type { LiveLayerView, Project, ScreenDoc as AnyScreenDoc, TemplateScreenLayer as ScreenLayer, ScreenState, TemplateDoc, UiState } from "$lib/types";
 
 const events = vi.hoisted(() => ({ handlers: new Map<string, Set<(p: unknown) => void>>() }));
@@ -74,6 +74,15 @@ import { toasts } from "$lib/stores/toasts.svelte";
 import { uiState } from "$lib/stores/uiState.svelte";
 import { DEFAULT_SCREEN_EDITOR } from "./limits";
 /** Test docs hold template layers only. */
+// Lazily loaded components these tests open: loaded once here, so the tests wait on them, not on
+// Vite compiling them on first use (CLAUDE.md › Testing policy).
+beforeAll(async () => {
+  await Promise.all([
+    import("$lib/components/screens/editor/MultiInspector.svelte"),
+    import("$lib/components/screens/editor/SafeAreasPanel.svelte"),
+  ]);
+});
+
 type ScreenDoc = Omit<AnyScreenDoc, "layers"> & { layers: ScreenLayer[] };
 
 // The editor's panels are lazy chunks: load them once up front, so a cold first import under a

@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/svelte";
 import { tick } from "svelte";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   FlowInfo,
   FlowNode,
@@ -15,6 +15,18 @@ import type {
 } from "$lib/types";
 
 // ---- Mocks --------------------------------------------------------------------------------------
+
+// Lazily loaded components these tests open: loaded once here, so the tests wait on them, not on
+// Vite compiling them on first use (CLAUDE.md › Testing policy).
+beforeAll(async () => {
+  await Promise.all([
+    import("$lib/components/control/PanelDivider.svelte"),
+    import("$lib/components/control/commands.svelte"),
+    import("$lib/components/recipes/Automation.svelte"),
+    import("$lib/components/flows/LinearEditor.svelte"),
+    import("$lib/components/control/LayerBody.svelte"),
+  ]);
+});
 
 type Handler = (payload: unknown) => void;
 const events = vi.hoisted(() => ({ handlers: new Map<string, Handler>() }));

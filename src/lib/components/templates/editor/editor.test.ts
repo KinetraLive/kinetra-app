@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/sve
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { tick } from "svelte";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { LiveLayerView, ServerStatus, TemplateDoc, VariantDoc } from "$lib/types";
 
 // ---- Mocks --------------------------------------------------------------------------------------
@@ -47,6 +47,20 @@ vi.mock("$app/state", () => ({
 }));
 
 /** Fake CodeMirror: records each view; `set` simulates typing (new text + change callback). */
+// Lazily loaded components these tests open: loaded once here, so the tests wait on them, not on
+// Vite compiling them on first use (CLAUDE.md › Testing policy).
+beforeAll(async () => {
+  await Promise.all([
+    import("$lib/components/ConfirmDialog.svelte"),
+    import("$lib/components/templates/UpdateNotice.svelte"),
+    import("$lib/components/ai/AiEntry.svelte"),
+    import("$lib/components/AdvancedHint.svelte"),
+    import("$lib/components/templates/editor/FieldsForm.svelte"),
+    import("$lib/components/templates/editor/VariablesForm.svelte"),
+    import("$lib/components/templates/editor/VariantMenu.svelte"),
+  ]);
+});
+
 interface FakeView {
   lang: string;
   value: string;
