@@ -41,7 +41,9 @@ const api = vi.hoisted(() => ({
   resetSettings: vi.fn(),
   serverStatus: vi.fn(),
   on: vi.fn(),
-  // Server > OSC lists ids for its address list.
+  // Server > OSC: its status, and the ids for its address list.
+  oscStatus: vi.fn(async () => ({ state: "off" })),
+  onOscStatus: vi.fn(() => () => {}),
   listScreens: vi.fn(async () => []),
   listFlows: vi.fn(async () => []),
   listSources: vi.fn(async () => []),
@@ -61,6 +63,7 @@ vi.mock("$lib/api/move", () => api);
 vi.mock("$lib/api/reset", () => api);
 vi.mock("$lib/api/flows", () => api);
 vi.mock("$lib/api/sources", () => api);
+vi.mock("$lib/api/midi", () => api);
 vi.mock("$lib/api/app", () => api);
 
 

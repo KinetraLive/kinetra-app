@@ -40,6 +40,11 @@ beforeAll(async () => {
 The component's own `import()` then resolves from the module cache at once. A `vi.mock` of the
 module works too, when the test doesn't need the real component.
 
+A preloaded component mounts during the test (before, it often arrived after the test ended), so
+the API modules it calls must be mocked as well. A missing one shows as a vitest "Unhandled
+Errors" block (`No "…" export is defined on the "$lib/api" mock`) while every test still passes,
+and the run fails: check the `Errors` line of the summary, not only `Tests`.
+
 **Never fix such a flake by raising a timeout.** A longer wait hides the cause and slows every run.
 
 ### Finding what a test opens
