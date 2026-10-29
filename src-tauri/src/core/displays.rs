@@ -1,7 +1,8 @@
 //! Connected displays: enumeration, EDID names, hot-plug, `displays-changed`.
 //!
 //! # Backends
-//! A [`DisplayBackend`] enumerates and watches. The system backend (Windows, [`windows`]) uses
+//! A [`DisplayBackend`] enumerates and watches. The macOS backend ([`macos`]) uses CoreGraphics
+//! and a run-loop watcher thread (points, not pixels: see there). The Windows backend ([`windows`]) uses
 //! `EnumDisplayDevicesW` (adapters → their monitor, `EDD_GET_DEVICE_INTERFACE_NAME` for the
 //! stable id), `EnumDisplaySettingsExW(ENUM_CURRENT_SETTINGS)` (position, size, refresh rate)
 //! and the monitor's EDID from the registry (name, manufacturer / product / serial). Tests use
@@ -16,6 +17,8 @@
 //! 300 ms timer; when it fires the displays are enumerated again and diffed against the last
 //! list. Only a real change emits `displays-changed` and reconciles the outputs. No polling.
 
+#[cfg(target_os = "macos")]
+pub mod macos;
 #[cfg(windows)]
 pub mod windows;
 
@@ -49,6 +52,11 @@ pub trait DisplayBackend: Send + Sync {
     fn enumerate(&self) -> Vec<DisplayInfo>;
     /// Starts watching; `changed` runs after each debounced notification.
     fn watch(&self, changed: OnChange) -> std::io::Result<Box<dyn Watch>>;
+    /// One window may span two adjacent displays (a frame-locked key + fill pair). macOS: only
+    /// while "Displays have separate Spaces" is off.
+    fn can_span(&self) -> bool {
+        true
+    }
 }
 
 // ---- EDID -------------------------------------------------------------------------------------
@@ -176,6 +184,12 @@ impl AppState {
         self.set_display_backend(Some(Arc::new(windows::SystemBackend::new(main_hwnd))));
     }
 
+    /// The macOS backend. `main_window` gives the main window's center in global points.
+    #[cfg(target_os = "macos")]
+    pub fn use_system_displays(&self, main_window: macos::MainWindowCenter) {
+        self.set_display_backend(Some(Arc::new(macos::SystemBackend::new(main_window))));
+    }
+
     /// Replaces the display backend (`None`: no displays). Stops the old watcher.
     pub fn set_display_backend(&self, backend: Option<Arc<dyn DisplayBackend>>) {
         let d = self.displays_rt();
@@ -224,6 +238,11 @@ impl AppState {
             }
         }
         self.displays_refresh(false)
+    }
+
+    /// Whether one window may span two displays now ([`DisplayBackend::can_span`]).
+    pub(crate) fn displays_can_span(&self) -> bool {
+        self.displays_rt().backend().is_none_or(|b| b.can_span())
     }
 
     /// The last enumerated list, without enumerating (empty when never).

@@ -28,6 +28,7 @@ fn display(id: &str, x: i32, y: i32, w: u32, h: u32, hz: u32) -> DisplayInfo {
         refresh_hz: hz,
         primary: x == 0 && y == 0,
         has_main_window: false,
+        scaled: false,
     }
 }
 
@@ -571,6 +572,34 @@ fn test_patterns_replace_the_screen_on_both_of_a_pair() {
     // Without it, the off output has no window.
     let (w, _) = plan_running(&[solo], &[b], &HashMap::new());
     assert!(w.is_empty());
+}
+
+/// macOS with "Displays have separate Spaces" on: no window may span two displays, so an
+/// adjacent key + fill pair gets two windows and isn't frame locked.
+#[test]
+fn without_spanning_a_pair_gets_two_windows() {
+    let a = display("a", 0, 0, 1920, 1080, 60);
+    let b = display("b", 1920, 0, 1920, 1080, 60);
+    let s = screens();
+    let (w, st) = plan_with(
+        &[fill("f", &a, "main"), key("k", &b, "f")],
+        &[a, b],
+        Some(PlanProject {
+            server: &RUNNING,
+            screens: &s,
+        }),
+        &HashMap::new(),
+        false,
+    );
+    assert_eq!(w.len(), 2, "{w:#?}");
+    assert!(w.iter().all(|w| w.outputs.len() == 1));
+    assert!(!http(&w[0]).contains("dual="));
+    assert_eq!(
+        http(&w[1]),
+        "http://127.0.0.1:7770/screen/main?output=k&bg=000000&mode=key&audio=0"
+    );
+    assert!(st.iter().all(|s| s.frame_locked == Some(false)));
+    assert!(st.iter().all(|s| s.state == OutputState::Showing));
 }
 
 #[test]

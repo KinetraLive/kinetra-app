@@ -194,6 +194,7 @@ pub fn enumerate(main_hwnd: isize) -> Vec<DisplayInfo> {
                 refresh_hz: dm.dmDisplayFrequency,
                 primary: flags.0 & DISPLAY_DEVICE_PRIMARY_DEVICE.0 != 0,
                 has_main_window: main_dev.as_deref() == Some(device.as_str()),
+                scaled: false,
             });
         }
     }

@@ -1107,8 +1107,10 @@ impl ControlApiPrefs {
 
 // ---- Display outputs (per machine, prefs.json `outputs`) -----------------------------------
 
-/// A connected display as the OS reports it (`list_displays`, `displays-changed`). Physical
-/// pixels in the virtual desktop.
+/// A connected display as the OS reports it (`list_displays`, `displays-changed`). Windows:
+/// physical pixels in the virtual desktop. macOS: points in CoreGraphics' global display space
+/// (top-left origin, y down; the space window positions use), so a Retina display reports its
+/// "looks like" size.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DisplayInfo {
@@ -1127,6 +1129,10 @@ pub struct DisplayInfo {
     pub primary: bool,
     /// Kinetra's main window is on this display.
     pub has_main_window: bool,
+    /// macOS: a scaled display mode ("looks like" a size the panel doesn't have): the system
+    /// resamples everything shown there, so graphics aren't pixel exact. Always false on Windows.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub scaled: bool,
 }
 
 /// What a fill output shows behind the screen.

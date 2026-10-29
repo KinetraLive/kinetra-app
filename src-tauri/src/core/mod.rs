@@ -45,6 +45,8 @@ pub mod recipes;
 pub mod remote;
 pub mod reset;
 pub mod rules;
+#[cfg(target_os = "macos")]
+pub mod runloop;
 pub mod schedule;
 pub mod screen_live;
 pub mod screens;

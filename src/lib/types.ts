@@ -594,6 +594,8 @@ export interface DisplayInfo {
   primary: boolean;
   /** The display Kinetra's main window is on (outputs there are allowed but warned about). */
   hasMainWindow: boolean;
+  /** macOS: a scaled display mode; graphics there aren't pixel exact. Absent on Windows. */
+  scaled?: boolean;
 }
 
 export type OutputBackground =

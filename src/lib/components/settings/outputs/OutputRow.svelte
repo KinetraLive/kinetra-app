@@ -5,8 +5,9 @@
   and Delete. Below: Display (connected displays and the remembered one
   when it is disconnected), Screen (a key output shows its fill's), Mode Fill / Key, Background
   (fill: Black / Green / Color) or Key for (key: a fill output), Sound (fill outputs: on/off and the
-  audio device by label, "System default" first; key outputs are silent), Always on top, and the
-  test patterns (pressed while showing; Back to screen).
+  audio device by label, "System default" first; key outputs are silent; macOS: on/off only, the
+  system's output, WebKit can't choose a device), Always on top, and the test patterns (pressed
+  while showing; Back to screen). A macOS display in a scaled mode gets a note (not pixel exact).
 
   Props:
     output: OutputConfig
@@ -40,6 +41,7 @@
     type BackgroundKind,
   } from "$lib/components/outputs/model";
   import { audioDevices, audioOf, deviceOptions } from "$lib/components/outputs/audio.svelte";
+  import { isMac } from "$lib/platform";
   import { toasts } from "$lib/stores/toasts.svelte";
   import type { DisplayInfo, OutputConfig, OutputStatus, TestPattern } from "$lib/types";
 
@@ -67,8 +69,10 @@
 
   const patch = (p: Partial<OutputConfig>) => onsave(patchOutput(outputs, o.id, p));
 
+  const mac = isMac();
   const audio = $derived(audioOf(o));
-  $effect(() => (o.mode === "fill" ? audioDevices.watch() : undefined));
+  $effect(() => (o.mode === "fill" && !mac ? audioDevices.watch() : undefined));
+  const scaled = $derived(displays.find((d) => d.id === displayIdOf(o, status))?.scaled === true);
 
   function rename() {
     const next = name.trim().slice(0, 40);
@@ -135,7 +139,10 @@
 
   <div class="fields">
     <label class="lbl" for="{uid}-display">Display</label>
-    <Select id="{uid}-display" size="sm" value={displayIdOf(o, status)} options={displayOptions(o, status, displays)} onchange={setDisplay} />
+    <span class="ctl">
+      <Select id="{uid}-display" size="sm" value={displayIdOf(o, status)} options={displayOptions(o, status, displays)} onchange={setDisplay} />
+      {#if scaled}<span class="note">Scaled display mode: not pixel exact.</span>{/if}
+    </span>
 
     <label class="lbl" for="{uid}-screen">Screen</label>
     {#if o.mode === "key"}
@@ -186,15 +193,17 @@
       <label class="lbl" for="{uid}-sound">Sound</label>
       <span class="ctl">
         <Switch id="{uid}-sound" label="Sound from {o.name}" hideLabel checked={audio.enabled} onchange={(on) => patch({ audio: { ...audio, enabled: on } })} />
-        <Select
-          size="sm"
-          aria-label="Audio device for {o.name}"
-          disabled={!audio.enabled}
-          value={audio.device ?? ""}
-          options={deviceOptions(audioDevices.labels, audio.device)}
-          onchange={(v: string) => patch({ audio: { enabled: audio.enabled, device: v || null } })}
-        />
-        {#if audio.enabled && audioDevices.labels.length === 0}<span class="note">Other devices show when the app can list them.</span>{/if}
+        {#if !mac}
+          <Select
+            size="sm"
+            aria-label="Audio device for {o.name}"
+            disabled={!audio.enabled}
+            value={audio.device ?? ""}
+            options={deviceOptions(audioDevices.labels, audio.device)}
+            onchange={(v: string) => patch({ audio: { enabled: audio.enabled, device: v || null } })}
+          />
+          {#if audio.enabled && audioDevices.labels.length === 0}<span class="note">Other devices show when the app can list them.</span>{/if}
+        {/if}
       </span>
     {/if}
 

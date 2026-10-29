@@ -412,6 +412,18 @@ pub fn plan(
     project: Option<PlanProject<'_>>,
     patterns: &HashMap<String, TestPattern>,
 ) -> (Vec<WindowPlan>, Vec<OutputStatus>) {
+    plan_with(configs, displays, project, patterns, true)
+}
+
+/// [`plan`], where `spans` says whether one window may span two displays (macOS: not while
+/// "Displays have separate Spaces" is on; a key + fill pair then gets two windows).
+pub fn plan_with(
+    configs: &[OutputConfig],
+    displays: &[DisplayInfo],
+    project: Option<PlanProject<'_>>,
+    patterns: &HashMap<String, TestPattern>,
+    spans: bool,
+) -> (Vec<WindowPlan>, Vec<OutputStatus>) {
     let n = configs.len();
     let index: HashMap<&str, usize> = configs
         .iter()
@@ -495,7 +507,7 @@ pub fn plan(
         let (Some((fd, _)), Some((kd, _))) = (assigned[f], assigned[k]) else {
             continue;
         };
-        let dual = spanning(fd, kd);
+        let dual = if spans { spanning(fd, kd) } else { None };
         frame_locked[f] = Some(dual.is_some());
         frame_locked[k] = Some(dual.is_some());
         if let Some(dual) = dual {
@@ -1154,7 +1166,8 @@ impl AppState {
             server: &server,
             screens: &screens,
         });
-        let (windows, mut statuses) = plan(&configs, &displays, project, &patterns);
+        let spans = self.displays_can_span();
+        let (windows, mut statuses) = plan_with(&configs, &displays, project, &patterns, spans);
         let (ndi_plans, ndi_statuses) = plan_ndi(&configs, project);
         for (i, s) in ndi_statuses {
             statuses[i] = s;

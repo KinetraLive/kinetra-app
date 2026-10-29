@@ -6,6 +6,7 @@ pub mod frames;
 mod menu;
 pub mod ndi;
 mod outputs;
+mod power;
 #[cfg(windows)]
 pub mod preview;
 pub mod server;
@@ -188,6 +189,19 @@ pub fn run() {
                     .and_then(|w| w.hwnd().ok())
                     .map_or(0, |h| h.0 as isize);
                 state.use_system_displays(main_hwnd);
+            }
+            // macOS: CoreGraphics displays; the main window's center in global points (Tauri's
+            // logical positions are CoreGraphics' global display coordinates).
+            #[cfg(target_os = "macos")]
+            {
+                let handle = app.handle().clone();
+                state.use_system_displays(Box::new(move || {
+                    let w = handle.get_webview_window(commands::app::MAIN_WINDOW)?;
+                    let scale = w.scale_factor().ok()?;
+                    let pos = w.outer_position().ok()?.to_logical::<f64>(scale);
+                    let size = w.outer_size().ok()?.to_logical::<f64>(scale);
+                    Some((pos.x + size.width / 2.0, pos.y + size.height / 2.0))
+                }));
             }
             state.set_output_host(Some(outputs::OutputWindows::new(app.handle().clone())));
             // NDI outputs (Windows): nothing loads or runs until one is on.

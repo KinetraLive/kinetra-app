@@ -50,8 +50,10 @@ jobs:
         run: pnpm build:renderer && pnpm build
       - name: clippy (the library and the spike, macOS)
         run: cargo clippy --manifest-path src-tauri/Cargo.toml --locked --lib --example mac_capture_spike -- -D warnings
-      - name: frames, NDI, MIDI, displays and outputs tests (macOS)
-        run: "cargo test --manifest-path src-tauri/Cargo.toml --locked --quiet --lib -- frames:: ndi:: midi displays outputs"
+      - name: frames, NDI, MIDI, displays, outputs, run loop and power tests (macOS)
+        run: "cargo test --manifest-path src-tauri/Cargo.toml --locked --quiet --lib -- frames:: ndi:: midi displays outputs runloop power"
+      - name: display hot-plug on the runner (switches the display mode for a moment)
+        run: cargo test --manifest-path src-tauri/Cargo.toml --locked --lib -- --ignored --nocapture a_display_change_reaches_the_watcher
       - name: Build the spike
         run: cargo build --manifest-path src-tauri/Cargo.toml --locked --example mac_capture_spike
       - name: Run the spike

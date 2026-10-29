@@ -77,16 +77,16 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe("Preferences › Outputs", () => {
-  it("on macOS: not available yet, with the docs link; no display watching", async () => {
+  it("on macOS: display outputs as on Windows, no NDI® (the core says it isn't available)", async () => {
     const ua = vi.spyOn(navigator, "userAgent", "get").mockReturnValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 14_6) AppleWebKit/605.1.15 (KHTML, like Gecko)");
+    out.ndiInfo.mockResolvedValue({ available: false, installed: false, downloadUrl: "https://ndi.link/NDIRedistV6", defaultRate: "50" });
     try {
       render(OutputsPane);
       await flush();
-      expect(screen.getByText(/not available on macOS yet/)).toBeTruthy();
-      expect(screen.getByRole("link", { name: /What works on macOS/ }).getAttribute("href")).toBe("https://docs.kinetra.live/macos");
-      expect(screen.queryByText("No displays found.")).toBeNull();
-      expect(screen.queryByRole("button", { name: "Add output" })).toBeNull();
-      expect(out.watchDisplays).not.toHaveBeenCalled();
+      expect(out.watchDisplays).toHaveBeenCalledWith(true);
+      expect(within(screen.getByRole("list", { name: "Displays" })).getByText("DELL U2720Q")).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Add output" })).toBeTruthy();
+      expect(screen.queryByRole("button", { name: /NDI/ })).toBeNull();
     } finally {
       ua.mockRestore();
     }

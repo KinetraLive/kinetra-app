@@ -38,15 +38,14 @@ const dev = (name: string, p: Partial<MidiDevice> = {}): MidiDevice => ({ name, 
 const NONE: MidiPrefs = { inputs: {}, feedback: {} };
 
 describe("MIDI on macOS", () => {
-  it("is not available yet: a notice with the docs link, no ports watched", async () => {
+  it("works as on Windows: the devices are watched, no notice", async () => {
     const ua = vi.spyOn(navigator, "userAgent", "get").mockReturnValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 14_6) AppleWebKit/605.1.15 (KHTML, like Gecko)");
+    midi.listMidiDevices.mockResolvedValue([]);
     try {
       render(MidiSettings);
       await tick();
-      expect(screen.getByText(/not available on macOS yet/)).toBeTruthy();
-      expect(screen.getByRole("link", { name: /What works on macOS/ }).getAttribute("href")).toBe("https://docs.kinetra.live/macos");
-      expect(screen.queryByText(/Connect a MIDI controller/)).toBeNull();
-      expect(midi.watchMidiDevices).not.toHaveBeenCalled();
+      await vi.waitFor(() => expect(midi.watchMidiDevices).toHaveBeenLastCalledWith(true));
+      expect(screen.queryByText(/not available on macOS/)).toBeNull();
     } finally {
       ua.mockRestore();
       cleanup();
