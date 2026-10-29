@@ -438,7 +438,9 @@ html,body{margin:0;background:transparent;width:100%;height:100%;overflow:hidden
         s.frames += 1;
         s.stamps.push(now_us());
         s.size = unsafe { (CVPixelBufferGetWidth(pb), CVPixelBufferGetHeight(pb)) };
-        if s.grab {
+        // The first complete frame is kept (a still page sends no more); a later one replaces it
+        // when asked.
+        if s.grab || s.grabbed.is_none() {
             s.grab = false;
             s.grabbed = Some(unsafe { copy_bgra(pb) });
         }
@@ -477,7 +479,7 @@ html,body{margin:0;background:transparent;width:100%;height:100%;overflow:hidden
         unsafe {
             let _: () = msg_send![
                 class(c"SCShareableContent"),
-                getShareableContentExcludingDesktopWindows: true,
+                getShareableContentExcludingDesktopWindows: false,
                 onScreenWindowsOnly: false,
                 completionHandler: &*block
             ];
@@ -617,7 +619,7 @@ html,body{margin:0;background:transparent;width:100%;height:100%;overflow:hidden
                 (s.frames, s.empty, s.stamps.clone(), s.size)
             };
             sck().grab = true;
-            pump_until(2.0, || sck().grabbed.is_some());
+            let fresh = pump_until(2.0, || !sck().grab);
             let stopped: Arc<Mutex<bool>> = Arc::default();
             let s3 = stopped.clone();
             let stop = RcBlock::new(move |_err: *mut AnyObject| {
@@ -653,6 +655,7 @@ html,body{margin:0;background:transparent;width:100%;height:100%;overflow:hidden
                 "intervalUs": {"p50": pct(0.5), "p95": pct(0.95), "max": gaps.last().copied().unwrap_or(0)},
                 "usage": usage(&before, &after, elapsed),
                 "image": image,
+                "imageAfterMeasuring": fresh,
             })
         }
     }
@@ -841,6 +844,15 @@ html,body{margin:0;background:transparent;width:100%;height:100%;overflow:hidden
             let no: Retained<AnyObject> = msg_send![class(c"NSNumber"), numberWithBool: false];
             let _: () = msg_send![&*web, setValue: &*no, forKey: &*ns("drawsBackground")];
             let _: () = msg_send![&*web, setWantsLayer: true];
+            // WebKit stops painting (requestAnimationFrame, CSS animations) in a window macOS
+            // reports as occluded; this SPI (private, macOS 10.13+) keeps it painting.
+            let keep = std::env::args().any(|a| a == "--keep-occlusion");
+            if !keep && responds(&web, c"_setWindowOcclusionDetectionEnabled:") {
+                let _: () = msg_send![&*web, _setWindowOcclusionDetectionEnabled: false];
+                notes.push("windowOcclusionDetection=off".into());
+            } else {
+                notes.push("windowOcclusionDetection=on".into());
+            }
             let _: () = msg_send![&*window, setContentView: &*web];
 
             match p {
@@ -966,6 +978,11 @@ html,body{margin:0;background:transparent;width:100%;height:100%;overflow:hidden
             };
             let mut r = serde_json::Map::new();
             r.insert("notes".into(), json!(notes));
+            let occlusion: usize = unsafe { msg_send![&*window, occlusionState] };
+            r.insert(
+                "occlusionVisibleAfterLoad".into(),
+                json!(occlusion & 2 != 0),
+            );
             r.insert("rafPerSecond".into(), raf);
             r.insert("sck".into(), route_sck(&window, &out, p.tag(), secs));
             if matches!(p, Placement::Visible | Placement::Offscreen) {
