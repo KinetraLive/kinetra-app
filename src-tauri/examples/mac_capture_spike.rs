@@ -261,7 +261,7 @@ html,body{margin:0;background:transparent;width:100%;height:100%;overflow:hidden
         /// overall: what proves the capture keeps transparency.
         fn analyze(&self) -> Value {
             let (mut transparent, mut opaque, mut partial) = (0usize, 0usize, 0usize);
-            for a in self.rgba.chunks_exact(4).map(|p| p[3]) {
+            for &a in self.rgba.iter().skip(3).step_by(4) {
                 match a {
                     0 => transparent += 1,
                     255 => opaque += 1,
