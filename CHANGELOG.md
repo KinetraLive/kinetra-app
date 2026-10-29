@@ -13,7 +13,7 @@ update panel: one paragraph per line, no Markdown.
 
 ## Unreleased
 
-Live data from a WebSocket (Advanced mode): Sources › New source › Live data (WebSocket) shows JSON that a program on this computer or your network pushes, such as a game, a scoreboard or a timing system. Map it into rows like an API source, and your graphics follow the data as it changes, up to 30 times a second. A filter picks the messages you want, and a message can be sent when Kinetra connects.
+WebSocket support, in Advanced mode: a Live data (WebSocket) source connects to a WebSocket feed on this computer or your network and maps its JSON to your graphics' fields. Graphics update live as the data changes, and the "API value changed" flow trigger works with these sources too.
 
 ## Next stable release
 
