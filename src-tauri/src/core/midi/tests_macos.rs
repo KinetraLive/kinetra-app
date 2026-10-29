@@ -130,15 +130,22 @@ fn a_virtual_controller_takes_a_layer_on_air() {
     };
     use crate::core::protocol::Fields;
 
-    struct Quiet;
-    impl crate::core::events::EventSink for Quiet {
-        fn emit(&self, _: &str, _: serde_json::Value) {}
+    /// Counts `midi-learn` events (the input path's first visible step).
+    #[derive(Default)]
+    struct Learned(std::sync::atomic::AtomicUsize);
+    impl crate::core::events::EventSink for Learned {
+        fn emit(&self, event: &str, _: serde_json::Value) {
+            if event == crate::core::events::names::MIDI_LEARN {
+                self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            }
+        }
     }
+    let learned = Arc::new(Learned::default());
 
     let tmp = tempfile::tempdir().unwrap();
     let st = AppState::load_with_debounce(
         tmp.path().join("config"),
-        Arc::new(Quiet),
+        learned.clone(),
         Duration::from_secs(60),
     )
     .unwrap();
@@ -221,10 +228,22 @@ fn a_virtual_controller_takes_a_layer_on_air() {
     wait_for("the input to open", 5, || {
         st.midi_devices().iter().any(|d| d.name == name && d.active)
     });
+    let note = || {
+        source
+            .received(&coremidi::PacketBuffer::new(0, &[0x90, 36, 100]))
+            .unwrap()
+    };
+    // The input path first: in a learn session the note is reported, nothing runs.
+    st.midi_learn(true);
+    note();
+    wait_for("the note in a learn session", 5, || {
+        learned.0.load(std::sync::atomic::Ordering::SeqCst) > 0
+    });
+    assert!(!st.live().layer_view(&screen, "l1").unwrap().on_air);
+    st.midi_learn(false);
+    // Then the mapping.
     let t0 = Instant::now();
-    source
-        .received(&coremidi::PacketBuffer::new(0, &[0x90, 36, 100]))
-        .unwrap();
+    note();
     wait_for("the layer on air", 5, || {
         st.live().layer_view(&screen, "l1").unwrap().on_air
     });
