@@ -693,7 +693,8 @@ html,body{margin:0;background:transparent;width:100%;height:100%;overflow:hidden
                 return json!({"error": "no snapshot in 5 s"});
             }
             times.push(t0.elapsed().as_secs_f64() * 1000.0);
-            match slot.borrow_mut().take() {
+            let result = slot.borrow_mut().take();
+            match result {
                 Some(Ok(img)) => {
                     hashes.push(img.hash());
                     if first.is_none() {
