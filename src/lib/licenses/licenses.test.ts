@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { cargoDependencyLines, depsFingerprint } from "../../../scripts/licenses-deps.mjs";
 import { TEMPLATE_FONTS } from "../types";
-import { filterLicenses, type Licenses } from "./index";
+import { filterLicenses, forPlatform, type Licenses } from "./index";
 
 const ROOT = join(__dirname, "..", "..", "..");
 const data = JSON.parse(readFileSync(join(__dirname, "licenses.json"), "utf8")) as Licenses;
@@ -55,6 +55,32 @@ describe("licenses.json", () => {
     expect(data.texts[terms!.files![0].text]).toContain("registered trademark of Vizrt NDI AB");
   });
 
+  it("lists the crates of every platform we ship, marking the platform-only ones", () => {
+    // Windows only: WebView2 and the windows crate; macOS only: the Keychain and objc2.
+    expect(item("rust", "webview2-com")?.platforms).toEqual(["windows"]);
+    expect(item("rust", "windows")?.platforms).toEqual(["windows"]);
+    expect(item("rust", "security-framework")?.platforms).toEqual(["macos"]);
+    expect(item("rust", "objc2-foundation")?.platforms).toEqual(["macos"]);
+    // Shared crates carry no mark; only Rust crates differ by platform.
+    expect(item("rust", "tauri")?.platforms).toBeUndefined();
+    for (const g of data.groups.filter((g) => g.id !== "rust")) {
+      for (const i of g.items) expect(i.platforms, `${g.id}:${i.name}`).toBeUndefined();
+    }
+    for (const g of data.groups) {
+      for (const i of g.items) {
+        for (const p of i.platforms ?? []) expect(["windows", "macos"]).toContain(p);
+      }
+    }
+  });
+
+  it("gives the objc2 crates their MIT text (kept in legal/objc2: the crates ship without one)", () => {
+    for (const name of ["objc2", "block2", "objc2-foundation", "objc2-app-kit"]) {
+      const it = item("rust", name);
+      expect(it?.files?.length, name).toBeGreaterThan(0);
+      expect(data.texts[it!.files![0].text], name).toMatch(/Permission is hereby granted, free of charge/);
+    }
+  });
+
   it("lists every bundled font (app UI and on-air graphics) as OFL-1.1 with its license text", () => {
     const fonts = data.groups.find((g) => g.id === "fonts")!.items;
     const curated = TEMPLATE_FONTS.map((f) => f.name);
@@ -86,6 +112,30 @@ describe("cargoDependencyLines", () => {
       'windows = "0.6"',
     ].join("\r\n");
     expect(cargoDependencyLines(toml)).toEqual(["[target.'cfg(windows)'.dependencies]", 'serde = "1"', 'windows = "0.6"'].sort());
+  });
+});
+
+describe("forPlatform", () => {
+  const names = (p: "windows" | "macos") =>
+    new Set(forPlatform(data, p).groups.flatMap((g) => g.items.map((i) => `${g.id}:${i.name}@${i.version}`)));
+
+  it("keeps the shared items and the platform's own, and leaves out the other platform's", () => {
+    const win = names("windows");
+    const mac = names("macos");
+    const rust = (n: string) => [...data.groups[1].items.filter((i) => i.name === n)].map((i) => `rust:${i.name}@${i.version}`);
+    for (const k of rust("tauri")) expect(win.has(k) && mac.has(k), k).toBe(true);
+    for (const k of rust("webview2-com")) expect([win.has(k), mac.has(k)], k).toEqual([true, false]);
+    for (const k of rust("objc2-foundation")) expect([win.has(k), mac.has(k)], k).toEqual([false, true]);
+    // Fonts, npm and NDI are on both.
+    expect(forPlatform(data, "macos").groups[2].items).toHaveLength(data.groups[2].items.length);
+  });
+
+  it("drops nothing but platform-only items", () => {
+    const total = data.groups.reduce((n, g) => n + g.items.length, 0);
+    const only = (p: "windows" | "macos") =>
+      data.groups.flatMap((g) => g.items).filter((i) => i.platforms && !i.platforms.includes(p)).length;
+    expect(names("windows").size).toBe(total - only("windows"));
+    expect(names("macos").size).toBe(total - only("macos"));
   });
 });
 
