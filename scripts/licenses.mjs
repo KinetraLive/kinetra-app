@@ -64,10 +64,29 @@ const NOTICE_IN_SOURCE = { qrcodegen: "src/lib.rs" };
 /** Copyright holders named in the notice when the package's license file doesn't name one. */
 const COPYRIGHT = { "kinetra-license": "Rørvik Medieteknikk" };
 /**
- * Repositories whose crates ship without a license file, the text kept in legal/ (README there):
- * repository URL → the file.
+ * Packages published without a license text: repository URL (as `repoUrl` gives it) → the text
+ * kept in legal/licenses/ (its README says where each one comes from). Used only when the package
+ * ships no license file of its own.
  */
-const REPO_LICENSE = { "https://github.com/madsmtm/objc2": "legal/objc2/LICENSE-MIT.txt" };
+const KEPT_LICENSES = {
+  "https://github.com/madsmtm/objc2": "objc2-MIT.txt",
+  "https://github.com/lukeed/polka": "polka-MIT.txt",
+  "https://github.com/lukeed/sirv": "sirv-MIT.txt",
+  "https://github.com/Rich-Harris/is-reference": "rich-harris-MIT.txt",
+  "https://gitlab.com/Rich-Harris/locate-character": "rich-harris-MIT.txt",
+  "https://github.com/dropbox/rust-alloc-no-stdlib": "rust-alloc-no-stdlib-BSD-3-Clause.txt",
+  "https://github.com/knurling-rs/defmt": "defmt-MIT.txt",
+  "https://github.com/servo/stylo": "MPL-2.0.txt",
+  "https://github.com/wravery/webview2-rs": "webview2-rs-MIT.txt",
+};
+
+/** The kept license text for a package from repository `url`, as license file references. */
+function keptLicense(url) {
+  const file = url && KEPT_LICENSES[url];
+  if (!file) return [];
+  const text = textRef(readFileSync(join(ROOT, "legal", "licenses", file), "utf8"));
+  return text === null ? [] : [{ name: `${file.replace(/\.txt$/, "")} (kept in Kinetra)`, text }];
+}
 
 // The leading block comment of a source file, without the comment markers.
 function sourceNotice(dir, file) {
@@ -145,12 +164,14 @@ function npmGroup() {
     }
     if (seen.has(dir)) continue;
     const pkg = JSON.parse(readFileSync(join(dir, "package.json"), "utf8"));
-    const files = licenseFiles(dir);
+    const url = repoUrl(pkg.repository) ?? pkg.homepage;
+    let files = licenseFiles(dir);
+    if (!files.length) files = keptLicense(url);
     seen.set(dir, {
       name: pkg.name,
       version: pkg.version,
       license: npmLicense(pkg),
-      ...(repoUrl(pkg.repository) ?? pkg.homepage ? { url: repoUrl(pkg.repository) ?? pkg.homepage } : {}),
+      ...(url ? { url } : {}),
       ...(files.length ? { files } : {}),
     });
     const base = holder(dir, pkg.name);
@@ -213,8 +234,7 @@ function rustGroup() {
       let files = licenseFiles(dir);
       if (!files.length && NOTICE_IN_SOURCE[p.name]) files = sourceNotice(dir, NOTICE_IN_SOURCE[p.name]);
       const url = repoUrl(p.repository) ?? p.homepage ?? undefined;
-      const kept = REPO_LICENSE[p.repository?.replace(/\/$/, "")];
-      if (!files.length && kept) files = [{ name: "LICENSE-MIT", text: textRef(readFileSync(join(ROOT, kept), "utf8")) }];
+      if (!files.length) files = keptLicense(url);
       return {
         name: p.name,
         version: p.version,
