@@ -75,7 +75,7 @@ import { uiState } from "$lib/stores/uiState.svelte";
 import { DEFAULT_SCREEN_EDITOR } from "./limits";
 /** Test docs hold template layers only. */
 // Lazily loaded components these tests open: loaded once here, so the tests wait on them, not on
-// Vite compiling them on first use (CLAUDE.md › Testing policy).
+// Vite compiling them on first use (docs/TESTING.md).
 beforeAll(async () => {
   await Promise.all([
     import("$lib/components/screens/editor/MultiInspector.svelte"),

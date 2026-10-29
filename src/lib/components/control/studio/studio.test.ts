@@ -17,7 +17,7 @@ import type {
 // ---- Mocks (as control.test.ts, plus the studio commands) ---------------------------------------
 
 // Lazily loaded components these tests open: loaded once here, so the tests wait on them, not on
-// Vite compiling them on first use (CLAUDE.md › Testing policy).
+// Vite compiling them on first use (docs/TESTING.md).
 beforeAll(async () => {
   await Promise.all([
     import("$lib/components/control/PanelDivider.svelte"),

@@ -9,7 +9,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 import type { FlowInfo, FlowNode, LiveScreenView, NewFlow, RecipeInstance, UiState } from "$lib/types";
 
 // Lazily loaded components these tests open: loaded once here, so the tests wait on them, not on
-// Vite compiling them on first use (CLAUDE.md › Testing policy).
+// Vite compiling them on first use (docs/TESTING.md).
 beforeAll(async () => {
   await Promise.all([
     import("$lib/components/flows/list/summaries.svelte"),

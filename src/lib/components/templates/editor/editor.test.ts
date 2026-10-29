@@ -48,7 +48,7 @@ vi.mock("$app/state", () => ({
 
 /** Fake CodeMirror: records each view; `set` simulates typing (new text + change callback). */
 // Lazily loaded components these tests open: loaded once here, so the tests wait on them, not on
-// Vite compiling them on first use (CLAUDE.md › Testing policy).
+// Vite compiling them on first use (docs/TESTING.md).
 beforeAll(async () => {
   await Promise.all([
     import("$lib/components/ConfirmDialog.svelte"),

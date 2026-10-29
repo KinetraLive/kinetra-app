@@ -7,7 +7,7 @@ import type { LiveScreenView, Project, ScreenState, ScreenSummary, ServerStatus 
 // ---- Mocks --------------------------------------------------------------------------------------
 
 // Lazily loaded components these tests open: loaded once here, so the tests wait on them, not on
-// Vite compiling them on first use (CLAUDE.md › Testing policy).
+// Vite compiling them on first use (docs/TESTING.md).
 beforeAll(async () => {
   await Promise.all([
     import("$lib/components/ConfirmDialog.svelte"),

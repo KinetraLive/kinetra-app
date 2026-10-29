@@ -44,7 +44,7 @@ import MultiInspector from "../screens/editor/MultiInspector.svelte";
 import { fitBox } from "../screens/editor/fitbox";
 
 // Lazily loaded components these tests open: loaded once here, so the tests wait on them, not on
-// Vite compiling them on first use (CLAUDE.md › Testing policy).
+// Vite compiling them on first use (docs/TESTING.md).
 beforeAll(async () => {
   await Promise.all([
     import("$lib/components/screens/editor/BindMenu.svelte"),

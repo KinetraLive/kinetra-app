@@ -25,7 +25,7 @@ import FieldInputs from "./FieldInputs.svelte";
 import { affectsNote, followIndex, layersUsing, LIST_LIMITS, SOURCE_LIMITS, SourceSaver, type LinkedList } from "./drawer";
 
 // Lazily loaded components these tests open: loaded once here, so the tests wait on them, not on
-// Vite compiling them on first use (CLAUDE.md › Testing policy).
+// Vite compiling them on first use (docs/TESTING.md).
 beforeAll(async () => {
   await Promise.all([
     import("$lib/components/fields/ListField.svelte"),
