@@ -1,7 +1,12 @@
 <!--
   "New template" gallery: a native modal <dialog> listing Blank and the built-in presets. Choose
   one, name it, Create: the template is created, the gallery closes and the editor opens
-  (`/templates/<id>`).
+  (`/templates/<id>`). Choosing a card (click, Enter, Space) fills Name with a default (the
+  preset's name; "Untitled template" for Blank) and focuses it, so Enter creates; a double-click
+  creates at once with that name.
+
+  Fits the window: the title, the style chips and the footer (Name, Create) stay put; only the
+  cards scroll.
 
   Lazy chunk: open it with `GalleryLauncher` / `loadGallery()` from ./launcher.svelte.ts.
 
@@ -72,10 +77,12 @@
     source: { kind: "blank" },
     preset: null,
   };
+  const BLANK_NAME = "Untitled template";
 
   const uid = $props.id();
   let dialog: HTMLDialogElement | undefined = $state();
   let body: HTMLDivElement | undefined = $state();
+  let nameInput: HTMLInputElement | undefined = $state();
   let presets = $state.raw<PresetInfo[]>([]);
   let styles = $state.raw<StyleInfo[]>([]);
   /** Thumbnail URL per `<presetId>:<variant>`: missing while resolving, null when there is none. */
@@ -235,10 +242,18 @@
     if (e.target === dialog) cancel();
   }
 
-  function pick(c: Choice) {
-    if (chosen === c.key) return;
-    chosen = c.key;
-    if (!layer) name = c.key === BLANK.key ? "" : c.name;
+  /** Chooses a card; `toName` (a click, Enter or Space, never an arrow key) then focuses Name. */
+  function pick(c: Choice, toName = false) {
+    if (chosen !== c.key) {
+      chosen = c.key;
+      if (!layer) name = c.key === BLANK.key ? BLANK_NAME : c.name;
+    }
+    if (toName && !layer) {
+      void tick().then(() => {
+        nameInput?.focus();
+        nameInput?.select();
+      });
+    }
   }
 
   function chooseStyle(s: string) {
@@ -266,7 +281,7 @@
   function onChoiceKeydown(e: KeyboardEvent, c: Choice) {
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
-      pick(c);
+      pick(c, true);
     }
   }
 
@@ -347,7 +362,7 @@
     aria-selected={chosen === c.key}
     tabindex={i === tabStop(s) ? 0 : -1}
     data-choice={c.key}
-    onclick={() => pick(c)}
+    onclick={() => pick(c, true)}
     ondblclick={() => {
       pick(c);
       void create();
@@ -481,6 +496,7 @@
           <label for="{uid}-name">Name</label>
           <div class="input vf vf-within">
             <input
+              bind:this={nameInput}
               id="{uid}-name"
               type="text"
               bind:value={name}
@@ -513,9 +529,12 @@
     border-radius: var(--r-panel);
     background: var(--surface-2);
     color: var(--text);
-    overflow: auto;
+    overflow: hidden;
   }
+  /* Only the cards scroll: the title, chips and footer stay in view at any window height. */
   .dialog[open] {
+    display: flex;
+    flex-direction: column;
     animation: enter var(--dur) var(--ease);
   }
   .dialog::backdrop {
@@ -525,6 +544,8 @@
   .inner {
     display: flex;
     flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
     gap: var(--s-4);
     padding: var(--s-5);
   }
@@ -572,7 +593,14 @@
   .body {
     display: flex;
     flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
     gap: var(--s-3);
+    /* The scrollbar sits at the dialog's edge. */
+    margin: 0 calc(-1 * var(--s-5));
+    padding: 0 var(--s-5);
+    overflow-y: auto;
+    overscroll-behavior: contain;
   }
   .body > .section-label {
     margin-top: var(--s-2);
@@ -694,6 +722,7 @@
 
   .foot {
     display: flex;
+    flex: none;
     flex-wrap: wrap;
     align-items: flex-end;
     justify-content: space-between;

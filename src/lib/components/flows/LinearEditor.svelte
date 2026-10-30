@@ -1068,6 +1068,12 @@
     gap: var(--s-2);
     padding-top: var(--s-4);
     border-top: 1px solid var(--line);
+    /* Stays in view when a long dialog scrolls. */
+    position: sticky;
+    bottom: 0;
+    margin-bottom: calc(-1 * var(--s-5));
+    padding-bottom: var(--s-5);
+    background: var(--surface-2);
   }
   .summary {
     flex: 1;

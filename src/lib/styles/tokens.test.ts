@@ -76,6 +76,10 @@ describe.each(Object.entries(themes))("%s theme", (_name, vars) => {
     expect(c("--text-muted", s)).toBeGreaterThanOrEqual(4.5);
   });
 
+  it.each(SURFACES)("scrollbar thumbs reach 3:1 on %s", (s) => {
+    expect(c("--scrollbar", s)).toBeGreaterThanOrEqual(3);
+  });
+
   it.each(SURFACES)("the focus ring reaches 3:1 on %s", (s) => {
     expect(c("--focus", s)).toBeGreaterThanOrEqual(3);
   });

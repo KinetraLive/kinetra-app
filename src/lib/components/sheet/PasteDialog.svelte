@@ -305,5 +305,11 @@
     display: flex;
     justify-content: flex-end;
     gap: var(--s-2);
+    /* Stays in view when a long dialog scrolls. */
+    position: sticky;
+    bottom: 0;
+    margin-bottom: calc(-1 * var(--s-5));
+    padding-bottom: var(--s-5);
+    background: var(--surface-2);
   }
 </style>

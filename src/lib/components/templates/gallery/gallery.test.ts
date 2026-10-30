@@ -212,15 +212,56 @@ describe("Gallery", () => {
     await waitFor(() => expect(nav.goto).toHaveBeenCalledWith("/templates/new1"));
   });
 
-  it("Blank starts with an empty name and sends the blank source", async () => {
+  it("Blank starts as Untitled template and sends the blank source", async () => {
     await openGallery();
     await fireEvent.keyDown(screen.getAllByRole("option")[0], { key: "Enter" });
     const input = screen.getByLabelText("Name") as HTMLInputElement;
-    expect(input.value).toBe("");
-    expect(screen.getByRole("button", { name: "Create" })).toBeDisabled();
+    expect(input.value).toBe("Untitled template");
+    expect(screen.getByRole("button", { name: "Create" })).not.toBeDisabled();
     await fireEvent.input(input, { target: { value: "  Score bug  " } });
     await fireEvent.click(screen.getByRole("button", { name: "Create" }));
     await waitFor(() => expect(api.createTemplate).toHaveBeenCalledWith("Score bug", { kind: "blank" }));
+  });
+
+  it("choosing a card focuses Name with the default selected, so Enter creates", async () => {
+    await openGallery();
+    await fireEvent.click(screen.getByRole("option", { name: /^Countdown/ }));
+    const input = screen.getByLabelText("Name") as HTMLInputElement;
+    await waitFor(() => expect(document.activeElement).toBe(input));
+    expect(input.value).toBe("Countdown");
+    expect([input.selectionStart, input.selectionEnd]).toEqual([0, "Countdown".length]);
+    // Enter in the field submits the form.
+    await fireEvent.submit(input.form!);
+    await waitFor(() =>
+      expect(api.createTemplate).toHaveBeenCalledWith("Countdown", { kind: "preset", presetId: "countdown" }),
+    );
+    await waitFor(() => expect(nav.goto).toHaveBeenCalledWith("/templates/new1"));
+  });
+
+  it("a double-click creates at once with the default name, Blank too", async () => {
+    await openGallery();
+    await fireEvent.dblClick(screen.getByRole("option", { name: /^Countdown/ }));
+    await waitFor(() =>
+      expect(api.createTemplate).toHaveBeenCalledWith("Countdown", { kind: "preset", presetId: "countdown" }),
+    );
+    cleanup();
+    vi.clearAllMocks();
+    await openGallery();
+    await fireEvent.dblClick(screen.getByRole("option", { name: /^Blank/ }));
+    await waitFor(() => expect(api.createTemplate).toHaveBeenCalledWith("Untitled template", { kind: "blank" }));
+  });
+
+  it("arrow keys move the choice without leaving the cards", async () => {
+    await openGallery();
+    const library = screen.getByRole("listbox", { name: "Start from" });
+    const opts = within(library).getAllByRole("option");
+    await fireEvent.keyDown(opts[0], { key: " " });
+    opts[0].focus();
+    await fireEvent.keyDown(opts[0], { key: "ArrowRight" });
+    await waitFor(() => expect(document.activeElement).toBe(opts[1]));
+    expect(opts[1]).toHaveAttribute("aria-selected", "true");
+    await new Promise((r) => setTimeout(r, 20));
+    expect(document.activeElement).toBe(opts[1]);
   });
 
   it("arrow keys move within a section", async () => {
