@@ -293,9 +293,9 @@
     padding: var(--s-4);
     color: var(--danger);
   }
+  /* Slides only, never fades: opaque from its first frame (see the dialogs' enter). */
   @keyframes slide {
     from {
-      opacity: 0;
       transform: translateX(24px);
     }
   }

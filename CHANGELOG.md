@@ -15,7 +15,7 @@ update panel: one paragraph per line, no Markdown.
 
 New template fits on any screen: pick a look and its name is ready to type, with Create always in view, so Enter makes it. Double-click a look to create it straight away. Long rules keep Save in view too, and scrollbars are easier to spot in the dark theme.
 
-Selecting text in a dialog and letting go outside it no longer closes the dialog.
+Selecting text in a dialog and letting go outside it no longer closes the dialog. Dialogs also cover what's behind them from the moment they open: the red on-air line of a screen no longer shows through New cue or Add automation the first time you open them.
 
 API sources: after a test, each column's field suggests the columns the response has (CSV header names or column numbers, JSON paths from the rows), and you can still type your own. A column the latest test doesn't have gets a clear warning.
 
