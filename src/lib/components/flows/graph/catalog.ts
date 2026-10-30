@@ -104,9 +104,20 @@ const COMPARE: Record<string, string> = {
 const quote = (s: string) => `“${s}”`;
 const upper = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
-/** The one-line config summary under a node's title. */
-export function nodeSummary(n: NodeKind, k: Lookups): string {
+/** The one-line config summary under a node's title. `fed` names the node wired into a data input
+ *  (the editor's graph); a wired row number then wins over the node's own row. */
+export function nodeSummary(n: NodeKind, k: Lookups, fed?: (port: string) => NodeKind | undefined): string {
   const cat = categoryOf(n.type);
+  if (n.type === "action.stepSource" || n.type === "data.sourceRow") {
+    const from = fed?.("index");
+    if (from) {
+      const name = k.sources.get(n.config.sourceId)?.name ?? "a missing source";
+      const v = from.type === "data.constant" ? from.config.value : null;
+      const num = v?.kind === "number" ? v.value : v?.kind === "text" && /^\s*\d+\s*$/.test(v.value) ? Number(v.value) : null;
+      const row = num !== null ? `row ${Math.max(1, Math.round(num))}` : "the wired row";
+      return n.type === "action.stepSource" ? `Go to ${row} of ${name}` : `${upper(row)} of ${name}`;
+    }
+  }
   if (cat === "trigger") {
     if (n.type === "trigger.cue") return n.config.label?.trim() ? `Button “${n.config.label.trim()}”` : "Button: the flow's name";
     return upper(triggerText(n as TriggerConf, k));
@@ -188,5 +199,9 @@ export function portLabel(n: NodeKind, name: string): string {
   }
   if (n.type === "logic.sequence" && /^s\d+$/.test(name)) return String(Number(name.slice(1)) + 1);
   if (n.type === "logic.random" && /^r\d+$/.test(name)) return String(Number(name.slice(1)) + 1);
+  // Row numbers on wires count from 1, like everywhere in the UI.
+  if (name === "index" && (n.type === "action.stepSource" || n.type === "data.sourceRow" || n.type === "trigger.sourceRow")) {
+    return "row number";
+  }
   return name;
 }

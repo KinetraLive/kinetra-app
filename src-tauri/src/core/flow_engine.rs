@@ -166,6 +166,17 @@ fn time_text(ms: i64, fmt: &str, now: &Now) -> String {
         .replace("ss", &format!("{:02}", dt.second()))
 }
 
+/// Row numbers on wires count from 1, like every row number in the UI (Control's "1 / 5", the
+/// nodes' "Row number"): row 1 is index 0. A wired number below 1 is row 1.
+fn row_index(n: f64) -> usize {
+    (n.round().max(1.0) - 1.0) as usize
+}
+
+/// The row number (from 1) of an index.
+fn row_number(index: usize) -> f64 {
+    index as f64 + 1.0
+}
+
 impl Val {
     /// The implicit conversion to text (time as local `HH:MM`; rows as JSON).
     fn text(&self, now: &Now) -> String {
@@ -2253,7 +2264,7 @@ impl AppState {
                 t,
                 vec![
                     ("row", Val::Row(row.clone())),
-                    ("index", Val::Num(f64::from(i))),
+                    ("index", Val::Num(row_number(i as usize))),
                 ],
             );
         }
@@ -3195,7 +3206,7 @@ impl AppState {
             Op::StepSource { source, step } => {
                 let step = match self.pull(w, node, "index", 0).and_then(|v| v.num()) {
                     Some(n) => SourceStep::Index {
-                        index: n.max(0.0) as u32,
+                        index: u32::try_from(row_index(n)).unwrap_or(u32::MAX),
                     },
                     None => step,
                 };
@@ -3489,7 +3500,7 @@ impl AppState {
             SourceKind::Poll { .. } => 0,
         };
         let idx = match self.pull(w, node, "index", depth).and_then(|v| v.num()) {
-            Some(i) => i.max(0.0) as usize,
+            Some(i) => row_index(i),
             None => match pick {
                 RowPick::Current => current,
                 RowPick::First => 0,
@@ -3507,7 +3518,7 @@ impl AppState {
         }
         match port {
             "row" => Some(Val::Row(row)),
-            "index" => Some(Val::Num(idx.min(n.saturating_sub(1)) as f64)),
+            "index" => Some(Val::Num(row_number(idx.min(n.saturating_sub(1))))),
             col => Some(Val::Text(row.get(col).cloned().unwrap_or_default())),
         }
     }

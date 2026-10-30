@@ -34,7 +34,7 @@
   const issues = $derived(ed.issues.get(id));
   const fired = $derived(ed.debug.fired.get(id) ?? null);
   const flashing = $derived(ed.debug.nodes.has(id));
-  const summary = $derived(nodeSummary(node, ed.lookups));
+  const summary = $derived(nodeSummary(node, ed.lookups, (p) => ed.feeding(id, p)));
   const CAT_LABEL = { trigger: "Trigger", data: "Data", logic: "Logic", action: "Action" } as const;
 
   function tip(p: Port, side: Side): string {

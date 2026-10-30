@@ -136,7 +136,14 @@
         {#if f.running || f.draft || f.warnings.length > 0 || f.readOnly}
           <span class="notes">
             {#if f.running}<span class="running">Running</span>{/if}
-            {#if f.draft}<span class="undeployed"><span class="dot" aria-hidden="true"></span>Not deployed</span>{/if}
+            {#if f.draft}
+              <span
+                class="undeployed"
+                class:armed={f.armed}
+                title={f.armed ? "Armed: it runs the last deployed version until you deploy the changes" : undefined}
+                ><span class="dot" aria-hidden="true"></span>{f.armed ? "Not deployed: runs the old version" : "Not deployed"}</span
+              >
+            {/if}
             {#if invalid}<span class="bad">{invalid.message}</span>{/if}
             {#if warnings.length > 0}
               <span class="warn" title={warnings.map((w) => w.message).join("\n")}>
@@ -238,6 +245,12 @@
     height: 6px;
     border-radius: 50%;
     background: var(--accent);
+  }
+  .undeployed.armed {
+    color: var(--warning);
+  }
+  .undeployed.armed .dot {
+    background: var(--warning);
   }
   .warn {
     display: inline-flex;
