@@ -23,7 +23,7 @@
     signInCancel,
     signOut,
   } from "$lib/api/license";
-  import { cloudMessage, formatKey, keyComplete, redeemText, saveFailedText } from "$lib/components/license/messages";
+  import { cloudMessage, normalizeKey, redeemText, saveFailedText, tidyKeyField } from "$lib/components/license/messages";
   import { openInBrowser } from "$lib/components/license/open";
   import { agoText, dateText, planName, statusIsProblem, statusText } from "$lib/components/license/plans";
   import ProLock from "$lib/components/license/ProLock.svelte";
@@ -58,7 +58,9 @@
   }
   function submitKey(e: SubmitEvent) {
     e.preventDefault();
-    if (!keyComplete(key)) return;
+    const whole = normalizeKey(key);
+    if (!whole) return;
+    key = whole;
     if (v?.signedIn) {
       void addKey(key);
     } else {
@@ -162,15 +164,11 @@
           value={key}
           oninput={(e) => {
             keyAdded = null;
-            key = e.currentTarget.value = formatKey(e.currentTarget.value);
+            key = tidyKeyField(e.currentTarget, e);
           }}
-          onpaste={(e) => {
-            e.preventDefault();
-            keyAdded = null;
-            key = formatKey(e.clipboardData?.getData("text") ?? "");
-          }}
+          onblur={(e) => (key = tidyKeyField(e.currentTarget))}
         />
-        <Button size="sm" type="submit" disabled={busy || !keyComplete(key) || waitingKey !== null}>
+        <Button size="sm" type="submit" disabled={busy || !normalizeKey(key) || waitingKey !== null}>
           {v.signedIn ? "Add key" : "Sign in and add key"}
         </Button>
       </form>
