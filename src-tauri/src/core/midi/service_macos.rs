@@ -1,18 +1,20 @@
-//! The MIDI service thread (macOS): a [`LoopThread`](crate::core::runloop::LoopThread) that
-//! - holds a CoreMIDI client with notifications; a setup change (a device or port added or
-//!   removed) reports a change, and 300 ms after the last one the ports are re-enumerated
-//!   (debounce: a plug-in sends several notifications);
-//! - is woken by CoreMIDI's input thread (input queued) and by reconcile requests from other
-//!   threads.
+//! The MIDI service thread (macOS): a [`LoopThread`](crate::core::runloop::LoopThread) that is
+//! woken by CoreMIDI's input thread (input queued), by reconcile requests from other threads, and
+//! by hot-plug: a setup change (a device or port added or removed) reports a change, and 300 ms
+//! after the last one the ports are re-enumerated (debounce: a plug-in sends several
+//! notifications). It blocks in `CFRunLoopRun` between events: no polling, 0 % CPU at rest. It
+//! exists only while MIDI is in use (see `core::midi`), like the Windows service (`service.rs`).
 //!
-//! It blocks in `CFRunLoopRun` between events: no polling, 0 % CPU at rest. It exists only while
-//! MIDI is in use (see `core::midi`). The same shape as the Windows service (`service.rs`).
-//!
-//! CoreMIDI clients are never disposed (disposing an app's last client can stop the MIDI server,
-//! after which no client can be made): one notification client per service start, which happens
-//! when MIDI comes into use.
+//! # Hot-plug notifications
+//! CoreMIDI delivers every client's notifications on the run loop that was current when the
+//! process made its FIRST client. The service thread comes and goes with MIDI use, so the
+//! notification client lives on its own `midi-notify` loop thread instead: started the first time
+//! anything touches CoreMIDI ([`ensure_notifications`], before any other client is made), it
+//! stays for the life of the process, blocked in its run loop, and forwards each change to the
+//! service running then. One CoreMIDI client, never disposed (disposing an app's last client can
+//! stop the MIDI server, after which no client can be made).
 
-use std::sync::{Arc, PoisonError, RwLock};
+use std::sync::{Arc, OnceLock, PoisonError, RwLock};
 
 use super::InputQueue;
 use crate::core::runloop::{self, LoopThread};
@@ -32,6 +34,55 @@ pub enum Event {
     Input,
     /// Re-evaluate the ports (a request, or devices changed).
     Reconcile,
+}
+
+/// The service that gets hot-plug changes now (none while MIDI is unused).
+static TARGET: RwLock<Option<Arc<Waker>>> = RwLock::new(None);
+/// The `midi-notify` thread with the notification client (see the module docs).
+static NOTIFY: OnceLock<Option<LoopThread>> = OnceLock::new();
+
+/// Makes sure the notification client exists (the process's first CoreMIDI client). Call before
+/// anything else uses CoreMIDI; cheap after the first call.
+pub fn ensure_notifications() {
+    NOTIFY.get_or_init(|| {
+        let started = LoopThread::start(
+            "midi-notify",
+            DEBOUNCE_S,
+            |_| {
+                let client = coremidi::Client::new_with_notifications(
+                    "Kinetra",
+                    |n: &coremidi::Notification| {
+                        if matches!(
+                            n,
+                            coremidi::Notification::SetupChanged
+                                | coremidi::Notification::ObjectAdded(_)
+                                | coremidi::Notification::ObjectRemoved(_)
+                        ) {
+                            if let Some(w) = TARGET
+                                .read()
+                                .unwrap_or_else(PoisonError::into_inner)
+                                .as_ref()
+                            {
+                                w.changed();
+                            }
+                        }
+                    },
+                );
+                if let Err(status) = &client {
+                    tracing::warn!("MIDI hot-plug notifications unavailable (OSStatus {status})");
+                }
+                Box::new(client)
+            },
+            |_| true,
+        );
+        match started {
+            Ok(t) => Some(t),
+            Err(e) => {
+                tracing::warn!("MIDI hot-plug thread: {e}");
+                None
+            }
+        }
+    });
 }
 
 /// Wakes the service for queued input (called on CoreMIDI's input thread).
@@ -54,35 +105,18 @@ impl Service {
         queue: Arc<InputQueue>,
         handler: impl Fn(Event) -> bool + Send + 'static,
     ) -> std::io::Result<Self> {
+        ensure_notifications();
         let q = queue.clone();
         let thread = LoopThread::start(
             "midi",
             DEBOUNCE_S,
             move |waker| {
-                // Hot-plug: CoreMIDI calls back on this run loop; the callback only reports.
-                let w = waker.clone();
-                let client = coremidi::Client::new_with_notifications(
-                    "Kinetra",
-                    move |n: &coremidi::Notification| {
-                        if matches!(
-                            n,
-                            coremidi::Notification::SetupChanged
-                                | coremidi::Notification::ObjectAdded(_)
-                                | coremidi::Notification::ObjectRemoved(_)
-                        ) {
-                            w.changed();
-                        }
-                    },
-                );
-                if let Err(status) = &client {
-                    tracing::warn!("MIDI hot-plug notifications unavailable (OSStatus {status})");
-                }
+                *TARGET.write().unwrap_or_else(PoisonError::into_inner) = Some(waker.clone());
                 *q.wake.write().unwrap_or_else(PoisonError::into_inner) = Some(waker.clone());
                 // The first reconcile opens the ports; input queued before the waker existed
                 // runs too.
                 waker.wake(RECONCILE | INPUT);
-                // Kept until the loop ends (never disposed: see the module docs).
-                Box::new(client)
+                Box::new(())
             },
             move |ev| match ev {
                 runloop::Event::Woken(bits) => {
@@ -104,7 +138,15 @@ impl Service {
 
 impl Drop for Service {
     fn drop(&mut self) {
-        // Stopping happens when `thread` drops (after this); the queue forgets the waker now.
+        // Stopping happens when `thread` drops (after this); hot-plug and input forget it now.
+        {
+            let mut t = TARGET.write().unwrap_or_else(PoisonError::into_inner);
+            if t.as_ref()
+                .is_some_and(|w| Arc::ptr_eq(w, self.thread.waker()))
+            {
+                *t = None;
+            }
+        }
         *self
             .queue
             .wake

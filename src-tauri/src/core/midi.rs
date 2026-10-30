@@ -16,8 +16,10 @@
 //!   callback, so running actions (screen lock, template reads) there could deadlock.
 //! - ONE service thread ([`service`]): on Windows a message-only window that receives device
 //!   notifications (`RegisterDeviceNotificationW`, every device interface class; debounced
-//!   300 ms with a window timer); on macOS a CoreFoundation run loop with a CoreMIDI
-//!   notification client (setup changes, debounced 300 ms with a run-loop timer). Both take the
+//!   300 ms with a window timer); on macOS a CoreFoundation run loop (setup changes from
+//!   CoreMIDI, debounced 300 ms with a run-loop timer; CoreMIDI delivers them on the run loop where
+//!   the process made its first client, so that client lives on a small `midi-notify` thread
+//!   started on first use and kept, blocked in its run loop: `service_macos.rs`). Both take the
 //!   input wake-ups and do the port work (enumerate, open, close), run actions in arrival order,
 //!   exist only while MIDI is in use and block at rest (`GetMessageW` / `CFRunLoopRun`): no
 //!   polling. On macOS CoreMIDI's input thread plays WinMM's callback thread's part.

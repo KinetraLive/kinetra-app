@@ -86,6 +86,8 @@ impl MidiBackend for SystemBackend {
     /// names are the display names midir uses for the same ports.
     #[cfg(target_os = "macos")]
     fn ports(&self) -> Ports {
+        // Hot-plug needs the first CoreMIDI client (`service_macos`).
+        super::service::ensure_notifications();
         let inputs = unique_names(
             coremidi::Sources
                 .into_iter()
@@ -111,6 +113,8 @@ impl MidiBackend for SystemBackend {
     }
 
     fn open_input(&self, name: &str, mut on_message: InputCallback) -> Result<InputConn, String> {
+        #[cfg(target_os = "macos")]
+        super::service::ensure_notifications();
         let mut mi = midir::MidiInput::new(CLIENT).map_err(|e| e.to_string())?;
         // SysEx, clock and active sensing never reach the callback.
         mi.ignore(midir::Ignore::All);
@@ -127,6 +131,8 @@ impl MidiBackend for SystemBackend {
     }
 
     fn open_output(&self, name: &str) -> Result<Box<dyn MidiOut>, String> {
+        #[cfg(target_os = "macos")]
+        super::service::ensure_notifications();
         let mo = midir::MidiOutput::new(CLIENT).map_err(|e| e.to_string())?;
         let ports = mo.ports();
         let names = unique_names(ports.iter().map(|p| mo.port_name(p).unwrap_or_default()));

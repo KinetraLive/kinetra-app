@@ -16,6 +16,8 @@ use super::*;
 static SYSTEM_MIDI: Mutex<()> = Mutex::new(());
 
 fn system_midi() -> std::sync::MutexGuard<'static, ()> {
+    // Before any test client: hot-plug needs the process's first CoreMIDI client.
+    super::service::ensure_notifications();
     SYSTEM_MIDI.lock().unwrap_or_else(|e| e.into_inner())
 }
 
