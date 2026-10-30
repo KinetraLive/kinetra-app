@@ -268,6 +268,14 @@ undo a rollback, run it again with the newer version. Nothing is ever deleted.
     targets. No fixed updater yet (2.14.0 still requires zip ^4). **Before each stable
     release**, check whether tauri-plugin-updater has moved past zip 4; then update it and
     remove the three ignores.
+  - **zip 4.6.1, three more** (GHSA-m665-v7pm-7grj critical "zip cloaking", GHSA-q7v9-x93c-xqv3
+    unbounded symlink targets, GHSA-8hxf-qr8p-62x4 AES HMAC bypass; fixed in zip 9.0.5 / 9.0.0;
+    Dependabot #14–#16, dismissed as "not used" 2026-10-30, same reason). Not in the RustSec
+    database yet (2026-10-30), so `cargo audit` doesn't report them. **When they get RUSTSEC ids**
+    (`cargo audit` then fails on zip), add the ids to the same ignore list with this reason.
+  - **deepmerge 4.3.1** (GHSA-gcqx-w48m-w2h4, prototype pollution, no fix; Dependabot #13,
+    dismissed as "not used" 2026-10-30): only in the build tooling
+    (`@sveltejs/vite-plugin-svelte`), merging our own config; never in the app.
 - `pnpm-workspace.yaml` overrides `cookie` to 0.7 (GHSA-pxg6-pf52-xh8x) because SvelteKit 2
   still asks for ^0.6.0; drop the override once SvelteKit's own range allows 0.7.
 

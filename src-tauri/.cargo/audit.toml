@@ -7,6 +7,9 @@
 # (`cargo tree -i zip@4.6.1 --target <triple>` prints nothing for Windows and macOS).
 # No fixed updater yet: 2.14.0 still requires zip ^4.
 # Remove these ignores when tauri-plugin-updater moves past zip 4 (owner, 2026-10-26).
+# Three newer zip advisories (GHSA-m665-v7pm-7grj, GHSA-q7v9-x93c-xqv3, GHSA-8hxf-qr8p-62x4)
+# have no RUSTSEC ids yet (2026-10-30): add their ids here, same reason, once they appear
+# (docs/RELEASING.md › Supply chain).
 ignore = [
   "RUSTSEC-2026-0367",
   "RUSTSEC-2026-0368",
