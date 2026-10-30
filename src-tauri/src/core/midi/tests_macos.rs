@@ -233,24 +233,23 @@ fn a_virtual_controller_takes_a_layer_on_air() {
             .received(&coremidi::PacketBuffer::new(0, &[0x90, 36, 100]))
             .unwrap()
     };
-    // The input path first: in a learn session the note is reported, nothing runs.
+    // The input path first: in a learn session the note is reported, nothing runs. CoreMIDI
+    // routes a virtual source to a fresh connection after a moment, so the key is pressed until
+    // it registers (like a person pressing a pad after plugging it in).
     st.midi_learn(true);
-    note();
-    std::thread::sleep(Duration::from_millis(500));
-    {
-        let m = st.midi_rt();
-        let queued = lock(&m.queue.items).len();
-        let open: Vec<String> = lock(&m.ports).inputs.keys().cloned().collect();
-        let waker = m.queue.wake.read().unwrap().is_some();
-        println!(
-            "after the note: queued {queued}, dropped {}, open {open:?}, waker {waker}, service {}",
-            m.queue.dropped.load(Ordering::Relaxed),
-            m.service_running()
-        );
-    }
+    let t0 = Instant::now();
+    let mut presses = 0;
     wait_for("the note in a learn session", 5, || {
-        learned.0.load(std::sync::atomic::Ordering::SeqCst) > 0
+        if learned.0.load(std::sync::atomic::Ordering::SeqCst) > 0 {
+            return true;
+        }
+        if presses == 0 || t0.elapsed() > Duration::from_millis(250 * presses) {
+            note();
+            presses += 1;
+        }
+        false
     });
+    println!("learned after {presses} press(es), {:?}", t0.elapsed());
     assert!(!st.live().layer_view(&screen, "l1").unwrap().on_air);
     st.midi_learn(false);
     // Then the mapping.
@@ -316,7 +315,7 @@ fn input_opened_on_any_thread_receives() {
                         Box::new(move |_bytes: &[u8]| g.lock().unwrap().push("run-loop thread")),
                     )
                     .unwrap();
-                let _ = tx.send(Sendable(conn));
+                let _ = tx.send(conn);
             }
             true
         },
@@ -333,6 +332,3 @@ fn input_opened_on_any_thread_receives() {
     assert_eq!(seen, ["plain thread", "run-loop thread", "test thread"]);
     drop((here, plain, conn, looped));
 }
-
-/// Moves a connection between threads in this test.
-struct Sendable(super::backend::InputConn);
