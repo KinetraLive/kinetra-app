@@ -13,11 +13,11 @@ update panel: one paragraph per line, no Markdown.
 
 ## Unreleased
 
+## Next stable release
+
 Typing a license key by hand works again: type it with or without "KNTR-", in any case, with spaces or without dashes. Kinetra tidies it when you paste it or leave the field.
 
 AI templates (Pro and Team) come with neatly formatted HTML and CSS, and a new Format HTML and CSS command (Alt+Shift+F) tidies your own code. The editor previews generated templates with realistic example text and numbers, while new layers start empty, so examples never go on air by accident.
-
-## Next stable release
 
 WebSocket support, in Advanced mode: a Live data (WebSocket) source connects to a WebSocket feed on this computer or your network and maps its JSON to your graphics' fields. Graphics update live as the data changes, and the "API value changed" flow trigger works with these sources too.
 
