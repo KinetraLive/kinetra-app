@@ -19,7 +19,7 @@ Selecting text in a dialog and letting go outside it no longer closes the dialog
 
 API sources: after a test, each column's field suggests the columns the response has (CSV header names or column numbers, JSON paths from the rows), and you can still type your own. A column the latest test doesn't have gets a clear warning.
 
-Flows: a row number wired into Step source or Source row now counts from 1, like everywhere else in Kinetra, so a 75 goes to row 75. The node shows it ("Go to row 75"), and an armed flow with changes you haven't deployed now says clearly that it still runs the old version, with Deploy now right there.
+Row numbers in flows now count from 1, like everywhere else; a flow that wires a fixed row number will now go to exactly that row (one earlier than before). Step source shows the row it goes to ("Go to row 75"), and an armed flow with changes you haven't deployed now says clearly that it still runs the old version, with Deploy now right there.
 
 ## Next stable release
 
