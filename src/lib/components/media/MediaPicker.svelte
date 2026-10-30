@@ -17,6 +17,7 @@
 </script>
 
 <script lang="ts">
+  import { backdropClose } from "$lib/components/backdrop";
   import Button from "$lib/components/Button.svelte";
   import MediaLibrary from "./MediaLibrary.svelte";
 
@@ -55,13 +56,10 @@
     close(null);
   }
 
-  function onBackdropClick(e: MouseEvent) {
-    if (e.target === dialog) close(null);
-  }
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
-<dialog bind:this={dialog} class="dialog" aria-labelledby="{uid}-title" oncancel={onCancelEvent} onclick={onBackdropClick}>
+<dialog bind:this={dialog} class="dialog" aria-labelledby="{uid}-title" oncancel={onCancelEvent} {@attach backdropClose(() => close(null))}>
   <div class="inner">
     <header class="head">
       <h2 id="{uid}-title" class="title">{title}</h2>

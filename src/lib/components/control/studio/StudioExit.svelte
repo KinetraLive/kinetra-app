@@ -13,6 +13,7 @@
     onchoose: (c: StudioExit | null) => void
 -->
 <script lang="ts">
+  import { backdropClose } from "$lib/components/backdrop";
   import Button from "$lib/components/Button.svelte";
   import type { StudioExit } from "./studio.svelte";
 
@@ -47,7 +48,7 @@
   aria-labelledby="{id}-title"
   aria-describedby="{id}-msg"
   {oncancel}
-  onclick={(e) => e.target === dialog && onchoose(null)}
+  {@attach backdropClose(() => onchoose(null))}
 >
   <div class="inner">
     <h2 id="{id}-title" class="title">Turn Studio mode off?</h2>

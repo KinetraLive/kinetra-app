@@ -22,6 +22,7 @@
     onadded: (flows: FlowInfo[]) => void   the created flows, in order
 -->
 <script lang="ts">
+  import { backdropClose } from "$lib/components/backdrop";
   import { onMount, tick } from "svelte";
   import ArrowLeft from "lucide-svelte/icons/arrow-left";
   import Search from "lucide-svelte/icons/search";
@@ -237,7 +238,7 @@
     e.preventDefault();
     cancel();
   }}
-  onclick={(e) => e.target === dialog && cancel()}
+  {@attach backdropClose(cancel)}
 >
   {#if !chosen}
     <div class="inner">

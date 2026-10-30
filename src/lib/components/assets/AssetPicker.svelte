@@ -25,6 +25,7 @@
 </script>
 
 <script lang="ts">
+  import { backdropClose } from "$lib/components/backdrop";
   import { tick, untrack } from "svelte";
   import ImageIcon from "lucide-svelte/icons/image";
   import Pencil from "lucide-svelte/icons/pencil";
@@ -124,9 +125,6 @@
     close(null);
   }
 
-  function onBackdropClick(e: MouseEvent) {
-    if (e.target === dialog && !confirming) close(null);
-  }
 
   // ---- Selection --------------------------------------------------------------------------------
 
@@ -313,7 +311,7 @@
   class="dialog"
   aria-labelledby="{uid}-title"
   oncancel={onCancelEvent}
-  onclick={onBackdropClick}
+  {@attach backdropClose(() => !confirming && close(null))}
 >
   <div class="inner">
     <header class="head">

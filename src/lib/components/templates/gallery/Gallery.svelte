@@ -38,6 +38,7 @@
   section is a listbox with one tab stop (arrow keys / Home / End move).
 -->
 <script lang="ts">
+  import { backdropClose } from "$lib/components/backdrop";
   import { tick } from "svelte";
   import ChevronRight from "lucide-svelte/icons/chevron-right";
   import { goto } from "$app/navigation";
@@ -238,9 +239,6 @@
     cancel();
   }
 
-  function onBackdropClick(e: MouseEvent) {
-    if (e.target === dialog) cancel();
-  }
 
   /** Chooses a card; `toName` (a click, Enter or Space, never an arrow key) then focuses Name. */
   function pick(c: Choice, toName = false) {
@@ -403,7 +401,7 @@
   class="dialog"
   aria-labelledby="{uid}-title"
   oncancel={onCancelEvent}
-  onclick={onBackdropClick}
+  {@attach backdropClose(cancel)}
 >
   <form class="inner" onsubmit={create} novalidate>
     <h2 id="{uid}-title" class="title">

@@ -18,6 +18,7 @@
     oncancel: () => void
 -->
 <script lang="ts">
+  import { backdropClose } from "$lib/components/backdrop";
   import type { Snippet } from "svelte";
   import Button from "./Button.svelte";
 
@@ -74,9 +75,6 @@
     cancel();
   }
 
-  function onBackdropClick(e: MouseEvent) {
-    if (e.target === dialog) cancel();
-  }
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
@@ -86,7 +84,7 @@
   aria-labelledby="{id}-title"
   aria-describedby={message ? `${id}-msg` : undefined}
   oncancel={onCancelEvent}
-  onclick={onBackdropClick}
+  {@attach backdropClose(cancel)}
 >
   <div class="inner">
     <h2 id="{id}-title" class="title">{title}</h2>

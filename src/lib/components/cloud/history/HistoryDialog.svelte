@@ -11,6 +11,7 @@
   Props: open, onclose, restore, openable (the main window: a restored folder can be opened).
 -->
 <script lang="ts">
+  import { backdropClose } from "$lib/components/backdrop";
   import { onMount } from "svelte";
   import { goto } from "$app/navigation";
   import Pin from "lucide-svelte/icons/pin";
@@ -166,7 +167,7 @@
   class="dialog"
   aria-labelledby="{id}-title"
   oncancel={onCancelEvent}
-  onclick={(e) => e.target === dialog && onclose()}
+  {@attach backdropClose(() => onclose())}
 >
   <header class="head">
     <h2 id="{id}-title" class="title">Version history</h2>

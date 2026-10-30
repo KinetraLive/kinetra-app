@@ -1,6 +1,7 @@
 // Tall dialogs fit the window (`pnpm shots:ui`): at 1366×768 and 1920×1080 a dialog sits inside
 // the window and never scrolls as a whole, so its footer (Name, Create, Cancel) is always in view;
-// only an inner list may scroll. Screenshots of the New template gallery at both sizes go to
+// only an inner list may scroll. Also: a text selection dragged out of a dialog never closes it.
+// Screenshots of the New template gallery at both sizes go to
 // review/dialogs/.
 
 import { join } from "node:path";
@@ -125,3 +126,25 @@ for (const size of SIZES) {
     });
   });
 }
+
+test("a text selection dragged out of a dialog doesn't close it; a backdrop click does", async ({ page }) => {
+  await open(page, "/sources", screensScenario("dark"));
+  await page.getByRole("button", { name: "New source" }).first().click();
+  const dialog = page.getByRole("dialog", { name: "New source" });
+  await expect(dialog.getByLabel("Name")).toBeVisible();
+  // Select text in the dialog (from its title and from the Name field), drag out, release on the
+  // backdrop at the window's corner.
+  for (const from of [dialog.getByRole("heading", { name: "New source" }), dialog.getByLabel("Name")]) {
+    const box = (await from.boundingBox())!;
+    await page.mouse.move(box.x + 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 4 });
+    await page.mouse.move(8, 8, { steps: 8 });
+    await page.mouse.up();
+    await page.waitForTimeout(200);
+    await expect(dialog).toBeVisible();
+  }
+  // A press and release on the backdrop closes it.
+  await page.mouse.click(8, 8);
+  await expect(dialog).toBeHidden();
+});

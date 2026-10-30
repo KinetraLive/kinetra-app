@@ -19,6 +19,7 @@
     oncancel: () => void
 -->
 <script lang="ts">
+  import { backdropClose } from "$lib/components/backdrop";
   import Button from "$lib/components/Button.svelte";
   import Select from "$lib/components/Select.svelte";
   import type { SourceColumn } from "$lib/types";
@@ -101,7 +102,7 @@
     e.preventDefault();
     close();
   }}
-  onclick={(e) => e.target === dialog && close()}
+  {@attach backdropClose(() => close())}
 >
   <form
     class="inner"

@@ -15,6 +15,8 @@ update panel: one paragraph per line, no Markdown.
 
 New template fits on any screen: pick a look and its name is ready to type, with Create always in view, so Enter makes it. Double-click a look to create it straight away. Long rules keep Save in view too, and scrollbars are easier to spot in the dark theme.
 
+Selecting text in a dialog and letting go outside it no longer closes the dialog.
+
 ## Next stable release
 
 Typing a license key by hand works again: type it with or without "KNTR-", in any case, with spaces or without dashes. Kinetra tidies it when you paste it or leave the field.

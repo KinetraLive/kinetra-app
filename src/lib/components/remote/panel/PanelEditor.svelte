@@ -10,6 +10,7 @@
   a step whose target is gone shows the core's words (`PanelView.issues`). Props: open, onclose.
 -->
 <script lang="ts">
+  import { backdropClose } from "$lib/components/backdrop";
   import ArrowDown from "lucide-svelte/icons/arrow-down";
   import ArrowUp from "lucide-svelte/icons/arrow-up";
   import TriangleAlert from "lucide-svelte/icons/triangle-alert";
@@ -194,7 +195,7 @@
   class="dialog"
   aria-labelledby="{id}-title"
   oncancel={onCancelEvent}
-  onclick={(e) => e.target === dialog && close()}
+  {@attach backdropClose(() => close())}
 >
   <header class="head">
     <h2 id="{id}-title" class="title">Button panel</h2>
