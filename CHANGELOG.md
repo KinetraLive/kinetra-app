@@ -17,6 +17,8 @@ New template fits on any screen: pick a look and its name is ready to type, with
 
 Selecting text in a dialog and letting go outside it no longer closes the dialog.
 
+API sources: after a test, each column's field suggests the columns the response has (CSV header names or column numbers, JSON paths from the rows), and you can still type your own. A column the latest test doesn't have gets a clear warning.
+
 ## Next stable release
 
 Typing a license key by hand works again: type it with or without "KNTR-", in any case, with spaces or without dashes. Kinetra tidies it when you paste it or leave the field.
