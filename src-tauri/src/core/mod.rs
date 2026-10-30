@@ -58,6 +58,7 @@ pub mod sources;
 pub mod state;
 pub mod studio;
 pub mod styles;
+pub mod template_format;
 pub mod template_safety;
 pub mod template_update;
 pub mod templates;

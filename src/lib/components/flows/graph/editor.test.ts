@@ -407,6 +407,23 @@ describe("FlowEditor header", () => {
     }
   });
 
+  it("an armed flow that isn't deployed says it runs the old version, with Deploy now", async () => {
+    server = flow({ draft: { nodes: [cue, branch, take], edges: [w1], updatedAt: "x" } });
+    render(FlowEditor, { id: "f1" });
+    const note = await screen.findByText(/runs the last deployed version/);
+    expect(note.closest("[role=status]")?.textContent).toContain("Not deployed.");
+    await fireEvent.click(screen.getByRole("button", { name: "Deploy now" }));
+    await waitFor(() => expect(api.deployFlow).toHaveBeenCalledWith("f1"));
+  });
+
+  it("a disarmed flow that isn't deployed shows no banner", async () => {
+    server = flow({ armed: false, draft: { nodes: [cue, branch, take], edges: [w1], updatedAt: "x" } });
+    render(FlowEditor, { id: "f1" });
+    await screen.findByRole("textbox", { name: "Flow name" });
+    expect(screen.getAllByRole("status")[0].textContent).toContain("Not deployed");
+    expect(screen.queryByText(/runs the last deployed version/)).toBeNull();
+  });
+
   it("Deploy is disabled with the reason while there are errors", async () => {
     server = flow({ draft: { nodes: [cue, take], edges: [], updatedAt: "x" } });
     api.checkFlow.mockResolvedValue({ errors: [{ node: "take", message: "Pick a layer" }], warnings: [] });

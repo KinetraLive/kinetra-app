@@ -39,7 +39,22 @@ import ApiEditor from "./ApiEditor.svelte";
 import NewSourceDialog from "../new/NewSourceDialog.svelte";
 import SourceList from "../SourceList.svelte";
 import { ago, apiLong, apiShort, until } from "./status";
-import { apiIssues, cellText, intervalFrom, mapJson, markOf, mergeSecrets, pointerOf, resolve, tokensOf, withinRow, type ApiDoc } from "./model";
+import {
+  apiIssues,
+  cellText,
+  csvPathOptions,
+  intervalFrom,
+  jsonPathOptions,
+  mapJson,
+  markOf,
+  mergeSecrets,
+  missingInTest,
+  pointerOf,
+  resolve,
+  tokensOf,
+  withinRow,
+  type ApiDoc,
+} from "./model";
 import { prefs } from "$lib/stores/prefs.svelte";
 import { server } from "$lib/stores/server.svelte";
 import { toasts } from "$lib/stores/toasts.svelte";
@@ -316,6 +331,54 @@ describe("JSON Pointer and mapping", () => {
 
 // ---- The editor ---------------------------------------------------------------------------------
 
+describe("column suggestions and checks against the last test", () => {
+  const col = (path: string) => ({ key: "k", label: "K", kind: "text" as const, path });
+  const csv = (header: boolean) => ({ rows: "", csv: { header, delimiter: "auto" as const } });
+
+  it("CSV: header names, or column numbers without a header row", () => {
+    expect(csvPathOptions(["Team", "Points"], true)).toEqual([
+      { value: "Team", label: "Column 1" },
+      { value: "Points", label: "Column 2" },
+    ]);
+    expect(csvPathOptions(["0", "1", "2"], false)).toEqual([
+      { value: "0", label: "#1" },
+      { value: "1", label: "#2" },
+      { value: "2", label: "#3" },
+    ]);
+  });
+
+  it("JSON: the paths of the plain values in the first rows, with a sample", () => {
+    const opts = jsonPathOptions(SAMPLE, "/data/standings");
+    expect(opts.map((o) => o.value)).toEqual(["/team/name", "/team/code", "/points", "/logo"]);
+    expect(opts[0].label).toBe("Bergen");
+    // One object as the only row.
+    expect(jsonPathOptions(SAMPLE, "").map((o) => o.value)).toContain("/updated");
+    expect(jsonPathOptions(SAMPLE, "/nowhere")).toEqual([]);
+  });
+
+  it("warns about columns the last test doesn't have", () => {
+    const res = (over: object) => ({ json: null, error: null, csvColumns: null, ...over });
+    // CSV with a header row: by name.
+    expect(missingInTest(col("Points"), res({ csvColumns: ["Team", "Points"] }), csv(true), "csv")).toBeNull();
+    expect(missingInTest(col("Score"), res({ csvColumns: ["Team", "Points"] }), csv(true), "csv")).toBe(
+      "The last test has no column “Score”.",
+    );
+    // Without one: by number.
+    expect(missingInTest(col("1"), res({ csvColumns: ["0", "1"] }), csv(false), "csv")).toBeNull();
+    expect(missingInTest(col("5"), res({ csvColumns: ["0", "1"] }), csv(false), "csv")).toBe(
+      "The last test has 2 columns (0–1).",
+    );
+    // JSON: in any row.
+    const j = { rows: "/data/standings", csv: csv(true).csv };
+    expect(missingInTest(col("/logo"), res({ json: SAMPLE }), j, "json")).toBeNull();
+    expect(missingInTest(col("/score"), res({ json: SAMPLE }), j, "json")).toBe("/score isn't in any row of the last test.");
+    // Nothing to check against: no test, a failed one, no tree.
+    expect(missingInTest(col("/score"), null, j, "json")).toBeNull();
+    expect(missingInTest(col("/score"), res({ json: SAMPLE, error: "HTTP 500" }), j, "json")).toBeNull();
+    expect(missingInTest(col("/score"), res({ json: null }), j, "json")).toBeNull();
+  });
+});
+
 describe("API editor", () => {
   it("counts as in use while shown: watch on mount, off when hidden and on unmount", async () => {
     const r = await mount();
@@ -486,6 +549,73 @@ describe("API editor", () => {
     expect((screen.getByLabelText("Column 1 path") as HTMLInputElement).value).toBe("Points");
     expect(screen.getByRole("button", { name: "Add column Points" }).classList.contains("mapped")).toBe(true);
     expect(document.body).toHaveTextContent("The mapping changed: test the request again to see it.");
+  });
+
+  it("CSV: after a test the column field suggests the headers, still takes typing, and warns", async () => {
+    doc = apiDoc({ format: "csv" });
+    api.testApiSource.mockResolvedValue(
+      testResult({ json: null, csvColumns: ["Team", "Points"], preview: "Team,Points\nBergen,13\n", rows: [{}, {}], hits: {} }),
+    );
+    await mount();
+    await fireEvent.click(screen.getByRole("button", { name: "Test request" }));
+    await advance(0);
+    await fireEvent.click(screen.getByRole("button", { name: "Add column Team" }));
+    await tick();
+    const path = screen.getByLabelText("Column 1 path") as HTMLInputElement;
+    const list = document.getElementById(path.getAttribute("list")!) as HTMLDataListElement;
+    expect([...list.options].map((o) => o.value)).toEqual(["Team", "Points"]);
+    // Typed by hand: a name the response doesn't have gets a warning.
+    await fireEvent.input(path, { target: { value: "Score" } });
+    await tick();
+    expect(document.querySelector('[data-missing="team"]')).toHaveTextContent("The last test has no column “Score”.");
+    await fireEvent.input(path, { target: { value: "Points" } });
+    await tick();
+    expect(document.querySelector("[data-missing]")).toBeNull();
+  });
+
+  it("CSV without a header row: column numbers, and a warning past the last one", async () => {
+    doc = apiDoc({ format: "csv", mapping: { rows: "", columns: [], csv: { header: false, delimiter: "auto" } } });
+    api.testApiSource.mockResolvedValue(
+      testResult({ json: null, csvColumns: ["0", "1"], preview: "Bergen,13\n", rows: [{}], hits: {} }),
+    );
+    await mount();
+    await fireEvent.click(screen.getByRole("button", { name: "Test request" }));
+    await advance(0);
+    await fireEvent.click(screen.getByRole("button", { name: "Add column 2" }));
+    await tick();
+    const path = screen.getByLabelText("Column 1 path") as HTMLInputElement;
+    expect(path.value).toBe("1");
+    const list = document.getElementById(path.getAttribute("list")!) as HTMLDataListElement;
+    expect([...list.options].map((o) => [o.value, o.label])).toEqual([
+      ["0", "#1"],
+      ["1", "#2"],
+    ]);
+    await fireEvent.input(path, { target: { value: "4" } });
+    await tick();
+    expect(document.querySelector("[data-missing]")).toHaveTextContent("The last test has 2 columns (0–1).");
+  });
+
+  it("JSON: the path field suggests the rows' values; a path in no row is flagged", async () => {
+    doc = apiDoc({
+      mapping: {
+        rows: "/data/standings",
+        columns: [{ key: "points", label: "Points", kind: "text", path: "/points" }],
+        csv: { header: true, delimiter: "auto" },
+      },
+    });
+    api.testApiSource.mockResolvedValue(testResult());
+    await mount();
+    const path = screen.getByLabelText("Column 1 path") as HTMLInputElement;
+    // No suggestions or warnings before a test.
+    expect(path.hasAttribute("list")).toBe(false);
+    await fireEvent.click(screen.getByRole("button", { name: "Test request" }));
+    await advance(0);
+    const list = document.getElementById(path.getAttribute("list")!) as HTMLDataListElement;
+    expect([...list.options].map((o) => o.value)).toEqual(["/team/name", "/team/code", "/points", "/logo"]);
+    expect(document.querySelector("[data-missing]")).toBeNull();
+    await fireEvent.input(path, { target: { value: "/score" } });
+    await tick();
+    expect(document.querySelector('[data-missing="points"]')).toHaveTextContent("/score isn't in any row of the last test.");
   });
 
   it("polling: interval in seconds, clamped to 1 with a message; only when used; the hint", async () => {

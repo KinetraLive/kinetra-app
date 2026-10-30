@@ -50,6 +50,11 @@ pub struct FieldDef {
     /// `clock` fields: the display format (`HH`, `mm`, `ss` tokens; default `HH:mm:ss`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub format: Option<String>,
+    /// Text, multiline, number and html fields: a realistic example value ("Rangers", "2")
+    /// that only the template editor and the template preview show for an untouched field.
+    /// Never a layer's value and never on air: new layers start with `default`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sample: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

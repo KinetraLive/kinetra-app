@@ -190,7 +190,7 @@
           <span class="muted" title={savedTitle}>Saved</span>
         {/if}
         {#if ed.notDeployed && !ed.readOnly}
-          <span class="undeployed"><span class="dot" aria-hidden="true"></span>Not deployed</span>
+          <span class="undeployed" class:armed={info.armed}><span class="dot" aria-hidden="true"></span>Not deployed</span>
         {/if}
       </span>
 
@@ -234,6 +234,12 @@
       onclose={() => void goto("/flows")}
     />
     {/await}
+  {/if}
+  {#if ed.notDeployed && !ed.readOnly && info?.armed}
+    <div class="note stale" role="status">
+      <span><strong>Not deployed.</strong> This flow is armed and runs the last deployed version, not these changes.</span>
+      <Button size="sm" variant="primary" onclick={() => void ed.deploy()}>Deploy now</Button>
+    </div>
   {/if}
   {#if ed.readOnly}
     <p class="note">Saved by a newer version of Kinetra, so it's read-only. Duplicate it to edit a copy.</p>
@@ -389,6 +395,23 @@
     height: 6px;
     border-radius: 50%;
     background: var(--accent);
+  }
+  /* Armed: what runs isn't what's shown, so it reads as a warning. */
+  .undeployed.armed {
+    color: var(--warning);
+  }
+  .undeployed.armed .dot {
+    background: var(--warning);
+  }
+  .stale {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--s-3);
+    color: var(--warning);
+  }
+  .stale strong {
+    font-weight: 600;
   }
   .actions {
     display: inline-flex;

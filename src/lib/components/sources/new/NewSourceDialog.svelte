@@ -15,6 +15,7 @@
     names?: string[]                  existing source names, for "Source N" (loaded when omitted)
 -->
 <script lang="ts">
+  import { backdropClose } from "$lib/components/backdrop";
   import { tick } from "svelte";
   import { toAppError } from "$lib/api";
   import { createApiSource } from "$lib/api/api-sources";
@@ -132,9 +133,6 @@
     cancel();
   }
 
-  function onBackdropClick(e: MouseEvent) {
-    if (e.target === dialog) cancel();
-  }
 
   /** An API source set to CSV (header row, delimiter detected). */
   async function createCsvLink(n: string): Promise<SourceDoc> {
@@ -176,7 +174,7 @@
   class="dialog"
   aria-labelledby="{uid}-title"
   oncancel={onCancelEvent}
-  onclick={onBackdropClick}
+  {@attach backdropClose(cancel)}
 >
   <form class="inner" onsubmit={create} novalidate>
     <h2 id="{uid}-title" class="title">New source</h2>
@@ -327,9 +325,10 @@
     padding-top: var(--s-4);
     border-top: 1px solid var(--line);
   }
+  /* Slides only, never fades: opaque from its first frame, which a busy first load can hold for
+     seconds (a fade then showed the page, on-air tally lines too, through the dialog). */
   @keyframes enter {
     from {
-      opacity: 0;
       transform: translateY(8px);
     }
   }

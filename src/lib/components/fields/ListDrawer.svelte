@@ -26,6 +26,7 @@
 </script>
 
 <script lang="ts">
+  import { backdropClose } from "$lib/components/backdrop";
   import { tick, untrack } from "svelte";
   import X from "lucide-svelte/icons/x";
   import { toAppError } from "$lib/api";
@@ -160,13 +161,10 @@
     e.preventDefault();
   }
 
-  function onclick(e: MouseEvent) {
-    if (e.target === dialog) void close();
-  }
 </script>
 
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions, a11y_click_events_have_key_events -->
-<dialog bind:this={dialog} class="drawer" aria-labelledby="{uid}-title" {oncancel} {onclick} {onkeydown}>
+<dialog bind:this={dialog} class="drawer" aria-labelledby="{uid}-title" {oncancel} {@attach backdropClose(() => void close())} {onkeydown}>
   <div class="inner">
     <header class="head">
       <div class="titles">
@@ -295,9 +293,9 @@
     padding: var(--s-4);
     color: var(--danger);
   }
+  /* Slides only, never fades: opaque from its first frame (see the dialogs' enter). */
   @keyframes slide {
     from {
-      opacity: 0;
       transform: translateX(24px);
     }
   }

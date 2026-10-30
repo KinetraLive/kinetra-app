@@ -13,7 +13,19 @@ update panel: one paragraph per line, no Markdown.
 
 ## Unreleased
 
+New template fits on any screen: pick a look and its name is ready to type, with Create always in view, so Enter makes it. Double-click a look to create it straight away. Long rules keep Save in view too, and scrollbars are easier to spot in the dark theme.
+
+Selecting text in a dialog and letting go outside it no longer closes the dialog. Dialogs also cover what's behind them from the moment they open: the red on-air line of a screen no longer shows through New cue or Add automation the first time you open them.
+
+API sources: after a test, each column's field suggests the columns the response has (CSV header names or column numbers, JSON paths from the rows), and you can still type your own. A column the latest test doesn't have gets a clear warning.
+
+Row numbers in flows now count from 1, like everywhere else; a flow that wires a fixed row number will now go to exactly that row (one earlier than before). Step source shows the row it goes to ("Go to row 75"), and an armed flow with changes you haven't deployed now says clearly that it still runs the old version, with Deploy now right there.
+
 ## Next stable release
+
+Typing a license key by hand works again: type it with or without "KNTR-", in any case, with spaces or without dashes. Kinetra tidies it when you paste it or leave the field.
+
+AI templates (Pro and Team) come with neatly formatted HTML and CSS, and a new Format HTML and CSS command (Alt+Shift+F) tidies your own code. The editor previews generated templates with realistic example text and numbers, while new layers start empty, so examples never go on air by accident.
 
 WebSocket support, in Advanced mode: a Live data (WebSocket) source connects to a WebSocket feed on this computer or your network and maps its JSON to your graphics' fields. Graphics update live as the data changes, and the "API value changed" flow trigger works with these sources too.
 

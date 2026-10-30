@@ -165,6 +165,8 @@ describe("/flows page", () => {
     expect(within(own).getAllByRole("listitem")).toHaveLength(4);
     expect(screen.getByRole("list", { name: "Main stage flows" })).toBeTruthy();
     expect(row("f3").textContent).toContain("Not deployed");
+    // Branchy is armed: what runs isn't its draft, and the row says so.
+    expect(row("f3").querySelector(".undeployed.armed")?.textContent).toBe("Not deployed: runs the old version");
     expect(row("f3").textContent).toContain("1 warning");
     expect(row("f1").querySelector(".fired")?.textContent?.trim()).toBe("2 min ago");
     expect(row("f9").textContent).toContain("Read-only");

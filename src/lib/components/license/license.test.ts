@@ -29,7 +29,7 @@ vi.mock("$app/navigation", () => ({ goto: vi.fn() }));
 const opener = vi.hoisted(() => ({ openUrl: vi.fn() }));
 vi.mock("@tauri-apps/plugin-opener", () => opener);
 
-import { API_MESSAGES, cloudMessage, formatKey, keyComplete } from "./messages";
+import { API_MESSAGES, cloudMessage, keyComplete, normalizeKey } from "./messages";
 import LicenseHost from "./LicenseHost.svelte";
 import { license } from "./state.svelte";
 
@@ -62,6 +62,23 @@ function view(over: Partial<LicenseView> = {}): LicenseView {
     signin: { state: "idle" },
     ...over,
   };
+}
+
+/** Types like a person: one character at a time at the cursor, each with its input event. */
+async function typeKey(input: HTMLInputElement, text: string) {
+  input.focus();
+  for (const ch of text) {
+    const at = input.selectionStart ?? input.value.length;
+    input.value = input.value.slice(0, at) + ch + input.value.slice(input.selectionEnd ?? at);
+    input.setSelectionRange(at + 1, at + 1);
+    await fireEvent(input, new InputEvent("input", { inputType: "insertText", data: ch, bubbles: true }));
+  }
+}
+
+/** Pastes over the field's whole value. */
+async function pasteKey(input: HTMLInputElement, text: string) {
+  input.value = text;
+  await fireEvent(input, new InputEvent("input", { inputType: "insertFromPaste", bubbles: true }));
 }
 
 async function show(v: LicenseView) {
@@ -97,12 +114,26 @@ describe("messages", () => {
     expect(cloudMessage({ code: "offline", message: "Kinetra can't reach the server." })).toBe("Kinetra can't reach the server.");
   });
 
-  it("formats keys as typed, forgiving any shape", () => {
-    expect(formatKey("kntr4b7")).toBe("KNTR-4B7");
-    expect(formatKey("kntr 4b7x 9q2z hhhh")).toBe("KNTR-4B7X-9Q2Z-HHHH");
-    expect(formatKey("4B7X-9Q2Z-HHHH-EXTRA")).toBe("KNTR-4B7X-9Q2Z-HHHH");
-    expect(formatKey("o0l1i")).toBe(""); // not in the alphabet
-    expect(keyComplete("KNTR-4B7X-9Q2Z-HHHH")).toBe(true);
+  it("accepts a whole key in any shape", () => {
+    for (const shape of [
+      "KNTR-4B7X-9Q2Z-HHHH",
+      "kntr-4b7x-9q2z-hhhh",
+      "4B7X-9Q2Z-HHHH",
+      "4b7x9q2zhhhh",
+      "KNTR4B7X9Q2ZHHHH",
+      "  kntr 4b7x 9q2z hhhh ",
+      "KNTR--4B7X–9Q2Z—HHHH",
+      "Kntr-4B7X 9q2z-HhHh",
+    ]) {
+      expect(normalizeKey(shape), shape).toBe("KNTR-4B7X-9Q2Z-HHHH");
+    }
+    // A bare 12-character key that starts with KNTR keeps it.
+    expect(normalizeKey("kntr-4b7x-9q2z")).toBe("KNTR-KNTR-4B7X-9Q2Z");
+    expect(normalizeKey("KNTR-KNTR-4B7X-9Q2Z")).toBe("KNTR-KNTR-4B7X-9Q2Z");
+    for (const partial of ["", "KNTR-", "KNTR-4B7X", "4B7X-9Q2Z-HHH", "4B7X-9Q2Z-HHHH-2", "4B7X-9Q2Z-HHH0", "4B7X-9Q2Z-HHHO"]) {
+      expect(normalizeKey(partial), partial).toBeNull();
+    }
+    expect(keyComplete("kntr 4b7x 9q2z hhhh")).toBe(true);
     expect(keyComplete("KNTR-4B7X")).toBe(false);
   });
 });
@@ -122,13 +153,61 @@ describe("license host", () => {
     expect(screen.queryByRole("button", { name: /continue/i })).toBeNull();
   });
 
-  it("a license key is formatted, then redeemed after sign-in", async () => {
+  it("a key typed by hand stays as typed, character by character", async () => {
+    await show(view({ welcome: true }));
+    await fireEvent.click(screen.getByRole("button", { name: "I have a license key" }));
+    const input = screen.getByLabelText("License key") as HTMLInputElement;
+    const button = () => screen.getByRole("button", { name: "Sign in and add key" }) as HTMLButtonElement;
+    for (const typed of ["KNTR-4B7X-9Q2Z-HHHH", "kntr-4b7x-9q2z-hhhh", "4b7x 9q2z hhhh", "kntr4b7x9q2zhhhh"]) {
+      input.value = "";
+      await fireEvent.input(input);
+      let so = "";
+      for (const ch of typed) {
+        await typeKey(input, ch);
+        so += ch;
+        expect(input.value).toBe(so);
+        expect(input.selectionStart).toBe(so.length);
+      }
+      expect(button().disabled).toBe(false);
+      // Tidied once, when the field loses focus.
+      await fireEvent.blur(input);
+      expect(input.value).toBe("KNTR-4B7X-9Q2Z-HHHH");
+    }
+    // A fix in the middle keeps the cursor where it is.
+    input.value = "KNTR-4B7X-9QZ-HHHH";
+    await fireEvent.input(input);
+    input.setSelectionRange(12, 12);
+    await typeKey(input, "2");
+    expect(input.value).toBe("KNTR-4B7X-9Q2Z-HHHH");
+    expect(input.selectionStart).toBe(13);
+    // An incomplete key stays as typed, also on blur.
+    input.value = "";
+    await fireEvent.input(input);
+    await typeKey(input, "kntr-4b7");
+    await fireEvent.blur(input);
+    expect(input.value).toBe("kntr-4b7");
+    expect(button().disabled).toBe(true);
+  });
+
+  it("a pasted key is tidied at once, with or without KNTR-", async () => {
+    await show(view({ welcome: true }));
+    await fireEvent.click(screen.getByRole("button", { name: "I have a license key" }));
+    const input = screen.getByLabelText("License key") as HTMLInputElement;
+    for (const pasted of ["KNTR-4B7X-9Q2Z-HHHH", "4b7x-9q2z-hhhh", "  kntr 4b7x 9q2z hhhh\n", "4B7X9Q2ZHHHH"]) {
+      await pasteKey(input, pasted);
+      expect(input.value).toBe("KNTR-4B7X-9Q2Z-HHHH");
+    }
+    await pasteKey(input, "not a key");
+    expect(input.value).toBe("not a key");
+  });
+
+  it("a license key is redeemed after sign-in, in its tidy form", async () => {
     api.signInStart.mockResolvedValue({ state: "idle" });
     await show(view({ welcome: true }));
     await fireEvent.click(screen.getByRole("button", { name: "I have a license key" }));
     const input = screen.getByLabelText("License key") as HTMLInputElement;
-    await fireEvent.input(input, { target: { value: "kntr 4b7x9q2zhhhh" } });
-    expect(input.value).toBe("KNTR-4B7X-9Q2Z-HHHH");
+    await typeKey(input, "kntr 4b7x9q2zhhhh");
+    expect(input.value).toBe("kntr 4b7x9q2zhhhh");
     await fireEvent.click(screen.getByRole("button", { name: "Sign in and add key" }));
     expect(api.signInStart).toHaveBeenCalled();
     expect(api.licenseRedeem).not.toHaveBeenCalled();

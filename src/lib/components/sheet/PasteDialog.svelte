@@ -19,6 +19,7 @@
     oncancel: () => void
 -->
 <script lang="ts">
+  import { backdropClose } from "$lib/components/backdrop";
   import Button from "$lib/components/Button.svelte";
   import Select from "$lib/components/Select.svelte";
   import type { SourceColumn } from "$lib/types";
@@ -101,7 +102,7 @@
     e.preventDefault();
     close();
   }}
-  onclick={(e) => e.target === dialog && close()}
+  {@attach backdropClose(() => close())}
 >
   <form
     class="inner"
@@ -305,5 +306,11 @@
     display: flex;
     justify-content: flex-end;
     gap: var(--s-2);
+    /* Stays in view when a long dialog scrolls. */
+    position: sticky;
+    bottom: 0;
+    margin-bottom: calc(-1 * var(--s-5));
+    padding-bottom: var(--s-5);
+    background: var(--surface-2);
   }
 </style>

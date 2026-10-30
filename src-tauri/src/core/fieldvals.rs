@@ -594,9 +594,34 @@ pub fn countdown_hide_at(s: &TimerState) -> Option<u64> {
 
 // ---- per field type --------------------------------------------------------------------------
 
+/// The longest preview sample a field may have (characters).
+pub const SAMPLE_MAX: usize = 400;
+
+/// Whether a field type may have a preview `sample` (text-like and numbers).
+pub fn takes_sample(kind: FieldType) -> bool {
+    matches!(
+        kind,
+        FieldType::Text | FieldType::Multiline | FieldType::Number | FieldType::Html
+    )
+}
+
 /// Checks the type-specific parts of a field definition: a list's columns and default, a clock's
-/// format, a timer's default. Other types have none.
+/// format, a timer's default, a preview sample (text-like and number fields only, at most
+/// [`SAMPLE_MAX`] characters, a number for a number field).
 pub fn validate_def(def: &FieldDef) -> Result<(), String> {
+    if let Some(sample) = &def.sample {
+        if !takes_sample(def.kind) {
+            return Err("only text and number fields have a preview sample".into());
+        }
+        if sample.chars().count() > SAMPLE_MAX {
+            return Err(format!(
+                "the preview sample is over {SAMPLE_MAX} characters"
+            ));
+        }
+        if def.kind == FieldType::Number && sample.trim().parse::<f64>().is_err() {
+            return Err("the preview sample of a number field must be a number".into());
+        }
+    }
     match def.kind {
         FieldType::List => {
             validate_columns(&def.columns)?;
@@ -627,9 +652,77 @@ pub fn wire_default(def: &FieldDef) -> String {
     }
 }
 
-/// Preview value: the label for text-like fields, three sample rows of column labels for a list,
-/// the default state for a timer, the format for a clock.
+/// Words that make a text field number-like: scores, counts, percentages, places. Matched as
+/// whole words of the key or the label (`blue-score`, "Player 1 boost"). Mirrored in the
+/// editor (`templates/editor/fieldTypes.ts` `NUMBER_WORDS`).
+pub const NUMBER_WORDS: &[&str] = &[
+    "score", "scores", "points", "pts", "goals", "goal", "boost", "count", "total", "round",
+    "rounds", "set", "sets", "game", "games", "lap", "laps", "rank", "position", "pos", "place",
+    "number", "num", "kills", "deaths", "assists", "wins", "losses", "saves", "shots", "fouls",
+    "percent", "pct", "%", "speed", "age", "year", "series", "quarter", "period", "inning",
+    "frame",
+];
+
+fn words<'a>(key: &'a str, label: &'a str) -> impl Iterator<Item = String> + 'a {
+    let split = |s: &'a str| s.split(|c: char| !c.is_alphanumeric() && c != '%');
+    split(key)
+        .chain(split(label))
+        .filter(|w| !w.is_empty())
+        .map(str::to_lowercase)
+}
+
+/// Whether a key or label names a number (see [`NUMBER_WORDS`]).
+pub fn number_words(key: &str, label: &str) -> bool {
+    words(key, label).any(|w| NUMBER_WORDS.contains(&w.as_str()))
+}
+
+/// A realistic preview number for a number-like field: a place 1, a percentage 45, a round 3, a
+/// year 2026, an age 28, a speed 88, else (scores, counts) 2. Never the label: a long label in a
+/// number's slot overflowed the graphic.
+pub fn sample_number(key: &str, label: &str) -> &'static str {
+    for w in words(key, label) {
+        match w.as_str() {
+            "rank" | "position" | "pos" | "place" => return "1",
+            "boost" | "percent" | "pct" | "%" => return "45",
+            "round" | "rounds" | "set" | "sets" | "game" | "games" | "lap" | "laps" | "quarter"
+            | "period" | "inning" | "frame" | "series" => return "3",
+            "year" => return "2026",
+            "age" => return "28",
+            "speed" => return "88",
+            _ => {}
+        }
+    }
+    "2"
+}
+
+/// Preview value (never what goes on air; see `preview::label_values`): the field's preview
+/// `sample` when it has one; else its own default when it has one; a number-like field (type `number`, or a text field named like a number)
+/// without a numeric default a realistic number ([`sample_number`]); other text-like fields the
+/// label; three sample rows of column labels for a list; the default state for a timer; the
+/// format for a clock.
 pub fn sample_value(def: &FieldDef) -> String {
+    if let Some(s) = def.sample.as_deref().filter(|s| !s.trim().is_empty()) {
+        if takes_sample(def.kind) {
+            return s.to_string();
+        }
+    }
+    let default = def.default.trim();
+    let numeric = !default.is_empty() && default.parse::<f64>().is_ok();
+    match def.kind {
+        FieldType::Number if numeric => return default.to_string(),
+        FieldType::Number => return sample_number(&def.key, &def.label).to_string(),
+        FieldType::Text | FieldType::Multiline if number_words(&def.key, &def.label) => {
+            return if numeric {
+                default.to_string()
+            } else {
+                sample_number(&def.key, &def.label).to_string()
+            };
+        }
+        FieldType::Text | FieldType::Multiline if !default.is_empty() => {
+            return def.default.clone();
+        }
+        _ => {}
+    }
     match def.kind {
         FieldType::List => {
             let rows: Vec<Vec<String>> = (1..=SAMPLE_ROWS)
@@ -684,6 +777,77 @@ pub fn edit_value(def: &FieldDef, raw: &str) -> Result<String, String> {
 mod tests {
     use super::*;
 
+    fn plain(key: &str, label: &str, kind: FieldType, default: &str) -> FieldDef {
+        FieldDef {
+            sample: None,
+            key: key.into(),
+            label: label.into(),
+            kind,
+            default: default.into(),
+            columns: Vec::new(),
+            format: None,
+        }
+    }
+
+    /// A preview sample shows only in previews: what goes on air (and new layers) is the default.
+    #[test]
+    fn samples_are_preview_only_and_checked() {
+        let mut d = plain("home", "Home", FieldType::Text, "");
+        d.sample = Some("Rangers".into());
+        assert!(validate_def(&d).is_ok());
+        assert_eq!(sample_value(&d), "Rangers");
+        assert_eq!(wire_default(&d), "", "on air: the default");
+        let mut n = plain("score", "Score", FieldType::Number, "0");
+        n.sample = Some("2".into());
+        assert_eq!(
+            (sample_value(&n), wire_default(&n)),
+            ("2".to_string(), "0".to_string())
+        );
+        n.sample = Some("two".into());
+        assert!(
+            validate_def(&n).is_err(),
+            "a number field's sample is a number"
+        );
+        let mut img = plain("logo", "Logo", FieldType::Image, "");
+        img.sample = Some("x.png".into());
+        assert!(validate_def(&img).is_err(), "only text and numbers");
+        d.sample = Some("x".repeat(SAMPLE_MAX + 1));
+        assert!(validate_def(&d).is_err());
+    }
+
+    /// Previews never put a long label in a number's slot (it overflowed the graphic).
+    #[test]
+    fn number_like_fields_preview_a_realistic_number() {
+        let v = |k, l, t, d| sample_value(&plain(k, l, t, d));
+        // Number fields: their default if numeric, else a number for their kind.
+        assert_eq!(v("boost", "Player 1 boost", FieldType::Number, ""), "45");
+        assert_eq!(
+            v(
+                "boost",
+                "Player 1 boost",
+                FieldType::Number,
+                "Player 1 boost"
+            ),
+            "45"
+        );
+        assert_eq!(v("n", "Anything", FieldType::Number, "7"), "7");
+        // Text fields named like numbers.
+        assert_eq!(
+            v("blue-score", "Blue series score", FieldType::Text, ""),
+            "3"
+        );
+        assert_eq!(v("home-goals", "Home", FieldType::Text, ""), "2");
+        assert_eq!(v("pos", "Position", FieldType::Text, ""), "1");
+        assert_eq!(v("score", "Score", FieldType::Text, "0"), "0");
+        // Other text: its default, else the label (as before).
+        assert_eq!(v("team", "Blue team", FieldType::Text, ""), "Blue team");
+        assert_eq!(
+            v("team", "Blue team", FieldType::Text, "Rangers"),
+            "Rangers"
+        );
+        assert_eq!(v("logo", "Score logo", FieldType::Image, ""), "Score logo");
+    }
+
     fn cols(keys: &[&str]) -> Vec<SourceColumn> {
         keys.iter()
             .map(|k| SourceColumn {
@@ -696,6 +860,7 @@ mod tests {
 
     fn list_def(keys: &[&str], default: &str) -> FieldDef {
         FieldDef {
+            sample: None,
             key: "rows".into(),
             label: "Rows".into(),
             kind: FieldType::List,
@@ -714,6 +879,7 @@ mod tests {
 
     fn status_def() -> FieldDef {
         FieldDef {
+            sample: None,
             key: STATUS_FIELD.into(),
             label: "Status".into(),
             kind: FieldType::Text,

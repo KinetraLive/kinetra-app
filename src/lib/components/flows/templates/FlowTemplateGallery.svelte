@@ -22,6 +22,7 @@
     onadded: (flows: FlowInfo[]) => void   the created flows, in order
 -->
 <script lang="ts">
+  import { backdropClose } from "$lib/components/backdrop";
   import { onMount, tick } from "svelte";
   import ArrowLeft from "lucide-svelte/icons/arrow-left";
   import Search from "lucide-svelte/icons/search";
@@ -237,7 +238,7 @@
     e.preventDefault();
     cancel();
   }}
-  onclick={(e) => e.target === dialog && cancel()}
+  {@attach backdropClose(cancel)}
 >
   {#if !chosen}
     <div class="inner">
@@ -632,9 +633,10 @@
     color: var(--text-muted);
     font-size: var(--fs-sm);
   }
+  /* Slides only, never fades: opaque from its first frame, which a busy first load can hold for
+     seconds (a fade then showed the page, on-air tally lines too, through the dialog). */
   @keyframes enter {
     from {
-      opacity: 0;
       transform: translateY(8px);
     }
   }

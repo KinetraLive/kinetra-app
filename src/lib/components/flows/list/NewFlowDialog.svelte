@@ -13,6 +13,7 @@
     onclose: () => void      Esc, Cancel, a backdrop click, or after Create
 -->
 <script lang="ts">
+  import { backdropClose } from "$lib/components/backdrop";
   import { onMount, tick } from "svelte";
   import { goto } from "$app/navigation";
   import { toAppError } from "$lib/api";
@@ -86,7 +87,7 @@
     e.preventDefault();
     cancel();
   }}
-  onclick={(e) => e.target === dialog && cancel()}
+  {@attach backdropClose(cancel)}
 >
   <form class="inner" onsubmit={create} novalidate>
     <h2 id="{uid}-title" class="title">New flow</h2>
@@ -217,9 +218,10 @@
     gap: var(--s-2);
     margin-top: var(--s-3);
   }
+  /* Slides only, never fades: opaque from its first frame, which a busy first load can hold for
+     seconds (a fade then showed the page, on-air tally lines too, through the dialog). */
   @keyframes enter {
     from {
-      opacity: 0;
       transform: translateY(8px);
     }
   }

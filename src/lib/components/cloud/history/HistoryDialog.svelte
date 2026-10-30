@@ -11,6 +11,7 @@
   Props: open, onclose, restore, openable (the main window: a restored folder can be opened).
 -->
 <script lang="ts">
+  import { backdropClose } from "$lib/components/backdrop";
   import { onMount } from "svelte";
   import { goto } from "$app/navigation";
   import Pin from "lucide-svelte/icons/pin";
@@ -166,7 +167,7 @@
   class="dialog"
   aria-labelledby="{id}-title"
   oncancel={onCancelEvent}
-  onclick={(e) => e.target === dialog && onclose()}
+  {@attach backdropClose(() => onclose())}
 >
   <header class="head">
     <h2 id="{id}-title" class="title">Version history</h2>
@@ -430,9 +431,10 @@
     color: var(--text-muted);
     font-size: var(--fs-sm);
   }
+  /* Slides only, never fades: opaque from its first frame, which a busy first load can hold for
+     seconds (a fade then showed the page, on-air tally lines too, through the dialog). */
   @keyframes enter {
     from {
-      opacity: 0;
       transform: translateY(8px);
     }
   }

@@ -82,6 +82,23 @@ function view(over: Partial<LicenseView> = {}): LicenseView {
   };
 }
 
+/** Types like a person: one character at a time at the cursor, each with its input event. */
+async function typeKey(input: HTMLInputElement, text: string) {
+  input.focus();
+  for (const ch of text) {
+    const at = input.selectionStart ?? input.value.length;
+    input.value = input.value.slice(0, at) + ch + input.value.slice(input.selectionEnd ?? at);
+    input.setSelectionRange(at + 1, at + 1);
+    await fireEvent(input, new InputEvent("input", { inputType: "insertText", data: ch, bubbles: true }));
+  }
+}
+
+/** Pastes over the field's whole value. */
+async function pasteKey(input: HTMLInputElement, text: string) {
+  input.value = text;
+  await fireEvent(input, new InputEvent("input", { inputType: "insertFromPaste", bubbles: true }));
+}
+
 async function mount(v: LicenseView) {
   license.view = v;
   render(LicensePane);
@@ -145,11 +162,28 @@ describe("Preferences › License", () => {
   it("adds a license key here too: at once when signed in", async () => {
     await mount(view());
     const input = screen.getByLabelText("License key") as HTMLInputElement;
-    await fireEvent.input(input, { target: { value: "kntr4b7x9q2zhhhh" } });
-    expect(input.value).toBe("KNTR-4B7X-9Q2Z-HHHH");
+    // Typed by hand in lowercase without dashes: never rewritten while typing.
+    let so = "";
+    for (const ch of "kntr4b7x9q2zhhhh") {
+      await typeKey(input, ch);
+      so += ch;
+      expect(input.value).toBe(so);
+    }
     await fireEvent.click(screen.getByRole("button", { name: "Add key" }));
     expect(api.licenseRedeem).toHaveBeenCalledWith("KNTR-4B7X-9Q2Z-HHHH");
     await vi.waitFor(() => expect(screen.getByRole("status").textContent).toBe("License key redeemed."));
+  });
+
+  it("a pasted key is tidied at once; a typed one on blur", async () => {
+    await mount(view());
+    const input = screen.getByLabelText("License key") as HTMLInputElement;
+    await pasteKey(input, " 4b7x 9q2z hhhh ");
+    expect(input.value).toBe("KNTR-4B7X-9Q2Z-HHHH");
+    await pasteKey(input, "");
+    await typeKey(input, "KNTR 4B7X 9Q2Z HHHH");
+    expect(input.value).toBe("KNTR 4B7X 9Q2Z HHHH");
+    await fireEvent.blur(input);
+    expect(input.value).toBe("KNTR-4B7X-9Q2Z-HHHH");
   });
 
   it("a redeemed key says what it did on this computer", async () => {

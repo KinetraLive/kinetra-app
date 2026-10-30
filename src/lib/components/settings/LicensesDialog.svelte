@@ -10,6 +10,7 @@
     onclose: () => void
 -->
 <script lang="ts">
+  import { backdropClose } from "$lib/components/backdrop";
   import ChevronRight from "lucide-svelte/icons/chevron-right";
   import Search from "lucide-svelte/icons/search";
   import X from "lucide-svelte/icons/x";
@@ -56,9 +57,6 @@
     onclose();
   }
 
-  function onBackdropClick(e: MouseEvent) {
-    if (e.target === dialog) onclose();
-  }
 
   function toggle(key: string) {
     expanded[key] = !expanded[key];
@@ -75,7 +73,7 @@
   aria-labelledby="{uid}-title"
   aria-describedby="{uid}-sum"
   oncancel={onCancelEvent}
-  onclick={onBackdropClick}
+  {@attach backdropClose(() => onclose())}
 >
   <div class="inner">
     <header class="head">
@@ -366,9 +364,12 @@
     color: var(--danger);
   }
 
+  /* Slides only, never fades: opaque from its first frame, which a busy first load can hold for
+
+     seconds (a fade then showed the page, on-air tally lines too, through the dialog). */
+
   @keyframes enter {
     from {
-      opacity: 0;
       transform: translateY(8px);
     }
   }

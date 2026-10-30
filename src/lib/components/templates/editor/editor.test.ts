@@ -11,6 +11,7 @@ const api = vi.hoisted(() => ({
   getTemplate: vi.fn(),
   saveTemplate: vi.fn(),
   saveTemplateVariant: vi.fn(),
+  formatTemplateCode: vi.fn(),
   createTemplateVariant: vi.fn(),
   renameTemplateVariant: vi.fn(),
   deleteTemplateVariant: vi.fn(),
@@ -96,6 +97,7 @@ vi.mock("./codemirror", () => ({
     return {
       getValue: () => v.value,
       length: () => v.value.length,
+      replaceAll: (text: string) => v.set(text),
       focus() {},
       destroy() {
         v.destroyed = true;
@@ -296,6 +298,31 @@ describe("load and teardown", () => {
 });
 
 // ---- Drafts and autosave ------------------------------------------------------------------------
+
+describe("Format HTML and CSS", () => {
+  const HTML = "<div>\n  <p>{{name}}</p>\n</div>\n";
+  const CSS = ".a {\n  color: red;\n}\n";
+
+  it("formats the open HTML as one edit and the CSS directly, then drafts and saves both", async () => {
+    const { getCommand } = await import("$lib/commands/registry.svelte");
+    api.formatTemplateCode.mockResolvedValue({ html: HTML, css: CSS });
+    await mountEditor();
+    const cmd = getCommand("template.formatCode");
+    expect(cmd?.defaultKeys).toEqual(["Alt+Shift+F"]);
+    await cmd!.run!({} as never);
+    await advance(150);
+    expect(api.formatTemplateCode).toHaveBeenCalledTimes(1);
+    // The HTML editor is open: its text is replaced (one undoable edit). The CSS editor isn't
+    // open yet: the working copy is updated.
+    expect(cm.views[0].value).toBe(HTML);
+    expect(draftsWith("html")).toEqual([{ html: HTML }]);
+    expect(draftsWith("css")).toEqual([{ css: CSS }]);
+    await advance(1000);
+    const saved = api.saveTemplateVariant.mock.calls.at(-1);
+    expect(saved?.[2]).toBe(HTML);
+    expect(saved?.[3]).toBe(CSS);
+  });
+});
 
 describe("drafts and autosave", () => {
   it("CSS edits send one debounced draft and one save", async () => {

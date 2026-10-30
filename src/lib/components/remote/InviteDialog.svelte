@@ -10,6 +10,7 @@
   air. Props: open, onclose, crewUrl (the control site's page, offered when the show isn't there).
 -->
 <script lang="ts">
+  import { backdropClose } from "$lib/components/backdrop";
   import X from "lucide-svelte/icons/x";
   import { toAppError } from "$lib/api";
   import { remoteCollaboratorRemove, remoteCollaborators, remoteCollaboratorSet, remoteInvite } from "$lib/api/remote";
@@ -152,7 +153,7 @@
   class="dialog"
   aria-labelledby="{id}-title"
   oncancel={onCancelEvent}
-  onclick={(e) => e.target === dialog && onclose()}
+  {@attach backdropClose(() => onclose())}
 >
   <header class="head">
     <h2 id="{id}-title" class="title">Invite collaborator</h2>
@@ -378,9 +379,10 @@
     color: var(--danger);
     font-size: var(--fs-sm);
   }
+  /* Slides only, never fades: opaque from its first frame, which a busy first load can hold for
+     seconds (a fade then showed the page, on-air tally lines too, through the dialog). */
   @keyframes enter {
     from {
-      opacity: 0;
       transform: translateY(8px);
     }
   }

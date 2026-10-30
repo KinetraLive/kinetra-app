@@ -102,6 +102,8 @@
   --surface-3: #292a2f;
   --line: #33353b;
   --line-strong: #474950;
+  /* Scrollbar thumbs: 3:1 on every surface, so a scrollable area reads as one. */
+  --scrollbar: #74777e;
   --text: #ededea;
   --text-muted: #a2a4aa;
   --accent: #3d9fbd;
@@ -137,6 +139,7 @@
     --surface-3: #e5e5e2;
     --line: #d5d5d1;
     --line-strong: #b3b3ae;
+    --scrollbar: #7f7f7a;
     --text: #141518;
     --text-muted: #585a60;
     --accent: #1b7490;
@@ -172,6 +175,7 @@
   --surface-3: #e5e5e2;
   --line: #d5d5d1;
   --line-strong: #b3b3ae;
+  --scrollbar: #7f7f7a;
   --text: #141518;
   --text-muted: #585a60;
   --accent: #1b7490;
@@ -331,7 +335,7 @@ pre {
 
 * {
   scrollbar-width: thin;
-  scrollbar-color: var(--line-strong) transparent;
+  scrollbar-color: var(--scrollbar) transparent;
 }
 
 /* ---- View transition for the theme switch (opacity crossfade only) ----------------------------- */

@@ -420,6 +420,47 @@
     await updateLook({ id, name }, updateHooks);
   }
 
+  /** "Format HTML and CSS": the active look's code pretty-printed by the core (the same
+   *  formatting AI results get). Open editors take it as one undoable edit; code not open in an
+   *  editor is updated and saved directly. */
+  async function formatCode() {
+    const v = activeDoc;
+    if (!v) return;
+    let out: { html: string; css: string };
+    try {
+      out = await api.formatTemplateCode(readHtml(), readCss());
+    } catch (e) {
+      fail(e);
+      return;
+    }
+    if (htmlView) htmlView.replaceAll(out.html);
+    if (cssView) cssView.replaceAll(out.css);
+    const rest = {
+      ...(htmlView ? {} : { html: out.html }),
+      ...(cssView ? {} : { css: out.css }),
+    };
+    if (Object.keys(rest).length) {
+      updateVariant(v.id, rest);
+      if ("html" in rest) drafts.queue("html", readHtml);
+      if ("css" in rest) drafts.queue("css", readCss);
+      variantSave(v.id).touch();
+    }
+  }
+
+  $effect(() => {
+    if (!advanced) return;
+    return registerCommands([
+      {
+        id: "template.formatCode",
+        title: "Format HTML and CSS",
+        section: "edit",
+        keywords: ["pretty", "indent", "tidy", "prettier"],
+        defaultKeys: ["Alt+Shift+F"],
+        run: formatCode,
+      },
+    ]);
+  });
+
   // The palette command for this template (the project-items one is hidden in the editor).
   $effect(() => {
     if (!presetUpdate) return;

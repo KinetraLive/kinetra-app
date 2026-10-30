@@ -13,6 +13,7 @@
   Props: GalleryProps (./lazy.ts).
 -->
 <script lang="ts">
+  import { backdropClose } from "$lib/components/backdrop";
   import { tick } from "svelte";
   import { toAppError } from "$lib/api";
   import { installRecipe, listRecipes } from "$lib/api/recipes";
@@ -128,9 +129,6 @@
     cancel();
   }
 
-  function onBackdropClick(e: MouseEvent) {
-    if (e.target === dialog) cancel();
-  }
 
   function pick(r: RecipeInfo) {
     if (chosen === r.id) return;
@@ -191,7 +189,7 @@
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
-<dialog bind:this={dialog} class="dialog" aria-labelledby="{uid}-title" oncancel={onCancelEvent} onclick={onBackdropClick}>
+<dialog bind:this={dialog} class="dialog" aria-labelledby="{uid}-title" oncancel={onCancelEvent} {@attach backdropClose(cancel)}>
   <form class="inner" onsubmit={install} novalidate>
     <h2 id="{uid}-title" class="title">{title}</h2>
 
@@ -444,9 +442,10 @@
     color: var(--danger);
     font-size: var(--fs-sm);
   }
+  /* Slides only, never fades: opaque from its first frame, which a busy first load can hold for
+     seconds (a fade then showed the page, on-air tally lines too, through the dialog). */
   @keyframes enter {
     from {
-      opacity: 0;
       transform: translateY(8px);
     }
   }
