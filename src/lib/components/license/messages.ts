@@ -121,15 +121,26 @@ const PREFIX = "KNTR";
 const ALPHABET = "23456789ABCDEFGHJKMNPQRSTVWXYZ";
 const BODY_LEN = 12;
 
-/** Live formatting for the key field (`kntr4b7` → `KNTR-4B7`): invalid characters dropped,
- * cut at 12 characters. Mirrors `key_format::format_partial`. */
-export function formatKey(input: string): string {
-  let upper = input.replace(/[\s\-–—]/g, "").toUpperCase();
-  if (upper.startsWith(PREFIX) && upper.length !== BODY_LEN) upper = upper.slice(PREFIX.length);
-  const body = [...upper].filter((c) => ALPHABET.includes(c)).slice(0, BODY_LEN).join("");
-  if (!body) return "";
-  return `${PREFIX}-${body.match(/.{1,4}/g)!.join("-")}`;
+/** A whole key in any shape (with or without `KNTR-`, any case, spaces, missing or extra
+ * dashes) as `KNTR-XXXX-XXXX-XXXX`; null while it isn't one. Mirrors `key_format::normalize`
+ * except the checksum, which the core checks. */
+export function normalizeKey(input: string): string | null {
+  let body = input.replace(/[\s\-–—]/g, "").toUpperCase();
+  // A bare 12-character key that happens to start with KNTR keeps it.
+  if (body.startsWith(PREFIX) && body.length !== BODY_LEN) body = body.slice(PREFIX.length);
+  if (body.length !== BODY_LEN || ![...body].every((c) => ALPHABET.includes(c))) return null;
+  return `${PREFIX}-${body.match(/.{4}/g)!.join("-")}`;
 }
 
-/** The key is complete (12 characters); the core checks it. */
-export const keyComplete = (formatted: string) => formatted.replace(/^KNTR-|-/g, "").length === BODY_LEN;
+/** The field holds a whole key; the core checks the rest. */
+export const keyComplete = (input: string) => normalizeKey(input) !== null;
+
+/** Tidies the key field once (after a paste or drop, on blur): a whole key becomes
+ * `KNTR-XXXX-XXXX-XXXX`, anything else stays as typed. Never while typing, so it never fights
+ * the user or moves the cursor. Returns the field's value. */
+export function tidyKeyField(input: HTMLInputElement, e?: Event): string {
+  const pasted = !e || (e instanceof InputEvent && /^insert(FromPaste|FromDrop|ReplacementText)/.test(e.inputType));
+  const key = pasted ? normalizeKey(input.value) : null;
+  if (key && key !== input.value) input.value = key;
+  return input.value;
+}

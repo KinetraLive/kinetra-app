@@ -1,7 +1,7 @@
 <!--
   First launch: until one sign-in or license key has succeeded on this computer, the app can't
   be used. "Sign in to get your free license" (primary) or "I have a license key"
-  (KNTR-XXXX-XXXX-XXXX, formatted as typed; redeemed after sign-in). Full-window; never shown
+  (KNTR-XXXX-XXXX-XXXX in any shape, tidied after a paste and on blur; redeemed after sign-in). Full-window; never shown
   again afterwards (signing out later doesn't bring it back).
 -->
 <script lang="ts">
@@ -9,7 +9,7 @@
   import Button from "$lib/components/Button.svelte";
   import { signInCancel } from "$lib/api/license";
   import type { SigninView } from "$lib/types";
-  import { formatKey, keyComplete } from "./messages";
+  import { normalizeKey, tidyKeyField } from "./messages";
   import SignInCode from "./SignInCode.svelte";
   import { license } from "./state.svelte";
 
@@ -39,7 +39,8 @@
         class="key"
         onsubmit={(e) => {
           e.preventDefault();
-          if (keyComplete(key)) void license.redeem(key);
+          const whole = normalizeKey(key);
+          if (whole) void license.redeem((key = whole));
         }}
       >
         <label for="{id}-key">License key</label>
@@ -52,15 +53,12 @@
           autofocus
           placeholder="KNTR-XXXX-XXXX-XXXX"
           value={key}
-          oninput={(e) => (key = e.currentTarget.value = formatKey(e.currentTarget.value))}
-          onpaste={(e) => {
-            e.preventDefault();
-            key = formatKey(e.clipboardData?.getData("text") ?? "");
-          }}
+          oninput={(e) => (key = tidyKeyField(e.currentTarget, e))}
+          onblur={(e) => (key = tidyKeyField(e.currentTarget))}
         />
         <p class="muted">You'll sign in first; the key is added to your account.</p>
         <div class="row">
-          <Button type="submit" variant="primary" disabled={!keyComplete(key)}>Sign in and add key</Button>
+          <Button type="submit" variant="primary" disabled={!normalizeKey(key)}>Sign in and add key</Button>
           <Button variant="ghost" onclick={() => (mode = "choose")}>Back</Button>
         </div>
       </form>
