@@ -21,7 +21,7 @@ API sources: after a test, each column's field suggests the columns the response
 
 Row numbers in flows now count from 1, like everywhere else; a flow that wires a fixed row number will now go to exactly that row (one earlier than before). Step source shows the row it goes to ("Go to row 75"), and an armed flow with changes you haven't deployed now says clearly that it still runs the old version, with Deploy now right there.
 
-On Mac: MIDI controllers and display outputs now work like on Windows. Plug in a controller and map its buttons and faders, or send a screen full screen to a second display or projector. Displays stay awake while an output shows, on Mac and Windows.
+On Mac: MIDI controllers and display outputs now work like on Windows. Plug in a controller and map its buttons and faders, or send a screen full screen to a second display or projector. Displays stay awake while an output shows, on Mac and Windows. These are new on Mac and haven't been tested on real hardware yet, so please report anything that doesn't work.
 
 ## Next stable release
 
