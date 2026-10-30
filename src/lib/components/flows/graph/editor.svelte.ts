@@ -450,6 +450,12 @@ export class FlowEditorCtl {
     this.apply(setNodeKind(this.graph, id, kind), group);
   }
 
+  /** The node wired into a data input of `nodeId`, if any. */
+  feeding(nodeId: string, port: string): FlowNode | undefined {
+    const e = this.graph.edges.find((x) => x.kind === "data" && x.to.node === nodeId && x.to.port === port);
+    return e ? this.graph.nodes.find((x) => x.id === e.from.node) : undefined;
+  }
+
   setSelection(nodes: Iterable<string>, edges: Iterable<string> = []): void {
     this.selectedNodes = new Set(nodes);
     this.selectedEdges = new Set(edges);

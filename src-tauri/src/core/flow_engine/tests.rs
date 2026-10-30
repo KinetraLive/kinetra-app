@@ -802,6 +802,7 @@ fn data_nodes_are_pulled_when_an_action_runs() {
         ),
         "20"
     );
+    // A wired row number counts from 1: row 3 is "c".
     assert_eq!(
         run_with(
             "idx",
@@ -810,7 +811,7 @@ fn data_nodes_are_pulled_when_an_action_runs() {
                 node(
                     "k",
                     NodeKind::Constant {
-                        value: Constant::Number(2.0)
+                        value: Constant::Number(3.0)
                     }
                 )
             ],
@@ -1465,8 +1466,8 @@ fn source_row_trigger_fires_from_every_path() {
     // Next / Prev.
     e.st.step_source(&src.id, SourceStep::By { delta: 1 })
         .unwrap();
-    wait_until("step", || title() == "1");
-    // No change, no firing.
+    wait_until("step", || title() == "2");
+    // No change, no firing (the trigger's index is a row number, from 1).
     e.st.step_source(&src.id, SourceStep::Index { index: 1 })
         .unwrap();
     // A save that moves the row.
@@ -1475,7 +1476,7 @@ fn source_row_trigger_fires_from_every_path() {
         *index = 2;
     }
     e.st.save_source(doc).unwrap();
-    wait_until("save", || title() == "2");
+    wait_until("save", || title() == "3");
     // A flow's step.
     let stepper = e.create(
         "stepper",
@@ -1492,7 +1493,7 @@ fn source_row_trigger_fires_from_every_path() {
         vec![ev("cue", "fired", "s", "in")],
     );
     e.run(&stepper);
-    wait_until("flow step", || title() == "0");
+    wait_until("flow step", || title() == "1");
     // The watcher's reload of an edited file.
     let mut doc = e.st.get_source(&src.id).unwrap();
     if let SourceKind::Text { index, .. } = &mut doc.meta.kind {
@@ -1500,7 +1501,7 @@ fn source_row_trigger_fires_from_every_path() {
     }
     crate::core::sources::save(&e.dir, doc, false).unwrap();
     e.st.reload_source(&e.dir, &src.id);
-    wait_until("reload", || title() == "1");
+    wait_until("reload", || title() == "2");
     // Auto-advance.
     e.st.set_auto_advance(
         &src.id,
@@ -1515,7 +1516,7 @@ fn source_row_trigger_fires_from_every_path() {
     )
     .unwrap();
     e.st.live().show(&s.id, "l1").unwrap();
-    wait_until("auto-advance", || title() == "2");
+    wait_until("auto-advance", || title() == "3");
     // The field is set before the run reports its end.
     wait_until("five firings", || e.ends(&id).len() >= 5);
     assert_eq!(e.ends(&id).len(), 5, "one firing per change");
@@ -2916,4 +2917,48 @@ fn a_flow_has_at_most_one_api_call_trigger() {
         err.to_string().contains("at most one API call trigger"),
         "{err}"
     );
+}
+
+/// Step source with a row number wired into `index` goes to that row (counted from 1, like the UI),
+/// whatever its own mode says, and stays there on every run. A tester's "Next row" node with a
+/// Constant 75 wired in seemed to step to the next row: that flow wasn't deployed.
+#[test]
+fn a_wired_index_overrides_the_step_mode() {
+    let e = env();
+    let src = e.source();
+    let index = || match e.st.get_source(&src.id).unwrap().meta.kind {
+        SourceKind::Text { index, .. } => index,
+        _ => unreachable!(),
+    };
+    // Row 3 is index 2; row 1 index 0; anything below 1 is row 1.
+    for (value, want) in [
+        (Constant::Number(3.0), 2),
+        (Constant::Number(1.0), 0),
+        (Constant::Number(-4.0), 0),
+    ] {
+        let id = e.create(
+            "goto",
+            vec![
+                cue_node(),
+                node(
+                    "s",
+                    NodeKind::StepSource {
+                        source_id: src.id.clone(),
+                        step: SourceStep::By { delta: 1 },
+                    },
+                ),
+                node("k", NodeKind::Constant { value }),
+            ],
+            vec![
+                ev("cue", "fired", "s", "in"),
+                data("k", "value", "s", "index"),
+            ],
+        );
+        e.run(&id);
+        wait_until("wired index", || index() == want);
+        // Again: still that row, not the next one.
+        e.run(&id);
+        std::thread::sleep(Duration::from_millis(100));
+        assert_eq!(index(), want);
+    }
 }

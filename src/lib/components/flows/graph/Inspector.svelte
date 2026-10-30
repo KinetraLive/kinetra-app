@@ -46,7 +46,7 @@
 
   const nameOf = (n: FlowNode | undefined) => (n ? nodeLabel(n.type) : "a missing node");
   const describe = (n: FlowNode) => {
-    const s = nodeSummary(n, ed.lookups);
+    const s = nodeSummary(n, ed.lookups, (p) => ed.feeding(n.id, p));
     return s ? `${nodeLabel(n.type)}: ${s.length > 40 ? `${s.slice(0, 39)}…` : s}` : nodeLabel(n.type);
   };
 

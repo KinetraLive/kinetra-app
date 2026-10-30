@@ -155,6 +155,31 @@ describe("catalogue and palette", () => {
     expect(newNode("data.scheduleItem", d, { x: 0, y: 0 }).config).toEqual({ sourceId: "sch", which: "now" });
   });
 
+  it("Step source and Source row say which row a wire sends them to (row numbers count from 1)", () => {
+    const sk: Lookups = {
+      screens: new Map(),
+      sources: new Map([["sh", { id: "sh", name: "Ctrl Sheet" }]]) as unknown as Lookups["sources"],
+      flows: new Map(),
+    };
+    const step: NodeKind = { type: "action.stepSource", config: { sourceId: "sh", step: { to: "by", delta: 1 } } } as NodeKind;
+    const row: NodeKind = { type: "data.sourceRow", config: { sourceId: "sh", row: { pick: "current" } } } as NodeKind;
+    const num = (v: number): NodeKind => ({ type: "data.constant", config: { value: { kind: "number", value: v } } });
+    // Nothing wired: the node's own mode.
+    expect(nodeSummary(step, sk)).toBe("Next row of Ctrl Sheet");
+    expect(nodeSummary(step, sk, () => undefined)).toBe("Next row of Ctrl Sheet");
+    // A Constant 75 wired in: row 75, whatever the mode says.
+    expect(nodeSummary(step, sk, (p) => (p === "index" ? num(75) : undefined))).toBe("Go to row 75 of Ctrl Sheet");
+    expect(nodeSummary(row, sk, (p) => (p === "index" ? num(3) : undefined))).toBe("Row 3 of Ctrl Sheet");
+    // Below 1 is row 1; another node's value is "the wired row".
+    expect(nodeSummary(step, sk, () => num(0))).toBe("Go to row 1 of Ctrl Sheet");
+    const math: NodeKind = { type: "data.math", config: { op: "add", a: 1, b: 2 } } as NodeKind;
+    expect(nodeSummary(step, sk, () => math)).toBe("Go to the wired row of Ctrl Sheet");
+    // The ports read as row numbers.
+    expect(portLabel(step, "index")).toBe("row number");
+    expect(portLabel(row, "index")).toBe("row number");
+    expect(portLabel({ type: "trigger.sourceRow", config: { sourceId: "sh" } }, "index")).toBe("row number");
+  });
+
   it("Take preview: an action on a screen (in; done, failed), the project's transition by default", () => {
     expect(catalogInfo("action.takePreview")).toEqual({
       type: "action.takePreview",
