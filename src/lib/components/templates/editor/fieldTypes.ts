@@ -32,7 +32,8 @@ export const FIRST_COLUMN: SourceColumn = { key: "name", label: "Name" };
 /**
  * The field changed to `type`, keeping key and label. Type-specific settings start fresh: a list
  * gets one column and no rows, a clock the default format, a timer a paused count-up at 0; other
- * types drop `columns` / `format` and the old default when it came from those.
+ * types drop `columns` / `format` and the old default when it came from those. A preview `sample`
+ * is dropped (it was an example of the old type).
  */
 export function withFieldType(f: FieldDef, type: FieldType): FieldDef {
   if (type === f.type) return f;
@@ -93,12 +94,16 @@ const isNumeric = (s: string) => s.trim() !== "" && Number.isFinite(Number(s.tri
 
 /**
  * The template editor's preview value for a field nobody typed into (mirrors `sample_value` in
- * fieldvals.rs): a number-like field (type number, or a text field named like a number) its
+ * fieldvals.rs): the field's preview `sample` when it has one (a number for a number field); a
+ * number-like field (type number, or a text field named like a number) its
  * numeric default, else a realistic number; other fields their default when they have one; else a
  * placeholder ("[Name]") for text fields, the label for other text-like fields; a list's default
  * rows, else one row of its column labels; a clock's format; a timer's default state.
  */
 export function previewDefault(f: FieldDef): string {
+  const sample = f.sample?.trim() ? f.sample : undefined;
+  if (sample !== undefined && (f.type === "text" || f.type === "multiline" || f.type === "html")) return sample;
+  if (sample !== undefined && f.type === "number" && isNumeric(sample)) return sample.trim();
   switch (f.type) {
     case "list":
       return hasRows(f.default)

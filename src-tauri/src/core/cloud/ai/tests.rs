@@ -94,8 +94,23 @@ fn number_like_fields_are_found_by_type_key_or_label() {
     assert!(!number_like("list", "scores", "Scores"));
 }
 
+/// (default, sample) of every field after tidying.
+fn split_of(p: &Value) -> Vec<(String, Option<String>)> {
+    p["manifest"]["fields"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|f| {
+            (
+                f["default"].as_str().unwrap().to_string(),
+                f.get("sample").and_then(Value::as_str).map(str::to_string),
+            )
+        })
+        .collect()
+}
+
 #[test]
-fn tidying_formats_the_code_and_clears_placeholder_values() {
+fn tidying_formats_the_code_and_moves_realistic_values_to_samples() {
     let mut p = json!({
         "manifest": {"fields": [
             {"key": "name", "label": "Name", "type": "text", "default": "Name"},
@@ -104,22 +119,77 @@ fn tidying_formats_the_code_and_clears_placeholder_values() {
             {"key": "boost", "label": "Boost", "type": "number", "default": "lots"},
             {"key": "home", "label": "Home", "type": "text", "default": "Rangers"},
             {"key": "goals", "label": "Goals", "type": "number", "default": "3"},
-            {"key": "accent", "label": "Accent", "type": "color", "default": "Accent"}
+            {"key": "accent", "label": "Accent", "type": "color", "default": "#c8102e", "sample": "x"}
         ]},
         "files": {"default": {"html": "<div class=\"a\"><div>{{name}}</div></div>", "css": ".a{color:red}"}}
     });
     tidy_package(&mut p);
-    let d: Vec<&str> = p["manifest"]["fields"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|f| f["default"].as_str().unwrap())
-        .collect();
-    // Placeholders cleared (numbers to 0), real values kept, other types untouched.
-    assert_eq!(d, ["", "", "0", "0", "Rangers", "3", "Accent"]);
+    let o = |d: &str, s: Option<&str>| (d.to_string(), s.map(str::to_string));
+    // New layers start empty (0 for numbers); the realistic values are preview samples;
+    // placeholders are neither; other types keep their default and get no sample.
+    assert_eq!(
+        split_of(&p),
+        [
+            o("", None),
+            o("", None),
+            o("0", None),
+            o("0", None),
+            o("", Some("Rangers")),
+            o("0", Some("3")),
+            o("#c8102e", None),
+        ]
+    );
     assert_eq!(
         p["files"]["default"]["html"],
-        "<div class=\"a\">\n  <div>{{name}}</div>\n</div>\n"
+        "<div class=\"a\">
+  <div>{{name}}</div>
+</div>
+"
     );
-    assert_eq!(p["files"]["default"]["css"], ".a {\n  color: red;\n}\n");
+    assert_eq!(
+        p["files"]["default"]["css"],
+        ".a {
+  color: red;
+}
+"
+    );
+}
+
+/// A server that sends samples itself: its defaults are the real ones (placeholders still go).
+#[test]
+fn a_result_with_samples_keeps_its_defaults() {
+    let mut p = json!({"manifest": {"fields": [
+        {"key": "title", "label": "Title", "type": "text", "default": "BREAKING", "sample": "Storm warning"},
+        {"key": "score", "label": "Score", "type": "number", "default": "0", "sample": "2"},
+        {"key": "name", "label": "Name", "type": "text", "default": "Name", "sample": "Name"},
+        {"key": "pct", "label": "Pct", "type": "number", "default": "0", "sample": "lots"}
+    ]}});
+    tidy_package(&mut p);
+    let o = |d: &str, s: Option<&str>| (d.to_string(), s.map(str::to_string));
+    assert_eq!(
+        split_of(&p),
+        [
+            o("BREAKING", Some("Storm warning")),
+            o("0", Some("2")),
+            o("", None),
+            o("0", None),
+        ]
+    );
+}
+
+/// A tweak sends the samples as defaults (the API's format has no sample yet).
+#[test]
+fn a_tweak_sends_samples_as_defaults() {
+    let mut p = json!({"manifest": {"fields": [
+        {"key": "home", "label": "Home", "type": "text", "default": "", "sample": "Rangers"},
+        {"key": "title", "label": "Title", "type": "text", "default": "LIVE"}
+    ]}});
+    fold_samples(&mut p);
+    assert_eq!(
+        p["manifest"]["fields"],
+        json!([
+            {"key": "home", "label": "Home", "type": "text", "default": "Rangers"},
+            {"key": "title", "label": "Title", "type": "text", "default": "LIVE"}
+        ])
+    );
 }

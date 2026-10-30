@@ -206,3 +206,14 @@ describe("preview values of number-like fields", () => {
     expect([...NUMBER_WORDS]).toEqual(core);
   });
 });
+
+describe("preview samples", () => {
+  it("show in the preview first; a type change drops them", () => {
+    const home: FieldDef = { key: "home", label: "Home", type: "text", default: "", sample: "Rangers" };
+    expect(previewDefault(home)).toBe("Rangers");
+    expect(previewDefault({ key: "score", label: "Score", type: "number", default: "0", sample: "2" })).toBe("2");
+    // A non-numeric sample on a number field is ignored (the core refuses to save it).
+    expect(previewDefault({ key: "score", label: "Score", type: "number", default: "0", sample: "two" })).toBe("0");
+    expect(withFieldType(home, "image").sample).toBeUndefined();
+  });
+});

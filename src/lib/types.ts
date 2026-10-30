@@ -1201,6 +1201,10 @@ export interface FieldDef {
   columns?: SourceColumn[];
   /** `clock` fields: `HH`, `mm`, `ss` tokens (default "HH:mm:ss"). */
   format?: string;
+  /** Text, multiline, number and html fields: a realistic example ("Rangers", "2") that only the
+   *  template editor's preview shows for an untouched field; never on air (new layers get
+   *  `default`). */
+  sample?: string;
 }
 
 /** Most rows / bytes a `list` value may hold. */

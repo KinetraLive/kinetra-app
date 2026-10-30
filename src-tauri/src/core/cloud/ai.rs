@@ -4,9 +4,12 @@
 //! hardened like any save). `ai-job` events carry progress; the user keeps working meanwhile.
 //!
 //! Before import a result is tidied ([`tidy_package`]): its HTML and CSS pretty-printed
-//! (`template_format`; models answer in one long line), and field defaults that are only the
-//! field's label or key (the model's placeholder, which showed as huge overlapping text) cleared:
-//! `0` for number-like fields ([`number_like`]), empty for the rest. A tweak's name gets
+//! (`template_format`; models answer in one long line), and the fields' values split: the
+//! model's realistic values become preview-only `sample`s (owner's decision 2026-10-30: never on
+//! air), and the default a new layer starts with is empty, `0` for number-like fields
+//! ([`number_like`]). A value that is only the field's label or key (the model's placeholder,
+//! which showed as huge overlapping text) is no sample. A result that already carries samples
+//! keeps its defaults. Tweaks send the samples as defaults ([`fold_samples`]). A tweak's name gets
 //! " (tweaked)" at most once ([`tweaked_name`]).
 
 use std::collections::HashMap;
@@ -20,6 +23,7 @@ use tokio::task::AbortHandle;
 
 use super::api::{AiQuota, CallError};
 use crate::core::events::names;
+use crate::core::fieldvals::SAMPLE_MAX;
 use crate::core::model::TEMPLATE_FONTS;
 use crate::core::state::AppState;
 use crate::error::{AppError, AppResult};
@@ -64,8 +68,8 @@ pub fn tweaked_name(name: &str) -> String {
     format!("{}{SUFFIX}", base.trim_end())
 }
 
-/// Tidies an AI result before import (see the module docs): formatted HTML and CSS, and
-/// placeholder defaults (the label or key) cleared.
+/// Tidies an AI result before import (see the module docs): formatted HTML and CSS, preview
+/// samples split from the real defaults, placeholders (the label or key) dropped.
 pub fn tidy_package(package: &mut Value) {
     use crate::core::template_format::{format_css, format_html};
     if let Some(files) = package.get_mut("files").and_then(Value::as_object_mut) {
@@ -87,29 +91,81 @@ pub fn tidy_package(package: &mut Value) {
     else {
         return;
     };
-    for f in fields {
-        let get = |k: &str| {
+    // A result that already carries preview samples (a server that splits them) keeps its
+    // defaults as the real ones; otherwise the model's realistic defaults become the samples.
+    let split = fields.iter().any(|f| {
+        f.get("sample").is_some()
+            && matches!(
+                f.get("type").and_then(Value::as_str),
+                Some("text" | "multiline" | "number" | "html")
+            )
+    });
+    for f in fields.iter_mut() {
+        let get = |f: &Value, k: &str| {
             f.get(k)
                 .and_then(Value::as_str)
                 .unwrap_or("")
                 .trim()
                 .to_string()
         };
-        let (key, label, ty, default) = (get("key"), get("label"), get("type"), get("default"));
-        if !matches!(ty.as_str(), "text" | "multiline" | "number") || default.is_empty() {
+        let (key, label, ty) = (get(f, "key"), get(f, "label"), get(f, "type"));
+        let default = get(f, "default");
+        let given = get(f, "sample");
+        let Some(obj) = f.as_object_mut() else {
+            continue;
+        };
+        let samples = matches!(ty.as_str(), "text" | "multiline" | "number" | "html");
+        if !samples {
+            obj.remove("sample");
             continue;
         }
-        let placeholder = default.eq_ignore_ascii_case(&label)
-            || default.eq_ignore_ascii_case(&key)
-            || default.eq_ignore_ascii_case(&format!("[{label}]"));
-        let bad_number = ty == "number" && default.parse::<f64>().is_err();
-        if placeholder || bad_number {
-            let value = if number_like(&ty, &key, &label) {
-                "0"
-            } else {
-                ""
-            };
-            f["default"] = Value::String(value.to_string());
+        let number = number_like(&ty, &key, &label);
+        let is_placeholder = |v: &str| {
+            v.eq_ignore_ascii_case(&label)
+                || v.eq_ignore_ascii_case(&key)
+                || v.eq_ignore_ascii_case(&format!("[{label}]"))
+        };
+        // The value a new layer starts with: empty, 0 for a number-like field.
+        let real = if number { "0" } else { "" };
+        let sample = if split {
+            let bad_default = is_placeholder(&default)
+                || (ty == "number" && !default.is_empty() && default.parse::<f64>().is_err());
+            if bad_default {
+                obj.insert("default".into(), Value::String(real.into()));
+            }
+            given
+        } else {
+            obj.insert("default".into(), Value::String(real.into()));
+            default
+        };
+        let ok = !sample.is_empty()
+            && !is_placeholder(&sample)
+            && sample.chars().count() <= SAMPLE_MAX
+            && (ty != "number" || sample.parse::<f64>().is_ok());
+        if ok {
+            obj.insert("sample".into(), Value::String(sample));
+        } else {
+            obj.remove("sample");
+        }
+    }
+}
+
+/// A template package for "Tweak with AI": each field's preview sample in place of its default
+/// (the model then keeps the realistic values; `tidy_package` splits them again on import), and
+/// no `sample` key (the API's template format has none yet).
+pub fn fold_samples(package: &mut Value) {
+    let Some(fields) = package
+        .pointer_mut("/manifest/fields")
+        .and_then(Value::as_array_mut)
+    else {
+        return;
+    };
+    for f in fields {
+        let Some(obj) = f.as_object_mut() else {
+            continue;
+        };
+        if let Some(Value::String(s)) = obj.remove("sample") {
+            obj.insert("default".into(), Value::String(s));
         }
     }
 }
@@ -274,7 +330,8 @@ impl AppState {
             )));
         }
         let dir = self.project_dir()?;
-        let package = crate::core::templates::to_package(&dir, &template_id)?;
+        let mut package = crate::core::templates::to_package(&dir, &template_id)?;
+        fold_samples(&mut package);
         let name = package["manifest"]["name"]
             .as_str()
             .unwrap_or("Template")
