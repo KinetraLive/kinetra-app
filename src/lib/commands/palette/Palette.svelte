@@ -21,6 +21,7 @@
                         stepping back then closes the palette
 -->
 <script lang="ts">
+  import { backdropClose } from "$lib/components/backdrop";
   import { onMount, tick } from "svelte";
   import Search from "lucide-svelte/icons/search";
   import ChevronRight from "lucide-svelte/icons/chevron-right";
@@ -337,9 +338,7 @@
   class="palette"
   aria-label={t("Command palette")}
   oncancel={onCancelEvent}
-  onclick={(e) => {
-    if (e.target === dialog) close();
-  }}
+  {@attach backdropClose(() => close())}
 >
   <div class="search vf vf-within">
     <Search size={16} aria-hidden="true" />

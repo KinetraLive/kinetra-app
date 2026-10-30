@@ -299,6 +299,20 @@ describe("new source dialog", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("Name taken");
     expect(onclose).not.toHaveBeenCalled();
   });
+
+  it("selecting text and releasing on the backdrop keeps it open; a backdrop press closes it", async () => {
+    const onclose = vi.fn();
+    render(NewSourceDialog, { open: true, onclose, names: [] });
+    const name = screen.getByLabelText("Name");
+    const dialog = screen.getByRole("dialog");
+    // Down in the Name field, dragged out, up on the backdrop: the click lands on the dialog.
+    await fireEvent.pointerDown(name);
+    await fireEvent.click(dialog);
+    expect(onclose).not.toHaveBeenCalled();
+    await fireEvent.pointerDown(dialog);
+    await fireEvent.click(dialog);
+    expect(onclose).toHaveBeenCalledTimes(1);
+  });
 });
 
 // ---- Editor -------------------------------------------------------------------------------------

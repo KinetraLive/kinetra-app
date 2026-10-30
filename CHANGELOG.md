@@ -13,6 +13,12 @@ update panel: one paragraph per line, no Markdown.
 
 ## Unreleased
 
+New template fits on any screen: pick a look and its name is ready to type, with Create always in view, so Enter makes it. Double-click a look to create it straight away. Long rules keep Save in view too, and scrollbars are easier to spot in the dark theme.
+
+Selecting text in a dialog and letting go outside it no longer closes the dialog.
+
+API sources: after a test, each column's field suggests the columns the response has (CSV header names or column numbers, JSON paths from the rows), and you can still type your own. A column the latest test doesn't have gets a clear warning.
+
 ## Next stable release
 
 Typing a license key by hand works again: type it with or without "KNTR-", in any case, with spaces or without dashes. Kinetra tidies it when you paste it or leave the field.

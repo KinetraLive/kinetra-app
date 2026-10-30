@@ -15,6 +15,7 @@
   transparent background. Focus goes to the name on open and back to the opener on close.
 -->
 <script lang="ts">
+  import { backdropClose } from "$lib/components/backdrop";
   import { tick } from "svelte";
   import { goto } from "$app/navigation";
   import { toAppError } from "$lib/api";
@@ -130,9 +131,6 @@
     cancel();
   }
 
-  function onBackdropClick(e: MouseEvent) {
-    if (e.target === dialog) cancel();
-  }
 
   async function create(e?: SubmitEvent) {
     e?.preventDefault();
@@ -165,7 +163,7 @@
   class="dialog"
   aria-labelledby="{uid}-title"
   oncancel={onCancelEvent}
-  onclick={onBackdropClick}
+  {@attach backdropClose(cancel)}
 >
   <form class="inner" onsubmit={create} novalidate>
     <h2 id="{uid}-title" class="title">New screen</h2>

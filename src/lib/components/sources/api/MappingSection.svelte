@@ -7,7 +7,10 @@
           Enter or double-click does the likely one. The rows node and mapped values are
           highlighted with their column keys.
     CSV   the header names (or column numbers) as buttons that add a column; mapped ones marked.
-  Below: the columns (label, key, Text/Image, path, rows with a value), editable, up to 16.
+  Below: the columns (label, key, Text/Image, path, rows with a value), editable, up to 16. After
+  a test the path field suggests what the response has (CSV: the header names or column numbers;
+  JSON: the paths of the values in its first rows) and can still be typed; a column the last test
+  doesn't have gets a warning.
 
   Props:
     mapping, format, url              the working copy's (API sources; live data sources: JSON)
@@ -31,7 +34,18 @@
   import { SOURCE_COLUMNS_MAX, type ApiFormat, type ApiMapping, type ApiMappingColumn } from "$lib/types";
   import { deriveKey } from "../keys";
   import JsonTree from "./JsonTree.svelte";
-  import { columnFor, markOf, resolve, rowsIsList, withinRow, type MappingIssues, type MappingResult } from "./model";
+  import {
+    columnFor,
+    csvPathOptions,
+    jsonPathOptions,
+    markOf,
+    missingInTest,
+    resolve,
+    rowsIsList,
+    withinRow,
+    type MappingIssues,
+    type MappingResult,
+  } from "./model";
 
   let {
     mapping,
@@ -72,6 +86,16 @@
   const isJson = $derived(format === "json" && result !== null && result.json !== null && result.json !== undefined);
   const list = $derived(isJson ? rowsIsList(json, mapping.rows) : true);
   const full = $derived(cols.length >= SOURCE_COLUMNS_MAX);
+  /** What the path fields suggest, from the last test. */
+  const pathOptions = $derived(
+    !result || result.error
+      ? []
+      : format === "csv"
+        ? csvPathOptions(result.csvColumns ?? [], mapping.csv.header)
+        : isJson
+          ? jsonPathOptions(json, mapping.rows)
+          : [],
+  );
 
   let selected = $state<string | null>(null);
   /** Expanded to after a test and when the rows change. */
@@ -333,6 +357,7 @@
               aria-label="Column {i + 1} path"
               autocomplete="off"
               spellcheck="false"
+              list={pathOptions.length > 0 ? `${uid}-paths` : undefined}
               value={c.path}
               oninput={(e) => patchColumn(i, { path: e.currentTarget.value })}
             />
@@ -341,9 +366,19 @@
           <IconButton variant="danger" size="sm" label="Remove column {c.label || i + 1}" tooltip="left" onclick={() => setColumns(cols.filter((_, j) => j !== i))}>
             <X size={14} />
           </IconButton>
-          {#if issues.columns[i]}<p class="bad small full-row">{issues.columns[i]}</p>{/if}
+          {#if issues.columns[i]}
+            <p class="bad small full-row">{issues.columns[i]}</p>
+          {:else}
+            {@const missing = missingInTest(c, result, mapping, format)}
+            {#if missing}<p class="warn small full-row" data-missing={c.key}>{missing}</p>{/if}
+          {/if}
         {/each}
       </div>
+      {#if pathOptions.length > 0}
+        <datalist id="{uid}-paths">
+          {#each pathOptions as o, i (i)}<option value={o.value} label={o.label}></option>{/each}
+        </datalist>
+      {/if}
     {/if}
     {#if issues.table}<p class="bad small">{issues.table}</p>{/if}
   </div>

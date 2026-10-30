@@ -22,6 +22,7 @@
   Props: LinearEditorProps (./launcher.svelte.ts).
 -->
 <script lang="ts">
+  import { backdropClose } from "$lib/components/backdrop";
   import { onMount, tick, untrack } from "svelte";
   import ArrowDown from "lucide-svelte/icons/arrow-down";
   import ArrowUp from "lucide-svelte/icons/arrow-up";
@@ -201,9 +202,6 @@
     cancel();
   }
 
-  function onBackdropClick(e: MouseEvent) {
-    if (e.target === dialog) cancel();
-  }
 
   async function save(e?: SubmitEvent) {
     e?.preventDefault();
@@ -334,7 +332,7 @@
 {/snippet}
 
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
-<dialog bind:this={dialog} class="dialog" aria-labelledby="{uid}-title" oncancel={onCancelEvent} onclick={onBackdropClick}>
+<dialog bind:this={dialog} class="dialog" aria-labelledby="{uid}-title" oncancel={onCancelEvent} {@attach backdropClose(cancel)}>
   <form class="inner" onsubmit={save} novalidate>
     <h2 id="{uid}-title" class="title">{title}</h2>
 
@@ -1068,6 +1066,12 @@
     gap: var(--s-2);
     padding-top: var(--s-4);
     border-top: 1px solid var(--line);
+    /* Stays in view when a long dialog scrolls. */
+    position: sticky;
+    bottom: 0;
+    margin-bottom: calc(-1 * var(--s-5));
+    padding-bottom: var(--s-5);
+    background: var(--surface-2);
   }
   .summary {
     flex: 1;

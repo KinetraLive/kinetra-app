@@ -9,6 +9,7 @@ import {
   SOURCE_NAME_MAX,
   SOURCE_ROWS_MAX,
   TEMPLATE_KEY_PATTERN,
+  type ApiFormat,
   type ApiHeader,
   type ApiMapping,
   type ApiMappingColumn,
@@ -125,6 +126,78 @@ export function markOf(ptr: string, mapping: Pick<ApiMapping, "rows" | "columns"
   const rel = withinRow(ptr, mapping.rows, list);
   const keys = rel === null || (rows && list) ? [] : mapping.columns.filter((c) => c.path === rel).map((c) => c.key);
   return rows || keys.length > 0 ? { rows, keys } : null;
+}
+
+// ---- Column suggestions and checks against the last test ---------------------------------------
+
+/** One choice for a column's path: `value` goes into the field, `label` says what it is. */
+export interface PathOption {
+  value: string;
+  label: string;
+}
+
+/** The rows of a JSON test response: every element of the rows list, or the one object. */
+function rowsOf(json: unknown, rowsPtr: string): unknown[] {
+  const at = resolve(json, rowsPtr);
+  if (!at.found) return [];
+  if (Array.isArray(at.value)) return at.value;
+  return at.value !== null && typeof at.value === "object" ? [at.value] : [];
+}
+
+const SUGGEST_ROWS = 20;
+const SUGGEST_MAX = 200;
+
+/** The paths of plain values inside the first rows of a JSON test response (as a column's "Path in
+ * a row"), in the order they first appear; nested objects and lists are walked, up to 200. */
+export function jsonPathOptions(json: unknown, rowsPtr: string): PathOption[] {
+  const seen = new Set<string>();
+  const out: PathOption[] = [];
+  const walk = (v: unknown, path: (string | number)[], depth: number) => {
+    if (out.length >= SUGGEST_MAX) return;
+    if (v !== null && typeof v === "object") {
+      if (depth >= 6) return;
+      const entries = Array.isArray(v) ? v.slice(0, 5).map((x, i) => [i, x] as const) : Object.entries(v);
+      for (const [k, x] of entries) walk(x, [...path, k], depth + 1);
+      return;
+    }
+    const ptr = pointerOf(path);
+    if (ptr === "" || seen.has(ptr)) return;
+    seen.add(ptr);
+    out.push({ value: ptr, label: cellText(v).slice(0, 40) });
+  };
+  for (const row of rowsOf(json, rowsPtr).slice(0, SUGGEST_ROWS)) walk(row, [], 0);
+  return out;
+}
+
+/** A CSV test response's columns: header names, or column numbers (0, 1, …) without a header. */
+export function csvPathOptions(csvColumns: readonly string[], header: boolean): PathOption[] {
+  return csvColumns.map((name, i) => (header ? { value: name, label: `Column ${i + 1}` } : { value: String(i), label: `#${i + 1}` }));
+}
+
+/** Why a mapped column finds nothing in the last test response, or null when it does (or there
+ * is nothing to check against: no test, a failed one, a response too large to show). */
+export function missingInTest(
+  col: ApiMappingColumn,
+  result: MappingResult | null,
+  mapping: Pick<ApiMapping, "rows" | "csv">,
+  format: ApiFormat,
+): string | null {
+  if (!result || result.error) return null;
+  const path = col.path.trim();
+  if (format === "csv") {
+    const names = result.csvColumns;
+    if (!names || path === "") return null;
+    if (mapping.csv.header) {
+      return names.includes(path) ? null : `The last test has no column “${path}”.`;
+    }
+    const n = /^\d+$/.test(path) ? Number(path) : NaN;
+    if (Number.isNaN(n)) return null; // The column check explains the number format.
+    return n < names.length ? null : `The last test has ${names.length} ${names.length === 1 ? "column" : "columns"} (0–${names.length - 1}).`;
+  }
+  if (result.json === null || result.json === undefined || tokensOf(path) === null) return null;
+  const rows = rowsOf(result.json, mapping.rows);
+  if (rows.length === 0) return null;
+  return rows.some((r) => resolve(r, path).found) ? null : `${path || "/"} isn't in any row of the last test.`;
 }
 
 const IMAGE_URL = /^(https?:\/\/|\/assets\/)\S+\.(png|jpe?g|gif|webp|svg)(\?\S*)?$/i;
