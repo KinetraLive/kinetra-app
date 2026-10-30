@@ -59,10 +59,44 @@ export function hasRows(v: string): boolean {
   }
 }
 
+/** Words that make a text field number-like (whole words of the key or the label). Mirrors
+ *  `NUMBER_WORDS` in src-tauri/src/core/fieldvals.rs. */
+export const NUMBER_WORDS: readonly string[] = [
+  "score", "scores", "points", "pts", "goals", "goal", "boost", "count", "total", "round",
+  "rounds", "set", "sets", "game", "games", "lap", "laps", "rank", "position", "pos", "place",
+  "number", "num", "kills", "deaths", "assists", "wins", "losses", "saves", "shots", "fouls",
+  "percent", "pct", "%", "speed", "age", "year", "series", "quarter", "period", "inning", "frame",
+];
+
+const words = (key: string, label: string) =>
+  [...key.split(/[^\p{L}\p{N}%]+/u), ...label.split(/[^\p{L}\p{N}%]+/u)].filter(Boolean).map((w) => w.toLowerCase());
+
+/** Whether a key or label names a number (see `NUMBER_WORDS`). */
+export const numberWords = (key: string, label: string) => words(key, label).some((w) => NUMBER_WORDS.includes(w));
+
+/** A realistic preview number (mirrors `sample_number` in fieldvals.rs): a place 1, a percentage
+ *  45, a round 3, a year 2026, an age 28, a speed 88, else 2. Never the label: a long label in a
+ *  number's slot overflowed the graphic. */
+export function sampleNumber(key: string, label: string): string {
+  for (const w of words(key, label)) {
+    if (["rank", "position", "pos", "place"].includes(w)) return "1";
+    if (["boost", "percent", "pct", "%"].includes(w)) return "45";
+    if (["round", "rounds", "set", "sets", "game", "games", "lap", "laps", "quarter", "period", "inning", "frame", "series"].includes(w)) return "3";
+    if (w === "year") return "2026";
+    if (w === "age") return "28";
+    if (w === "speed") return "88";
+  }
+  return "2";
+}
+
+const isNumeric = (s: string) => s.trim() !== "" && Number.isFinite(Number(s.trim()));
+
 /**
- * The template editor's preview value for a field nobody typed into: a placeholder ("[Name]") for
- * text fields, the label for other text-like fields; a list's default rows, else one row of its column labels; a clock's format; a timer's
- * default state.
+ * The template editor's preview value for a field nobody typed into (mirrors `sample_value` in
+ * fieldvals.rs): a number-like field (type number, or a text field named like a number) its
+ * numeric default, else a realistic number; other fields their default when they have one; else a
+ * placeholder ("[Name]") for text fields, the label for other text-like fields; a list's default
+ * rows, else one row of its column labels; a clock's format; a timer's default state.
  */
 export function previewDefault(f: FieldDef): string {
   switch (f.type) {
@@ -74,11 +108,14 @@ export function previewDefault(f: FieldDef): string {
       return f.format ?? CLOCK_FORMAT_DEFAULT;
     case "timer":
       return f.default;
+    case "number":
+      return isNumeric(f.default) ? f.default.trim() : sampleNumber(f.key, f.label);
     case "text":
     case "multiline":
-      return `[${f.label}]`;
+      if (numberWords(f.key, f.label)) return isNumeric(f.default) ? f.default.trim() : sampleNumber(f.key, f.label);
+      return f.default.trim() ? f.default : `[${f.label}]`;
     default:
-      return f.label;
+      return f.default.trim() ? f.default : f.label;
   }
 }
 

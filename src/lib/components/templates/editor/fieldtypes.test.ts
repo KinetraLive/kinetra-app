@@ -3,7 +3,9 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { SOURCE_COLUMNS_MAX, type FieldDef } from "$lib/types";
 import FieldsForm from "./FieldsForm.svelte";
 import { listDefault, newColumn, relabelColumn } from "./columns";
-import { clockFormatIssue, previewDefault, typeIssues, withFieldType } from "./fieldTypes";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { clockFormatIssue, NUMBER_WORDS, previewDefault, sampleNumber, typeIssues, withFieldType } from "./fieldTypes";
 import { issueWith, validate } from "./model";
 
 // Lazily loaded components these tests open: loaded once here, so the tests wait on them, not on
@@ -87,9 +89,11 @@ describe("field types: model", () => {
   });
 
   it("preview defaults per type, and list defaults keep only known columns", () => {
-    expect(previewDefault(text)).toBe("[Name]");
-    expect(previewDefault({ ...text, type: "multiline", label: "Title" })).toBe("[Title]");
-    expect(previewDefault({ ...text, type: "number", label: "Score" })).toBe("Score");
+    // A default shows as it is; an empty text field shows a placeholder.
+    expect(previewDefault(text)).toBe("Ada");
+    expect(previewDefault({ ...text, default: "" })).toBe("[Name]");
+    expect(previewDefault({ ...text, type: "multiline", label: "Title", default: "" })).toBe("[Title]");
+    expect(previewDefault({ ...text, type: "number", label: "Score" })).toBe("2");
     expect(JSON.parse(previewDefault(list([{ key: "name", label: "Name" }, { key: "score", label: "Score" }])))).toEqual([
       { name: "Name", score: "Score" },
     ]);
@@ -172,5 +176,33 @@ describe("FieldsForm: list, clock and timer fields", () => {
     expect(JSON.parse(last()[0].default)).toMatchObject({ base: 120_000, dir: "down" });
     await fireEvent.change(screen.getByRole("combobox", { name: "Clock at zero" }), { target: { value: "hide" } });
     expect(JSON.parse(last()[0].default)).toMatchObject({ end: "hide" });
+  });
+});
+
+describe("preview values of number-like fields", () => {
+  const f = (key: string, label: string, type: FieldDef["type"], def = ""): FieldDef => ({ key, label, type, default: def });
+
+  it("never preview a label in a number's slot (it overflowed the graphic)", () => {
+    // Number fields: their default if numeric, else a number for their kind.
+    expect(previewDefault(f("boost", "Player 1 boost", "number"))).toBe("45");
+    expect(previewDefault(f("boost", "Player 1 boost", "number", "Player 1 boost"))).toBe("45");
+    expect(previewDefault(f("n", "Anything", "number", "7"))).toBe("7");
+    // Text fields named like numbers (models often type scores as text).
+    expect(previewDefault(f("blue-score", "Blue series score", "text"))).toBe("3");
+    expect(previewDefault(f("home-goals", "Home", "text"))).toBe("2");
+    expect(previewDefault(f("pos", "Position", "text"))).toBe("1");
+    expect(previewDefault(f("score", "Score", "text", "0"))).toBe("0");
+    // Other text: its default, else the placeholder (as before).
+    expect(previewDefault(f("team", "Blue team", "text"))).toBe("[Blue team]");
+    expect(previewDefault(f("team", "Blue team", "text", "Rangers"))).toBe("Rangers");
+    expect(sampleNumber("year", "Season")).toBe("2026");
+  });
+
+  it("uses the same number words as the core (src-tauri/src/core/fieldvals.rs)", () => {
+    const rs = readFileSync(join(__dirname, "../../../../../src-tauri/src/core/fieldvals.rs"), "utf8");
+    const block = /pub const NUMBER_WORDS: &\[&str\] = &\[([\s\S]*?)\];/.exec(rs)?.[1] ?? "";
+    const core = [...block.matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+    expect(core.length).toBeGreaterThan(20);
+    expect([...NUMBER_WORDS]).toEqual(core);
   });
 });

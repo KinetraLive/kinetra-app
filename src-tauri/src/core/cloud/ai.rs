@@ -2,6 +2,12 @@
 //! checks the input against the backend's limits before sending, starts a job, polls it with
 //! backoff on one tokio task, and imports the result as a normal template folder (validated and
 //! hardened like any save). `ai-job` events carry progress; the user keeps working meanwhile.
+//!
+//! Before import a result is tidied ([`tidy_package`]): its HTML and CSS pretty-printed
+//! (`template_format`; models answer in one long line), and field defaults that are only the
+//! field's label or key (the model's placeholder, which showed as huge overlapping text) cleared:
+//! `0` for number-like fields ([`number_like`]), empty for the rest. A tweak's name gets
+//! " (tweaked)" at most once ([`tweaked_name`]).
 
 use std::collections::HashMap;
 use std::sync::{Mutex, PoisonError};
@@ -35,6 +41,79 @@ pub const AI_TEMPLATE_TYPES: &[&str] = &[
     "list",
     "other",
 ];
+/// Whether a field holds a number: type `number`, or a number word in the key or label of a
+/// text field (`fieldvals::number_words`).
+pub fn number_like(field_type: &str, key: &str, label: &str) -> bool {
+    match field_type {
+        "number" => true,
+        "text" | "multiline" => crate::core::fieldvals::number_words(key, label),
+        _ => false,
+    }
+}
+
+/// A tweaked template's name: the original with " (tweaked)" once (earlier suffixes dropped),
+/// at most 100 characters.
+pub fn tweaked_name(name: &str) -> String {
+    const SUFFIX: &str = " (tweaked)";
+    let mut base = name.trim();
+    while let Some(b) = base.strip_suffix(SUFFIX) {
+        base = b.trim_end();
+    }
+    let room = 100 - SUFFIX.chars().count();
+    let base: String = base.chars().take(room).collect();
+    format!("{}{SUFFIX}", base.trim_end())
+}
+
+/// Tidies an AI result before import (see the module docs): formatted HTML and CSS, and
+/// placeholder defaults (the label or key) cleared.
+pub fn tidy_package(package: &mut Value) {
+    use crate::core::template_format::{format_css, format_html};
+    if let Some(files) = package.get_mut("files").and_then(Value::as_object_mut) {
+        for v in files.values_mut() {
+            for (k, fmt) in [
+                ("html", format_html as fn(&str) -> String),
+                ("css", format_css),
+            ] {
+                if let Some(text) = v.get(k).and_then(Value::as_str) {
+                    let formatted = fmt(text);
+                    v[k] = Value::String(formatted);
+                }
+            }
+        }
+    }
+    let Some(fields) = package
+        .pointer_mut("/manifest/fields")
+        .and_then(Value::as_array_mut)
+    else {
+        return;
+    };
+    for f in fields {
+        let get = |k: &str| {
+            f.get(k)
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .trim()
+                .to_string()
+        };
+        let (key, label, ty, default) = (get("key"), get("label"), get("type"), get("default"));
+        if !matches!(ty.as_str(), "text" | "multiline" | "number") || default.is_empty() {
+            continue;
+        }
+        let placeholder = default.eq_ignore_ascii_case(&label)
+            || default.eq_ignore_ascii_case(&key)
+            || default.eq_ignore_ascii_case(&format!("[{label}]"));
+        let bad_number = ty == "number" && default.parse::<f64>().is_err();
+        if placeholder || bad_number {
+            let value = if number_like(&ty, &key, &label) {
+                "0"
+            } else {
+                ""
+            };
+            f["default"] = Value::String(value.to_string());
+        }
+    }
+}
+
 /// Jobs expire after `KINETRA_AI_JOB_TTL` (1 h); polling stops then.
 const JOB_MAX: Duration = Duration::from_secs(3600);
 const POLL_MIN: Duration = Duration::from_millis(500);
@@ -182,7 +261,7 @@ impl AppState {
     }
 
     /// Starts "Tweak with AI" on template `template_id`; the result is imported as a new
-    /// template ("<name> (tweaked)"), the original stays.
+    /// template ("<name> (tweaked)", the suffix once: [`tweaked_name`]), the original stays.
     pub async fn ai_tweak(&self, template_id: String, instruction: String) -> AppResult<AiJobView> {
         self.require_new_pro_work(PRO_AI)?;
         let instruction = instruction.trim().to_string();
@@ -389,20 +468,15 @@ impl AppState {
             message: Some(m),
             ..base.clone()
         };
-        let Some(package) = template else {
+        let Some(mut package) = template else {
             return fail("The result had no template.".into());
         };
+        tidy_package(&mut package);
         let dir = match self.project_dir() {
             Ok(d) => d,
             Err(_) => return fail("Open a project to add the template.".into()),
         };
-        let name = tweak_of.map(|n| {
-            let mut s = format!("{n} (tweaked)");
-            if s.chars().count() > 100 {
-                s = s.chars().take(100).collect();
-            }
-            s
-        });
+        let name = tweak_of.map(tweaked_name);
         match self
             .templates()
             .import_package(&dir, &package, name.as_deref(), tweak_of.is_some())

@@ -627,9 +627,72 @@ pub fn wire_default(def: &FieldDef) -> String {
     }
 }
 
-/// Preview value: the label for text-like fields, three sample rows of column labels for a list,
-/// the default state for a timer, the format for a clock.
+/// Words that make a text field number-like: scores, counts, percentages, places. Matched as
+/// whole words of the key or the label (`blue-score`, "Player 1 boost"). Mirrored in the
+/// editor (`templates/editor/fieldTypes.ts` `NUMBER_WORDS`).
+pub const NUMBER_WORDS: &[&str] = &[
+    "score", "scores", "points", "pts", "goals", "goal", "boost", "count", "total", "round",
+    "rounds", "set", "sets", "game", "games", "lap", "laps", "rank", "position", "pos", "place",
+    "number", "num", "kills", "deaths", "assists", "wins", "losses", "saves", "shots", "fouls",
+    "percent", "pct", "%", "speed", "age", "year", "series", "quarter", "period", "inning",
+    "frame",
+];
+
+fn words<'a>(key: &'a str, label: &'a str) -> impl Iterator<Item = String> + 'a {
+    let split = |s: &'a str| s.split(|c: char| !c.is_alphanumeric() && c != '%');
+    split(key)
+        .chain(split(label))
+        .filter(|w| !w.is_empty())
+        .map(str::to_lowercase)
+}
+
+/// Whether a key or label names a number (see [`NUMBER_WORDS`]).
+pub fn number_words(key: &str, label: &str) -> bool {
+    words(key, label).any(|w| NUMBER_WORDS.contains(&w.as_str()))
+}
+
+/// A realistic preview number for a number-like field: a place 1, a percentage 45, a round 3, a
+/// year 2026, an age 28, a speed 88, else (scores, counts) 2. Never the label: a long label in a
+/// number's slot overflowed the graphic.
+pub fn sample_number(key: &str, label: &str) -> &'static str {
+    for w in words(key, label) {
+        match w.as_str() {
+            "rank" | "position" | "pos" | "place" => return "1",
+            "boost" | "percent" | "pct" | "%" => return "45",
+            "round" | "rounds" | "set" | "sets" | "game" | "games" | "lap" | "laps" | "quarter"
+            | "period" | "inning" | "frame" | "series" => return "3",
+            "year" => return "2026",
+            "age" => return "28",
+            "speed" => return "88",
+            _ => {}
+        }
+    }
+    "2"
+}
+
+/// Preview value (never what goes on air; see `preview::label_values`): the field's own default
+/// when it has one; a number-like field (type `number`, or a text field named like a number)
+/// without a numeric default a realistic number ([`sample_number`]); other text-like fields the
+/// label; three sample rows of column labels for a list; the default state for a timer; the
+/// format for a clock.
 pub fn sample_value(def: &FieldDef) -> String {
+    let default = def.default.trim();
+    let numeric = !default.is_empty() && default.parse::<f64>().is_ok();
+    match def.kind {
+        FieldType::Number if numeric => return default.to_string(),
+        FieldType::Number => return sample_number(&def.key, &def.label).to_string(),
+        FieldType::Text | FieldType::Multiline if number_words(&def.key, &def.label) => {
+            return if numeric {
+                default.to_string()
+            } else {
+                sample_number(&def.key, &def.label).to_string()
+            };
+        }
+        FieldType::Text | FieldType::Multiline if !default.is_empty() => {
+            return def.default.clone();
+        }
+        _ => {}
+    }
     match def.kind {
         FieldType::List => {
             let rows: Vec<Vec<String>> = (1..=SAMPLE_ROWS)
@@ -683,6 +746,50 @@ pub fn edit_value(def: &FieldDef, raw: &str) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn plain(key: &str, label: &str, kind: FieldType, default: &str) -> FieldDef {
+        FieldDef {
+            key: key.into(),
+            label: label.into(),
+            kind,
+            default: default.into(),
+            columns: Vec::new(),
+            format: None,
+        }
+    }
+
+    /// Previews never put a long label in a number's slot (it overflowed the graphic).
+    #[test]
+    fn number_like_fields_preview_a_realistic_number() {
+        let v = |k, l, t, d| sample_value(&plain(k, l, t, d));
+        // Number fields: their default if numeric, else a number for their kind.
+        assert_eq!(v("boost", "Player 1 boost", FieldType::Number, ""), "45");
+        assert_eq!(
+            v(
+                "boost",
+                "Player 1 boost",
+                FieldType::Number,
+                "Player 1 boost"
+            ),
+            "45"
+        );
+        assert_eq!(v("n", "Anything", FieldType::Number, "7"), "7");
+        // Text fields named like numbers.
+        assert_eq!(
+            v("blue-score", "Blue series score", FieldType::Text, ""),
+            "3"
+        );
+        assert_eq!(v("home-goals", "Home", FieldType::Text, ""), "2");
+        assert_eq!(v("pos", "Position", FieldType::Text, ""), "1");
+        assert_eq!(v("score", "Score", FieldType::Text, "0"), "0");
+        // Other text: its default, else the label (as before).
+        assert_eq!(v("team", "Blue team", FieldType::Text, ""), "Blue team");
+        assert_eq!(
+            v("team", "Blue team", FieldType::Text, "Rangers"),
+            "Rangers"
+        );
+        assert_eq!(v("logo", "Score logo", FieldType::Image, ""), "Score logo");
+    }
 
     fn cols(keys: &[&str]) -> Vec<SourceColumn> {
         keys.iter()

@@ -62,3 +62,64 @@ fn job_ids_must_be_path_safe() {
     assert!(!valid_job_id("a?b"));
     assert!(!valid_job_id(""));
 }
+
+#[test]
+fn a_tweak_adds_the_suffix_once() {
+    assert_eq!(
+        tweaked_name("Match upper third"),
+        "Match upper third (tweaked)"
+    );
+    assert_eq!(
+        tweaked_name("Match upper third (tweaked) (tweaked) (tweaked)"),
+        "Match upper third (tweaked)"
+    );
+    assert_eq!(tweaked_name("  Bug (tweaked)  "), "Bug (tweaked)");
+    let long = "x".repeat(120);
+    let n = tweaked_name(&long);
+    assert_eq!(n.chars().count(), 100);
+    assert!(n.ends_with(" (tweaked)"));
+}
+
+#[test]
+fn number_like_fields_are_found_by_type_key_or_label() {
+    assert!(number_like("number", "anything", "Anything"));
+    assert!(number_like("text", "blue-score", "Blue series score"));
+    assert!(number_like("text", "p1", "Player 1 boost"));
+    assert!(number_like("text", "goals_home", "Home"));
+    assert!(number_like("multiline", "x", "Win %"));
+    assert!(!number_like("text", "name", "Name"));
+    assert!(!number_like("text", "team", "Blue team"));
+    // Images, colors and lists never are.
+    assert!(!number_like("image", "score-logo", "Score logo"));
+    assert!(!number_like("list", "scores", "Scores"));
+}
+
+#[test]
+fn tidying_formats_the_code_and_clears_placeholder_values() {
+    let mut p = json!({
+        "manifest": {"fields": [
+            {"key": "name", "label": "Name", "type": "text", "default": "Name"},
+            {"key": "team", "label": "Team", "type": "text", "default": "[Team]"},
+            {"key": "score", "label": "Score", "type": "text", "default": "score"},
+            {"key": "boost", "label": "Boost", "type": "number", "default": "lots"},
+            {"key": "home", "label": "Home", "type": "text", "default": "Rangers"},
+            {"key": "goals", "label": "Goals", "type": "number", "default": "3"},
+            {"key": "accent", "label": "Accent", "type": "color", "default": "Accent"}
+        ]},
+        "files": {"default": {"html": "<div class=\"a\"><div>{{name}}</div></div>", "css": ".a{color:red}"}}
+    });
+    tidy_package(&mut p);
+    let d: Vec<&str> = p["manifest"]["fields"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|f| f["default"].as_str().unwrap())
+        .collect();
+    // Placeholders cleared (numbers to 0), real values kept, other types untouched.
+    assert_eq!(d, ["", "", "0", "0", "Rangers", "3", "Accent"]);
+    assert_eq!(
+        p["files"]["default"]["html"],
+        "<div class=\"a\">\n  <div>{{name}}</div>\n</div>\n"
+    );
+    assert_eq!(p["files"]["default"]["css"], ".a {\n  color: red;\n}\n");
+}

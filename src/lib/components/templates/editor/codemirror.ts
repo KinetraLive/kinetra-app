@@ -101,6 +101,8 @@ export interface EditorHandle {
   getValue(): string;
   /** Document length in characters (O(1)). */
   length(): number;
+  /** Replaces the whole text in one undoable step (Ctrl+Z restores it); fires `onChange`. */
+  replaceAll(text: string): void;
   focus(): void;
   destroy(): void;
 }
@@ -611,6 +613,10 @@ export function createEditor(parent: HTMLElement, opts: EditorOptions): EditorHa
   return {
     getValue: () => view.state.doc.toString(),
     length: () => view.state.doc.length,
+    replaceAll: (text) => {
+      if (text === view.state.doc.toString()) return;
+      view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text } });
+    },
     focus: () => view.focus(),
     destroy: () => view.destroy(),
   };
