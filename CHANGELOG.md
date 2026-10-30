@@ -21,6 +21,8 @@ API sources: after a test, each column's field suggests the columns the response
 
 Row numbers in flows now count from 1, like everywhere else; a flow that wires a fixed row number will now go to exactly that row (one earlier than before). Step source shows the row it goes to ("Go to row 75"), and an armed flow with changes you haven't deployed now says clearly that it still runs the old version, with Deploy now right there.
 
+On Mac: MIDI controllers and display outputs now work like on Windows. Plug in a controller and map its buttons and faders, or send a screen full screen to a second display or projector. Displays stay awake while an output shows, on Mac and Windows.
+
 ## Next stable release
 
 Typing a license key by hand works again: type it with or without "KNTR-", in any case, with spaces or without dashes. Kinetra tidies it when you paste it or leave the field.
@@ -63,6 +65,6 @@ Help › Documentation now opens docs.kinetra.live.
 
 Auto-out can be set up to 600 seconds.
 
-Better on Mac: schedules and time-of-day automation follow your Mac's time zone, Pro can be activated on a Mac, Kinetra shows your Mac's name in your account, and secret API keys say they're kept in the macOS Keychain. Templates, screens and sources you edit in another program now update in Kinetra on a Mac too. Display outputs and MIDI aren't available on macOS yet; their settings say so and link to what works on Mac.
+Better on Mac: schedules and time-of-day automation follow your Mac's time zone, Pro can be activated on a Mac, Kinetra shows your Mac's name in your account, and secret API keys say they're kept in the macOS Keychain. Templates, screens and sources you edit in another program now update in Kinetra on a Mac too. MIDI controllers and display outputs work on Mac too.
 
 Kinetra now needs Windows 10 or later, or macOS 11 or later.
