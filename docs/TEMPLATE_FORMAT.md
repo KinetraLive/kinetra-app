@@ -119,6 +119,7 @@ shared by every variant, and placed in HTML with `{{key}}` (§6).
 | `label` | 1–100 characters. |
 | `type` | One of the types below. |
 | `default` | String. The value a new layer starts with (format per type). |
+| `sample` | Optional, `text`, `multiline`, `number` and `html` only: a realistic example ("Rangers", `"2"`), at most 400 characters (a number for `number`). Only the template editor's preview shows it, for a field nobody has typed into; it is never a layer's value and never on air. Omitted when absent. |
 | `columns` | `list` only: 1–16 `{key, label, kind?}`; `kind` is `"text"` (default, omitted) or `"image"`. Column keys follow the key rules and are unique within the field. |
 | `format` | `clock` only: optional display format (below). |
 

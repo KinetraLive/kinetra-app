@@ -1458,4 +1458,50 @@ fn tweak_sends_the_template_and_keeps_the_original() {
         crate::core::templates::get(&dir, &orig.id).is_ok(),
         "the original stays"
     );
+
+    // Tweaking the tweak: still one suffix. The result is saved formatted, with the model's
+    // placeholder values (the labels) cleared.
+    let mut one_line = package(
+        "<div class=\"sb\"><div class=\"team\">{{blue}}</div><div class=\"score\">{{blue-score}}</div></div>",
+    );
+    one_line["manifest"]["fields"] = json!([
+        {"key": "blue", "label": "Blue team", "type": "text", "default": "Blue team"},
+        {"key": "blue-score", "label": "Blue series score", "type": "text", "default": "Blue series score"},
+        {"key": "boost", "label": "Player 1 boost", "type": "number", "default": "Player 1 boost"},
+    ]);
+    e.reply(
+        "/v1/ai/templates/tweak",
+        vec![Reply::Json(
+            202,
+            json!({"job_id": "job-t2", "poll_after_ms": 10}),
+        )],
+    );
+    e.reply(
+        "/v1/ai/jobs/job-t2",
+        vec![Reply::Json(
+            200,
+            json!({"status": "succeeded", "template": one_line}),
+        )],
+    );
+    e.rt.block_on(e.st.ai_tweak(new.id.clone(), "Make it a scoreboard".into()))
+        .unwrap();
+    wait_until("tweaked again", || job(&e, "job-t2").status != "pending");
+    let again = crate::core::templates::get(&dir, &job(&e, "job-t2").template_id.unwrap()).unwrap();
+    assert_eq!(again.meta.name, "Match lower third (tweaked)");
+    let v = &again.variants[0];
+    assert_eq!(
+        v.html,
+        "<div class=\"sb\">\n  <div class=\"team\">{{blue}}</div>\n  <div class=\"score\">{{blue-score}}</div>\n</div>\n"
+    );
+    assert_eq!(v.css, ".lt {\n  color: white;\n}\n");
+    let defaults: Vec<(&str, &str)> = again
+        .meta
+        .fields
+        .iter()
+        .map(|f| (f.key.as_str(), f.default.as_str()))
+        .collect();
+    assert_eq!(
+        defaults,
+        [("blue", ""), ("blue-score", "0"), ("boost", "0")]
+    );
 }

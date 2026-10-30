@@ -22,6 +22,9 @@ export const duplicateTemplate = (id: string, name: string) =>
   call<TemplateDoc>("duplicate_template", { id, name });
 export const deleteTemplate = (id: string) => call<void>("delete_template", { id });
 export const listPresets = () => call<PresetInfo[]>("list_presets");
+/** HTML and CSS pretty-printed by the core (the template code editor's Format). */
+export const formatTemplateCode = (html: string, css: string) =>
+  call<{ html: string; css: string }>("format_template_code", { html, css });
 /** Loads the saved template into the preview screen (off air). */
 export const previewTemplate = (id: string) => call<LiveLayerView>("preview_template", { id });
 export const previewDraft = (draft: TemplateDraft) => call<LiveLayerView>("preview_draft", { draft });

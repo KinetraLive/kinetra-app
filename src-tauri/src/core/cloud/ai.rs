@@ -2,6 +2,15 @@
 //! checks the input against the backend's limits before sending, starts a job, polls it with
 //! backoff on one tokio task, and imports the result as a normal template folder (validated and
 //! hardened like any save). `ai-job` events carry progress; the user keeps working meanwhile.
+//!
+//! Before import a result is tidied ([`tidy_package`]): its HTML and CSS pretty-printed
+//! (`template_format`; models answer in one long line), and the fields' values split: the
+//! model's realistic values become preview-only `sample`s (owner's decision 2026-10-30: never on
+//! air), and the default a new layer starts with is empty, `0` for number-like fields
+//! ([`number_like`]). A value that is only the field's label or key (the model's placeholder,
+//! which showed as huge overlapping text) is no sample. A result that already carries samples
+//! keeps its defaults. Tweaks send the samples as defaults ([`fold_samples`]). A tweak's name gets
+//! " (tweaked)" at most once ([`tweaked_name`]).
 
 use std::collections::HashMap;
 use std::sync::{Mutex, PoisonError};
@@ -14,6 +23,7 @@ use tokio::task::AbortHandle;
 
 use super::api::{AiQuota, CallError};
 use crate::core::events::names;
+use crate::core::fieldvals::SAMPLE_MAX;
 use crate::core::model::TEMPLATE_FONTS;
 use crate::core::state::AppState;
 use crate::error::{AppError, AppResult};
@@ -35,6 +45,131 @@ pub const AI_TEMPLATE_TYPES: &[&str] = &[
     "list",
     "other",
 ];
+/// Whether a field holds a number: type `number`, or a number word in the key or label of a
+/// text field (`fieldvals::number_words`).
+pub fn number_like(field_type: &str, key: &str, label: &str) -> bool {
+    match field_type {
+        "number" => true,
+        "text" | "multiline" => crate::core::fieldvals::number_words(key, label),
+        _ => false,
+    }
+}
+
+/// A tweaked template's name: the original with " (tweaked)" once (earlier suffixes dropped),
+/// at most 100 characters.
+pub fn tweaked_name(name: &str) -> String {
+    const SUFFIX: &str = " (tweaked)";
+    let mut base = name.trim();
+    while let Some(b) = base.strip_suffix(SUFFIX) {
+        base = b.trim_end();
+    }
+    let room = 100 - SUFFIX.chars().count();
+    let base: String = base.chars().take(room).collect();
+    format!("{}{SUFFIX}", base.trim_end())
+}
+
+/// Tidies an AI result before import (see the module docs): formatted HTML and CSS, preview
+/// samples split from the real defaults, placeholders (the label or key) dropped.
+pub fn tidy_package(package: &mut Value) {
+    use crate::core::template_format::{format_css, format_html};
+    if let Some(files) = package.get_mut("files").and_then(Value::as_object_mut) {
+        for v in files.values_mut() {
+            for (k, fmt) in [
+                ("html", format_html as fn(&str) -> String),
+                ("css", format_css),
+            ] {
+                if let Some(text) = v.get(k).and_then(Value::as_str) {
+                    let formatted = fmt(text);
+                    v[k] = Value::String(formatted);
+                }
+            }
+        }
+    }
+    let Some(fields) = package
+        .pointer_mut("/manifest/fields")
+        .and_then(Value::as_array_mut)
+    else {
+        return;
+    };
+    // A result that already carries preview samples (a server that splits them) keeps its
+    // defaults as the real ones; otherwise the model's realistic defaults become the samples.
+    let split = fields.iter().any(|f| {
+        f.get("sample").is_some()
+            && matches!(
+                f.get("type").and_then(Value::as_str),
+                Some("text" | "multiline" | "number" | "html")
+            )
+    });
+    for f in fields.iter_mut() {
+        let get = |f: &Value, k: &str| {
+            f.get(k)
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .trim()
+                .to_string()
+        };
+        let (key, label, ty) = (get(f, "key"), get(f, "label"), get(f, "type"));
+        let default = get(f, "default");
+        let given = get(f, "sample");
+        let Some(obj) = f.as_object_mut() else {
+            continue;
+        };
+        let samples = matches!(ty.as_str(), "text" | "multiline" | "number" | "html");
+        if !samples {
+            obj.remove("sample");
+            continue;
+        }
+        let number = number_like(&ty, &key, &label);
+        let is_placeholder = |v: &str| {
+            v.eq_ignore_ascii_case(&label)
+                || v.eq_ignore_ascii_case(&key)
+                || v.eq_ignore_ascii_case(&format!("[{label}]"))
+        };
+        // The value a new layer starts with: empty, 0 for a number-like field.
+        let real = if number { "0" } else { "" };
+        let sample = if split {
+            let bad_default = is_placeholder(&default)
+                || (ty == "number" && !default.is_empty() && default.parse::<f64>().is_err());
+            if bad_default {
+                obj.insert("default".into(), Value::String(real.into()));
+            }
+            given
+        } else {
+            obj.insert("default".into(), Value::String(real.into()));
+            default
+        };
+        let ok = !sample.is_empty()
+            && !is_placeholder(&sample)
+            && sample.chars().count() <= SAMPLE_MAX
+            && (ty != "number" || sample.parse::<f64>().is_ok());
+        if ok {
+            obj.insert("sample".into(), Value::String(sample));
+        } else {
+            obj.remove("sample");
+        }
+    }
+}
+
+/// A template package for "Tweak with AI": each field's preview sample in place of its default
+/// (the model then keeps the realistic values; `tidy_package` splits them again on import), and
+/// no `sample` key (the API's template format has none yet).
+pub fn fold_samples(package: &mut Value) {
+    let Some(fields) = package
+        .pointer_mut("/manifest/fields")
+        .and_then(Value::as_array_mut)
+    else {
+        return;
+    };
+    for f in fields {
+        let Some(obj) = f.as_object_mut() else {
+            continue;
+        };
+        if let Some(Value::String(s)) = obj.remove("sample") {
+            obj.insert("default".into(), Value::String(s));
+        }
+    }
+}
+
 /// Jobs expire after `KINETRA_AI_JOB_TTL` (1 h); polling stops then.
 const JOB_MAX: Duration = Duration::from_secs(3600);
 const POLL_MIN: Duration = Duration::from_millis(500);
@@ -182,7 +317,7 @@ impl AppState {
     }
 
     /// Starts "Tweak with AI" on template `template_id`; the result is imported as a new
-    /// template ("<name> (tweaked)"), the original stays.
+    /// template ("<name> (tweaked)", the suffix once: [`tweaked_name`]), the original stays.
     pub async fn ai_tweak(&self, template_id: String, instruction: String) -> AppResult<AiJobView> {
         self.require_new_pro_work(PRO_AI)?;
         let instruction = instruction.trim().to_string();
@@ -195,7 +330,8 @@ impl AppState {
             )));
         }
         let dir = self.project_dir()?;
-        let package = crate::core::templates::to_package(&dir, &template_id)?;
+        let mut package = crate::core::templates::to_package(&dir, &template_id)?;
+        fold_samples(&mut package);
         let name = package["manifest"]["name"]
             .as_str()
             .unwrap_or("Template")
@@ -389,20 +525,15 @@ impl AppState {
             message: Some(m),
             ..base.clone()
         };
-        let Some(package) = template else {
+        let Some(mut package) = template else {
             return fail("The result had no template.".into());
         };
+        tidy_package(&mut package);
         let dir = match self.project_dir() {
             Ok(d) => d,
             Err(_) => return fail("Open a project to add the template.".into()),
         };
-        let name = tweak_of.map(|n| {
-            let mut s = format!("{n} (tweaked)");
-            if s.chars().count() > 100 {
-                s = s.chars().take(100).collect();
-            }
-            s
-        });
+        let name = tweak_of.map(tweaked_name);
         match self
             .templates()
             .import_package(&dir, &package, name.as_deref(), tweak_of.is_some())

@@ -248,6 +248,23 @@ pub fn list_presets() -> AppResult<Vec<PresetInfo>> {
     Ok(presets::list())
 }
 
+/// The template code editor's "Format HTML and CSS": both pretty-printed
+/// (`core::template_format`, the same code AI results go through). Pure: no project needed.
+#[tauri::command]
+pub fn format_template_code(html: String, css: String) -> FormattedCode {
+    FormattedCode {
+        html: crate::core::template_format::format_html(&html),
+        css: crate::core::template_format::format_css(&css),
+    }
+}
+
+/// [`format_template_code`]'s answer.
+#[derive(Debug, serde::Serialize)]
+pub struct FormattedCode {
+    pub html: String,
+    pub css: String,
+}
+
 /// Loads the saved template (its default variant) into the preview screen (`__preview`), off
 /// air, field values = the field labels (preview text, never output content). The editor shows
 /// another variant with `preview_draft` (`variant` + its html/css/variable values).

@@ -454,6 +454,7 @@ pub fn run() {
             commands::remote::remote_diag_watch,
             commands::remote::remote_export_diagnostics,
             commands::templates::list_templates,
+            commands::templates::format_template_code,
             commands::templates::get_template,
             commands::templates::create_template,
             commands::templates::save_template,
