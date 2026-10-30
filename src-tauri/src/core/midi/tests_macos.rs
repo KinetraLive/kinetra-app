@@ -11,6 +11,14 @@ use super::backend::{MidiBackend, SystemBackend};
 use super::service::{Event, Service};
 use super::*;
 
+/// CoreMIDI's notifications are system-wide: one test's virtual controllers would wake another's
+/// service. The tests that use the real CoreMIDI run one at a time.
+static SYSTEM_MIDI: Mutex<()> = Mutex::new(());
+
+fn system_midi() -> std::sync::MutexGuard<'static, ()> {
+    SYSTEM_MIDI.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 fn wait_for(what: &str, secs: u64, mut f: impl FnMut() -> bool) {
     let deadline = Instant::now() + Duration::from_secs(secs);
     while !f() {
@@ -47,6 +55,7 @@ impl VirtualPad {
 
 #[test]
 fn service_thread_wakes_for_input_and_stops() {
+    let _one = system_midi();
     let q = Arc::new(InputQueue::default());
     let (tx, rx) = mpsc::channel();
     let s = Service::start(q.clone(), move |ev| tx.send(ev).is_ok()).unwrap();
@@ -73,6 +82,7 @@ fn service_thread_wakes_for_input_and_stops() {
 /// Plugging and unplugging a device reaches the service as ONE debounced reconcile each.
 #[test]
 fn hot_plug_wakes_the_service_after_the_debounce() {
+    let _one = system_midi();
     let q = Arc::new(InputQueue::default());
     let (tx, rx) = mpsc::channel();
     let s = Service::start(q, move |ev| tx.send(ev).is_ok()).unwrap();
@@ -98,6 +108,7 @@ fn hot_plug_wakes_the_service_after_the_debounce() {
 
 #[test]
 fn the_system_backend_lists_and_reads_a_virtual_controller() {
+    let _one = system_midi();
     let pad = VirtualPad::new("Backend");
     wait_for("the virtual source in the list", 5, || {
         SystemBackend.ports().inputs.contains(&pad.name)
@@ -125,6 +136,7 @@ fn the_system_backend_lists_and_reads_a_virtual_controller() {
 /// exists only while MIDI is in use.
 #[test]
 fn a_virtual_controller_takes_a_layer_on_air() {
+    let _one = system_midi();
     use crate::core::model::{
         ControlMapping, NewScreen, Rect, ScreenDoc, ScreenLayer, ScreenLayerKind, TemplateSource,
     };
@@ -271,6 +283,7 @@ fn a_virtual_controller_takes_a_layer_on_air() {
 /// run-loop thread like the MIDI service's. Each connection should get the note.
 #[test]
 fn input_opened_on_any_thread_receives() {
+    let _one = system_midi();
     use crate::core::runloop::{Event as LoopEvent, LoopThread};
     let pad = VirtualPad::new("Threads");
     wait_for("the virtual source in the list", 5, || {
