@@ -2359,7 +2359,10 @@ impl AppState {
                     device: d,
                     channel: c,
                     ..
-                } => (c == 0 || c == channel) && t.flow.opt(d).is_none_or(|d| d == device),
+                } => {
+                    (c == 0 || c == channel)
+                        && t.flow.opt(d).is_none_or(|d| self.midi_device_is(d, device))
+                }
                 _ => false,
             };
             if hit {

@@ -99,6 +99,7 @@ fn info(id: &str, x: i32) -> DisplayInfo {
         refresh_hz: 60,
         primary: x == 0,
         has_main_window: false,
+        scaled: false,
     }
 }
 

@@ -1,5 +1,6 @@
 //! Display output windows (Tauri side of `core::outputs`): borderless, undecorated, not in the
-//! taskbar, not focusable, positioned on their display in physical pixels, cursor hidden. They
+//! taskbar, not focusable, positioned on their display (Windows: physical pixels; macOS: points,
+//! see `core::displays::macos`), cursor hidden. They
 //! load the output server (a remote URL) or the app's idle page and are in no capability, so
 //! they can't call commands. The user can't close them (`CloseRequested` is prevented in
 //! lib.rs); Kinetra destroys them.
@@ -14,7 +15,13 @@
 //! reconnects and gets a snapshot). At most [`CRASH_RECREATIONS_MAX`] times per
 //! [`CRASH_WINDOW`] per output window; after that the window stays closed and the output
 //! reports `failed` "The output page keeps crashing" until its plan changes (turned off and on,
-//! another screen, display, port…).
+//! another screen, display, port…). Windows only so far (WebView2 reports the failure).
+//!
+//! **macOS:** an output window sits at the screen-saver window level, above the menu bar and the
+//! Dock of its display, on every Space, out of ⌘` and Mission Control, and is ordered in
+//! without activating Kinetra (no native full screen: it would make its own Space and animate).
+//!
+//! **Displays stay awake** while any output window shows ([`crate::power::DisplayAwake`]).
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -22,13 +29,18 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError, Weak};
 use std::time::{Duration, Instant};
 
 use tauri::window::Color;
-use tauri::{AppHandle, Manager, PhysicalPosition, PhysicalSize, Url, WebviewUrl, WebviewWindow};
+use tauri::{AppHandle, Manager, Url, WebviewUrl, WebviewWindow};
+#[cfg(target_os = "macos")]
+use tauri::{LogicalPosition, LogicalSize};
+#[cfg(not(target_os = "macos"))]
+use tauri::{PhysicalPosition, PhysicalSize};
 
 use crate::commands::app::MAIN_WINDOW;
 use crate::core::outputs::{
     OutputHost, WindowPlan, WindowUrl, IDENTIFY_LABEL_PREFIX, OUTPUT_LABEL_PREFIX, PAGE_CRASHING,
 };
 use crate::core::state::AppState;
+use crate::power::DisplayAwake;
 use crate::webview2::{self, PageFailure};
 
 /// Recreations of one output window allowed within [`CRASH_WINDOW`].
@@ -82,6 +94,8 @@ pub struct OutputWindows {
     gave_up: Mutex<HashMap<String, WindowPlan>>,
     /// The output server origin granted audio devices.
     audio_origin: Mutex<Option<String>>,
+    /// Held while any output window shows.
+    awake: Mutex<Option<DisplayAwake>>,
 }
 
 impl OutputWindows {
@@ -98,6 +112,7 @@ impl OutputWindows {
             crashes: Mutex::new(HashMap::new()),
             gave_up: Mutex::new(HashMap::new()),
             audio_origin: Mutex::new(None),
+            awake: Mutex::new(None),
         })
     }
 
@@ -141,6 +156,9 @@ impl OutputWindows {
         }
         place(&w, p);
         let _ = w.set_cursor_visible(false);
+        #[cfg(target_os = "macos")]
+        macos_output_window(&w, true);
+        #[cfg(not(target_os = "macos"))]
         w.show().map_err(|e| e.to_string())?;
         // A display with another scale factor may have resized it while it moved there.
         place(&w, p);
@@ -154,6 +172,9 @@ impl OutputWindows {
         if old.always_on_top != p.always_on_top {
             w.set_always_on_top(p.always_on_top)
                 .map_err(|e| e.to_string())?;
+            // macOS keeps output windows above the menu bar either way.
+            #[cfg(target_os = "macos")]
+            macos_output_window(w, false);
         }
         if old.url != p.url {
             self.grant_audio(w, &p.url);
@@ -176,6 +197,16 @@ impl OutputWindows {
         let until = Instant::now() + DESTROY_WAIT;
         while self.app.get_webview_window(label).is_some() && Instant::now() < until {
             std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+
+    /// Holds the displays awake while any output window shows.
+    fn keep_awake(&self, showing: bool) {
+        let mut awake = lock(&self.awake);
+        match (showing, awake.is_some()) {
+            (true, false) => *awake = DisplayAwake::hold("Kinetra is showing an output"),
+            (false, true) => *awake = None,
+            _ => {}
         }
     }
 
@@ -259,14 +290,53 @@ impl OutputWindows {
     }
 }
 
-/// Moves and sizes a window onto its rect (physical pixels).
+/// Moves and sizes a window onto its rect (Windows: physical pixels; macOS: points).
 fn place(w: &WebviewWindow, p: &WindowPlan) {
     let r = p.rect;
-    if let Err(e) = w.set_position(PhysicalPosition::new(r.x, r.y)) {
+    #[cfg(not(target_os = "macos"))]
+    let (pos, size) = (
+        w.set_position(PhysicalPosition::new(r.x, r.y)),
+        w.set_size(PhysicalSize::new(r.width, r.height)),
+    );
+    #[cfg(target_os = "macos")]
+    let (pos, size) = (
+        w.set_position(LogicalPosition::new(f64::from(r.x), f64::from(r.y))),
+        w.set_size(LogicalSize::new(f64::from(r.width), f64::from(r.height))),
+    );
+    if let Err(e) = pos {
         tracing::warn!("{}: position: {e}", p.label);
     }
-    if let Err(e) = w.set_size(PhysicalSize::new(r.width, r.height)) {
+    if let Err(e) = size {
         tracing::warn!("{}: size: {e}", p.label);
+    }
+}
+
+/// macOS: the screen-saver level (above the menu bar and the Dock of its display), on every
+/// Space and out of ⌘` / Mission Control, never hidden when Kinetra is in the background;
+/// `order_in` also shows it without activating Kinetra (the operator keeps their window).
+#[cfg(target_os = "macos")]
+fn macos_output_window(w: &WebviewWindow, order_in: bool) {
+    use objc2::msg_send;
+    use objc2::runtime::AnyObject;
+    let Ok(ptr) = w.ns_window() else { return };
+    let ptr = ptr as usize;
+    let r = w.run_on_main_thread(move || {
+        let win = ptr as *mut AnyObject;
+        // SAFETY: the NSWindow of a live Tauri window, on the main thread.
+        unsafe {
+            // NSScreenSaverWindowLevel
+            let _: () = msg_send![win, setLevel: 1000isize];
+            // canJoinAllSpaces | stationary | ignoresCycle | fullScreenAuxiliary
+            let _: () = msg_send![win, setCollectionBehavior: 1usize | 16 | 64 | 256];
+            let _: () = msg_send![win, setHidesOnDeactivate: false];
+            let _: () = msg_send![win, setCanHide: false];
+            if order_in {
+                let _: () = msg_send![win, orderFrontRegardless];
+            }
+        }
+    });
+    if let Err(e) = r {
+        tracing::warn!("{}: window setup: {e}", w.label());
     }
 }
 
@@ -317,7 +387,9 @@ impl OutputHost for OutputWindows {
                 }
             }
         }
+        let showing = !now.is_empty();
         *lock(&self.shown) = now;
+        self.keep_awake(showing);
         failures
     }
 
@@ -353,6 +425,7 @@ impl OutputHost for OutputWindows {
     fn close_all(&self) {
         self.identify_gen.fetch_add(1, Ordering::SeqCst);
         lock(&self.shown).clear();
+        self.keep_awake(false);
         lock(&self.identify).clear();
         // Closing is not a crash: no recovery for these instances.
         lock(&self.instances).clear();

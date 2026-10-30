@@ -2306,6 +2306,7 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "block2",
+ "coremidi",
  "ed25519-dalek",
  "futures-util",
  "getrandom 0.3.4",
