@@ -13,6 +13,8 @@ update panel: one paragraph per line, no Markdown.
 
 ## Unreleased
 
+## Next stable release
+
 New template fits on any screen: pick a look and its name is ready to type, with Create always in view, so Enter makes it. Double-click a look to create it straight away. Long rules keep Save in view too, and scrollbars are easier to spot in the dark theme.
 
 Selecting text in a dialog and letting go outside it no longer closes the dialog. Dialogs also cover what's behind them from the moment they open: the red on-air line of a screen no longer shows through New cue or Add automation the first time you open them.
@@ -22,8 +24,6 @@ API sources: after a test, each column's field suggests the columns the response
 Row numbers in flows now count from 1, like everywhere else; a flow that wires a fixed row number will now go to exactly that row (one earlier than before). Step source shows the row it goes to ("Go to row 75"), and an armed flow with changes you haven't deployed now says clearly that it still runs the old version, with Deploy now right there.
 
 On Mac: MIDI controllers and display outputs now work like on Windows. Plug in a controller and map its buttons and faders, or send a screen full screen to a second display or projector. Displays stay awake while an output shows, on Mac and Windows. These are new on Mac and haven't been tested on real hardware yet, so please report anything that doesn't work.
-
-## Next stable release
 
 Typing a license key by hand works again: type it with or without "KNTR-", in any case, with spaces or without dashes. Kinetra tidies it when you paste it or leave the field.
 
