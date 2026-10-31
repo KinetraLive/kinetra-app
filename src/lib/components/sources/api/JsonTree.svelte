@@ -1,7 +1,8 @@
 <!--
   JsonTree: a test response as a collapsible tree (role=tree, one tab stop). Rendered as a flat list
   of the visible nodes with aria-level, so a big response costs only what is expanded; a container
-  shows its first 50 children and a "Show more" row for the rest.
+  shows its first 50 children and a "Show more" row for the rest. Text holding a JSON object or list
+  opens like one (marked "text"), since mapping paths go on into it.
 
   Keyboard: ↑/↓ move, → expands (or goes to the first child), ← collapses (or goes to the parent),
   Home/End, Enter runs `onactivate` (the editor's default action: rows for a list, a column for a
@@ -18,7 +19,7 @@
 <script lang="ts">
   import { tick, untrack } from "svelte";
   import ChevronRight from "lucide-svelte/icons/chevron-right";
-  import { pointerOf, tokensOf, type Mark } from "./model";
+  import { pointerOf, tokensOf, unpack, type Mark } from "./model";
 
   const PAGE = 50;
 
@@ -39,7 +40,16 @@
   } = $props();
 
   type Row =
-    | { kind: "node"; ptr: string; name: string | null; depth: number; value: unknown; size: number | null; open: boolean }
+    | {
+        kind: "node";
+        ptr: string;
+        name: string | null;
+        depth: number;
+        value: unknown;
+        size: number | null;
+        open: boolean;
+        text: boolean;
+      }
     | { kind: "more"; ptr: string; depth: number; rest: number };
 
   let expanded = $state.raw<ReadonlySet<string>>(new Set([""]));
@@ -50,10 +60,11 @@
 
   const rows = $derived.by(() => {
     const out: Row[] = [];
-    const visit = (value: unknown, ptr: string, name: string | null, depth: number, path: (string | number)[]) => {
+    const visit = (raw: unknown, ptr: string, name: string | null, depth: number, path: (string | number)[]) => {
+      const value = unpack(raw);
       const size = sizeOf(value);
       const open = size !== null && expanded.has(ptr);
-      out.push({ kind: "node", ptr, name, depth, value, size, open });
+      out.push({ kind: "node", ptr, name, depth, value, size, open, text: value !== raw });
       if (!open) return;
       const limit = shown[ptr] ?? PAGE;
       const entries: [string | number, unknown][] = Array.isArray(value)
@@ -203,6 +214,7 @@
         <span class="key mono">{r.name ?? "root"}</span>
         {#if r.size !== null}
           <span class="size mono">{Array.isArray(r.value) ? `[${r.size}]` : `{${r.size}}`}</span>
+          {#if r.text}<span class="size">text</span>{/if}
         {:else}
           <span class="val mono" class:str={typeof r.value === "string"} class:nil={r.value === null}>{preview(r.value)}</span>
         {/if}

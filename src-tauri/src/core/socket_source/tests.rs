@@ -118,6 +118,19 @@ fn filters_and_frames() {
         equals: "2".into(),
     };
     assert!(passes(Some(&n), &json!({"kind": 2})));
+    // The filter reads into JSON sent as text, like the mapping.
+    let inner = SocketFilter {
+        pointer: "/Data/phase".into(),
+        equals: "live".into(),
+    };
+    assert!(passes(
+        Some(&inner),
+        &json!({"Data": r#"{"phase": "live"}"#})
+    ));
+    assert!(!passes(
+        Some(&inner),
+        &json!({"Data": r#"{"phase": "half"}"#})
+    ));
     // Several objects in one frame; not JSON at all.
     assert_eq!(frame_values(r#"{"a":1}{"a":2} {"a":3}"#).unwrap().len(), 3);
     assert_eq!(frame_values("hello"), None);

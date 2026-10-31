@@ -36,6 +36,7 @@ vi.mock("$lib/api/sources", () => api);
 vi.mock("$lib/api/api-sources", () => api);
 
 import ApiEditor from "./ApiEditor.svelte";
+import JsonTree from "./JsonTree.svelte";
 import NewSourceDialog from "../new/NewSourceDialog.svelte";
 import SourceList from "../SourceList.svelte";
 import { ago, apiLong, apiShort, until } from "./status";
@@ -52,6 +53,7 @@ import {
   pointerOf,
   resolve,
   tokensOf,
+  unpack,
   withinRow,
   type ApiDoc,
 } from "./model";
@@ -345,6 +347,42 @@ describe("column suggestions and checks against the last test", () => {
       { value: "1", label: "#2" },
       { value: "2", label: "#3" },
     ]);
+  });
+
+  it("JSON sent as text: paths go on into it, like the backend", () => {
+    // A game sends its match data as JSON inside a text field.
+    const score = JSON.stringify({ home: 2, away: 1 });
+    const match = JSON.stringify({ teams: [{ name: "Harbor Hawks", players: [{ name: "Ada" }] }, { name: "Summit Rangers" }], score });
+    const msg = { type: "match", data: match, note: "{not json" };
+    expect(unpack("{not json")).toBe("{not json");
+    expect(unpack("[1]")).toEqual([1]);
+    expect(unpack("12")).toBe("12");
+    expect(resolve(msg, "/data/teams/0/players/0/name")).toEqual({ found: true, value: "Ada" });
+    expect(resolve(msg, "/data/score/home").value).toBe(2);
+    expect(resolve(msg, "/data").value).toBe(match);
+    expect(resolve(msg, "/note/x").found).toBe(false);
+    // Rows inside the text, and suggestions from them.
+    const m = mapJson(msg, { rows: "/data/teams", columns: [col("/name"), { ...col("/players/0/name"), key: "p" }] });
+    expect(m.rows).toEqual([
+      { k: "Harbor Hawks", p: "Ada" },
+      { k: "Summit Rangers", p: "" },
+    ]);
+    expect(jsonPathOptions(msg, "/data").map((o) => o.value)).toEqual(
+      expect.arrayContaining(["/teams/0/name", "/teams/0/players/0/name", "/score/home", "/score/away"]),
+    );
+    const result = { error: null, json: msg } as unknown as Parameters<typeof missingInTest>[1];
+    expect(missingInTest(col("/score/home"), result, { rows: "/data", csv: csv(false).csv }, "json")).toBeNull();
+  });
+
+  it("JSON sent as text opens in the response tree", async () => {
+    const msg = { data: JSON.stringify({ teams: [{ name: "Harbor Hawks" }] }) };
+    render(JsonTree, { props: { json: msg, label: "Response", mark: () => null } });
+    const data = screen.getByRole("treeitem", { name: /data/ });
+    expect(data).toHaveAttribute("aria-expanded", "false");
+    expect(data.textContent).toContain("text");
+    await fireEvent.click(data);
+    await fireEvent.keyDown(data, { key: "ArrowRight" });
+    expect(screen.getByRole("treeitem", { name: /teams/ })).toBeInTheDocument();
   });
 
   it("JSON: the paths of the plain values in the first rows, with a sample", () => {

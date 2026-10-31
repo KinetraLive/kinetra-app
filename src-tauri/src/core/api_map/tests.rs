@@ -113,6 +113,75 @@ fn json_object_is_one_row_and_root_arrays_work() {
 }
 
 #[test]
+fn json_sent_as_text_is_read_through() {
+    // A game sends its match data as JSON inside a text field (twice over for the score).
+    let teams = json!([
+        { "name": "Harbor Hawks", "players": [{ "name": "Ada" }, { "name": "Grace" }] },
+        { "name": "Summit Rangers", "players": [{ "name": "Linus" }] },
+    ]);
+    let score = json!({ "home": 2, "away": 1 }).to_string();
+    let match_data = json!({ "teams": teams, "score": score, "note": "{not json" }).to_string();
+    let body = json!({ "type": "match", "data": match_data }).to_string();
+
+    // Rows inside the text, columns inside those rows.
+    let m = map_json(
+        body.as_bytes(),
+        &mapping(
+            "/data/teams",
+            &[
+                ("team", "/name"),
+                ("first", "/players/0/name"),
+                ("n", "/players"),
+            ],
+        ),
+    )
+    .unwrap();
+    assert_eq!(cells(&m, "team"), ["Harbor Hawks", "Summit Rangers"]);
+    assert_eq!(cells(&m, "first"), ["Ada", "Linus"]);
+    assert!(m.rows[1]["n"].starts_with("[{"));
+
+    // One row: the text itself, text nested in text, and text that isn't JSON.
+    let m = map_json(
+        body.as_bytes(),
+        &mapping(
+            "/data",
+            &[
+                ("home", "/score/home"),
+                ("score", "/score"),
+                ("note", "/note"),
+                ("bad", "/note/x"),
+            ],
+        ),
+    )
+    .unwrap();
+    assert_eq!(m.rows[0]["home"], "2");
+    assert_eq!(
+        m.rows[0]["score"], score,
+        "a pointer ending at the text takes it as is"
+    );
+    assert_eq!(m.rows[0]["note"], "{not json");
+    assert_eq!(m.rows[0]["bad"], "");
+
+    // The rows pointer may name the text; the whole row is still its JSON.
+    let m = map_json(
+        body.as_bytes(),
+        &mapping("/data", &[("t", "/teams/1/name")]),
+    )
+    .unwrap();
+    assert_eq!(cells(&m, "t"), ["Summit Rangers"]);
+    // A path that goes nowhere, and one through a number, find nothing.
+    let doc = json!({ "a": 5, "s": "[1, 2]" });
+    let mut cache = Unpacked::default();
+    assert!(lookup(&doc, "/a/b", &mut cache).is_none());
+    assert!(lookup(&doc, "/x/y", &mut cache).is_none());
+    assert_eq!(
+        lookup(&doc, "/s/1", &mut cache).unwrap().as_ref(),
+        &json!(2)
+    );
+    assert!(lookup(&doc, "/s/2", &mut cache).is_none());
+}
+
+#[test]
 fn json_errors() {
     let body = br#"{"items": 5, "list": []}"#;
     let e = map_json(body, &mapping("/nope", &[("a", "/a")])).unwrap_err();

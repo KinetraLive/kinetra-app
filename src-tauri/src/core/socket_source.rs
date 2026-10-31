@@ -205,9 +205,8 @@ fn filter_text(v: &Value) -> String {
 pub fn passes(filter: Option<&SocketFilter>, msg: &Value) -> bool {
     match filter {
         None => true,
-        Some(f) => msg
-            .pointer(&f.pointer)
-            .is_some_and(|v| filter_text(v) == f.equals),
+        Some(f) => api_map::lookup(msg, &f.pointer, &mut api_map::Unpacked::default())
+            .is_some_and(|v| filter_text(&v) == f.equals),
     }
 }
 

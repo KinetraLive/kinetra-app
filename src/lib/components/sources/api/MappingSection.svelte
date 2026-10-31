@@ -42,6 +42,7 @@
     missingInTest,
     resolve,
     rowsIsList,
+    unpack,
     withinRow,
     type MappingIssues,
     type MappingResult,
@@ -110,7 +111,7 @@
   const selRel = $derived(sel === null ? null : withinRow(sel, mapping.rows, list));
   const selIsContainer = $derived.by(() => {
     if (sel === null) return false;
-    const v = resolve(json, sel).value;
+    const v = unpack(resolve(json, sel).value);
     return v !== null && typeof v === "object";
   });
 
@@ -128,7 +129,7 @@
     let next = cols;
     // No columns yet: one per plain value of the first row (up to 8).
     if (next.length === 0) {
-      const at = resolve(json, ptr).value;
+      const at = unpack(resolve(json, ptr).value);
       const first = Array.isArray(at) ? at[0] : at;
       if (first !== null && typeof first === "object" && !Array.isArray(first)) {
         next = [];
@@ -164,7 +165,7 @@
    *  column. */
   function activate(ptr: string) {
     const rel = withinRow(ptr, mapping.rows, list);
-    const v = resolve(json, ptr).value;
+    const v = unpack(resolve(json, ptr).value);
     const container = v !== null && typeof v === "object";
     if (ptr !== mapping.rows && (Array.isArray(v) || (container && rel === null))) useAsRows(ptr);
     else if (rel !== null && rel !== "" && !container && !cols.some((c) => c.path === rel)) addColumn(rel, v);

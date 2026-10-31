@@ -36,12 +36,34 @@ export function tokensOf(ptr: string): string[] | null {
   return ptr.slice(1).split("/").map(unescape);
 }
 
-/** The value at `ptr` (found: false when the pointer leads nowhere). */
+const unpacked = new Map<string, unknown>();
+
+/** A JSON object or list sent as text (a game's `"match": "{\"teams\": …}"`), parsed; any other
+ *  value as it is. Pointers go on into such text, as in the backend (`api_map::lookup`). */
+export function unpack(v: unknown): unknown {
+  if (typeof v !== "string" || !/^s*[[{]/.test(v)) return v;
+  let out = unpacked.get(v);
+  if (out === undefined) {
+    try {
+      const parsed: unknown = JSON.parse(v);
+      out = parsed !== null && typeof parsed === "object" ? parsed : v;
+    } catch {
+      out = v;
+    }
+    if (unpacked.size >= 200) unpacked.clear();
+    unpacked.set(v, out);
+  }
+  return out;
+}
+
+/** The value at `ptr` (found: false when the pointer leads nowhere). A pointer that ends at
+ *  text gets the text as it is; one that goes on reads into JSON sent as text. */
 export function resolve(json: unknown, ptr: string): { found: boolean; value: unknown } {
   const tokens = tokensOf(ptr);
   if (!tokens) return { found: false, value: undefined };
   let cur = json;
   for (const t of tokens) {
+    cur = unpack(cur);
     if (Array.isArray(cur)) {
       if (!/^(0|[1-9]\d*)$/.test(t) || Number(t) >= cur.length) return { found: false, value: undefined };
       cur = cur[Number(t)];
@@ -74,11 +96,8 @@ export function mapJson(json: unknown, mapping: Pick<ApiMapping, "rows" | "colum
   const hits = Object.fromEntries(mapping.columns.map((c) => [c.key, 0]));
   const at = resolve(json, mapping.rows);
   if (!at.found) return { rows: [], hits, error: `Nothing at ${mapping.rows || "the root"}.` };
-  const list = Array.isArray(at.value)
-    ? at.value
-    : at.value !== null && typeof at.value === "object"
-      ? [at.value]
-      : null;
+  const value = unpack(at.value);
+  const list = Array.isArray(value) ? value : value !== null && typeof value === "object" ? [value] : null;
   if (!list) return { rows: [], hits, error: "The rows must point to a list or an object." };
   const rows = list.slice(0, SOURCE_ROWS_MAX).map((item) => {
     const row: Record<string, string> = {};
@@ -94,7 +113,7 @@ export function mapJson(json: unknown, mapping: Pick<ApiMapping, "rows" | "colum
 
 /** Whether the rows pointer names a list (each element a row) rather than one object (one row). */
 export function rowsIsList(json: unknown, rowsPtr: string): boolean {
-  return Array.isArray(resolve(json, rowsPtr).value);
+  return Array.isArray(unpack(resolve(json, rowsPtr).value));
 }
 
 /**
@@ -140,20 +159,23 @@ export interface PathOption {
 function rowsOf(json: unknown, rowsPtr: string): unknown[] {
   const at = resolve(json, rowsPtr);
   if (!at.found) return [];
-  if (Array.isArray(at.value)) return at.value;
-  return at.value !== null && typeof at.value === "object" ? [at.value] : [];
+  const value = unpack(at.value);
+  if (Array.isArray(value)) return value;
+  return value !== null && typeof value === "object" ? [value] : [];
 }
 
 const SUGGEST_ROWS = 20;
 const SUGGEST_MAX = 200;
 
 /** The paths of plain values inside the first rows of a JSON test response (as a column's "Path in
- * a row"), in the order they first appear; nested objects and lists are walked, up to 200. */
+ * a row"), in the order they first appear; nested objects and lists (also sent as text) are walked,
+ * up to 200. */
 export function jsonPathOptions(json: unknown, rowsPtr: string): PathOption[] {
   const seen = new Set<string>();
   const out: PathOption[] = [];
-  const walk = (v: unknown, path: (string | number)[], depth: number) => {
+  const walk = (raw: unknown, path: (string | number)[], depth: number) => {
     if (out.length >= SUGGEST_MAX) return;
+    const v = unpack(raw);
     if (v !== null && typeof v === "object") {
       if (depth >= 6) return;
       const entries = Array.isArray(v) ? v.slice(0, 5).map((x, i) => [i, x] as const) : Object.entries(v);
