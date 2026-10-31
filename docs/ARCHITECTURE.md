@@ -107,9 +107,15 @@ A project is a plain folder of JSON, HTML and CSS, portable and git-friendly:
   save, and renderer pages are served with a strict Content Security Policy.
 - No timers or `requestAnimationFrame` at rest. Clock and timer fields share one scheduler that
   runs only while such a field is on air.
-- Size budget: 9 KB gzipped for the main bundle (raised from 8 KB on 2026-10-13 for remote
-  control's `gone` report; browser sources still load instantly); media and output support load
-  as lazy chunks.
+- Size budget: 9,500 B gzipped (level 9) for the main bundle; media, output and Studio support
+  load as lazy chunks. Reports flag it past 90 % (8,550 B).
+  - **2026-10-31, raised from 9,000 B (owner's decision):** web images (the `/web-image`
+    rewrite and its readiness message) and the features before it took the main bundle to
+    8,083 B (89.8 %). Trimming was measured first and didn't pay: terser was 60–130 B larger
+    than Vite's own minifier, merging repeated code made it larger, and moving variant swaps
+    into a lazy chunk saved only 46 B, not worth the extra moving part on air. 9,500 B keeps
+    browser sources loading instantly.
+  - 2026-10-13, raised from 8 KB: remote control's `gone` report took it to 7,979 of 8,000 B.
 
 ## Sources and automation
 
