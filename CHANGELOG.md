@@ -13,6 +13,8 @@ update panel: one paragraph per line, no Markdown.
 
 ## Unreleased
 
+API and Live data (WebSocket) sources read JSON that arrives as text: when a feed packs its data into a text field (like a game sending its match as one string), the response tree opens it and you can map the players, teams and scores inside it like any other value.
+
 ## Next stable release
 
 New template fits on any screen: pick a look and its name is ready to type, with Create always in view, so Enter makes it. Double-click a look to create it straight away. Long rules keep Save in view too, and scrollbars are easier to spot in the dark theme.

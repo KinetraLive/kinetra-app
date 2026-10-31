@@ -4,7 +4,10 @@
 //! - **JSON:** `mapping.rows` is a JSON Pointer (RFC 6901, `""` = the root) to an array (one row
 //!   per element) or an object (one row). Each column's `path` is a pointer *within* the row
 //!   (`""` = the row itself). Strings are taken as is, numbers and booleans as their text, `null`
-//!   and missing values as `""`, arrays and objects as compact JSON.
+//!   and missing values as `""`, arrays and objects as compact JSON. **JSON sent as text:** a
+//!   pointer goes on into a string that holds a JSON object or list (a game sending
+//!   `"match": "{\"teams\": …}"`), and the rows pointer may name such a string; a pointer that
+//!   ends at the string takes its text as is (`lookup`, `Unpacked`).
 //! - **CSV:** our own small RFC 4180 parser: quoted fields, `""` escapes, CRLF or LF, a UTF-8
 //!   BOM. The delimiter is `,` `;` or tab, detected from the first line (outside quotes) with
 //!   `auto`. With `header`, the first record names the columns and a column's `path` is a header
@@ -15,7 +18,9 @@
 //!
 //! Pure functions: the poller runs them on the blocking pool.
 
-use std::collections::HashSet;
+use std::borrow::Cow;
+use std::collections::{HashMap, HashSet};
+use std::rc::Rc;
 
 use serde_json::Value;
 
@@ -279,17 +284,71 @@ pub fn parse_json(bytes: &[u8]) -> Result<Value, String> {
     serde_json::from_slice(bytes).map_err(|e| format!("The response is not valid JSON: {e}"))
 }
 
+/// A JSON object or list sent as text: `s` parsed when it holds one, else None.
+pub fn unpack(s: &str) -> Option<Value> {
+    let t = s.trim_start();
+    if !t.starts_with(['{', '[']) {
+        return None;
+    }
+    serde_json::from_str::<Value>(t)
+        .ok()
+        .filter(|v| v.is_object() || v.is_array())
+}
+
+/// The strings of one document that held JSON, parsed once each (every column of a row often
+/// reads the same one). Keyed by the text's address, which stays put while the document and
+/// this cache live; use one per document.
+#[derive(Default)]
+pub struct Unpacked(HashMap<usize, Option<Rc<Value>>>);
+
+impl Unpacked {
+    fn get(&mut self, s: &str) -> Option<Rc<Value>> {
+        self.0
+            .entry(s.as_ptr() as usize)
+            .or_insert_with(|| unpack(s).map(Rc::new))
+            .clone()
+    }
+}
+
+/// The value at a JSON Pointer, going on into strings that hold JSON (see the module docs).
+pub fn lookup<'a>(v: &'a Value, ptr: &str, cache: &mut Unpacked) -> Option<Cow<'a, Value>> {
+    if let Some(x) = v.pointer(ptr) {
+        return Some(Cow::Borrowed(x));
+    }
+    // The longest prefix that leads somewhere: the pointer can only go on if that is text.
+    let mut end = ptr.len();
+    while let Some(i) = ptr[..end].rfind('/') {
+        match v.pointer(&ptr[..i]) {
+            Some(Value::String(s)) => {
+                let inner = cache.get(s)?;
+                return lookup(&inner, &ptr[i..], cache).map(|c| Cow::Owned(c.into_owned()));
+            }
+            Some(_) => return None,
+            None => end = i,
+        }
+    }
+    None
+}
+
 /// Maps a parsed JSON document (see the module docs).
 pub fn map_json_value(doc: &Value, mapping: &ApiMapping) -> Result<Mapped, String> {
-    let at = doc.pointer(&mapping.rows).ok_or_else(|| {
+    let mut cache = Unpacked::default();
+    let mut at = lookup(doc, &mapping.rows, &mut cache).ok_or_else(|| {
         format!(
             "Nothing at the rows pointer \"{}\" in the response",
             mapping.rows
         )
     })?;
-    let items: &[Value] = match at {
+    let inner = match at.as_ref() {
+        Value::String(s) => cache.get(s),
+        _ => None,
+    };
+    if let Some(v) = inner {
+        at = Cow::Owned(Rc::unwrap_or_clone(v));
+    }
+    let items: &[Value] = match at.as_ref() {
         Value::Array(a) => a,
-        Value::Object(_) => std::slice::from_ref(at),
+        Value::Object(_) => std::slice::from_ref(at.as_ref()),
         _ => {
             return Err(format!(
                 "The rows pointer \"{}\" points to a value, not a list or an object",
@@ -305,7 +364,9 @@ pub fn map_json_value(doc: &Value, mapping: &ApiMapping) -> Result<Mapped, Strin
                 .columns
                 .iter()
                 .map(|c| {
-                    let v = item.pointer(&c.path).map(json_text).unwrap_or_default();
+                    let v = lookup(item, &c.path, &mut cache)
+                        .map(|v| json_text(&v))
+                        .unwrap_or_default();
                     (c.key.clone(), cut_cell(v))
                 })
                 .collect()
