@@ -138,10 +138,17 @@ export function safeAttr(name: string, v: string): string {
   return urls.every(okUrl) ? v : "";
 }
 
+let webImages = false;
+/** Renderer pages only (`main.ts`): the app's thumbnails compile templates too, with absolute
+ *  output-server URLs that must stay as they are. */
+export const useWebImages = () => {
+  webImages = true;
+};
+
 /** A bound web link (http/https) in a URL attribute goes through Kinetra: `/web-image` serves the
  *  project's copy of it (the CSP lets this page load nothing from the internet). */
 export function viaKinetra(name: string, v: string): string {
-  if (!URL_ATTRS.has(name)) return v;
+  if (!webImages || !URL_ATTRS.has(name)) return v;
   const web = (u: string) => (/^https?:\/\//i.test(u) ? `/web-image?u=${encodeURIComponent(u)}` : u);
   return name === "srcset" ? v.replace(/[^\s,]+/g, web) : web(v.trim());
 }

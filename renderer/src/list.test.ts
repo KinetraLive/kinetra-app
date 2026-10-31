@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "./app";
-import { Layer, compile, parseRows } from "./layer";
+import { Layer, compile, parseRows, useWebImages } from "./layer";
 import type { FieldType, Fields, ScreenInfo, WireLayer } from "./protocol";
 import { Stage } from "./stage";
 
@@ -80,6 +80,7 @@ describe("list fields", () => {
   });
 
   it("escapes cells and applies the URL and on* rules inside rows", () => {
+    useWebImages(); // as on a renderer page
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const evil = "<img src=x onerror=alert(1)>";
     const { div } = render(

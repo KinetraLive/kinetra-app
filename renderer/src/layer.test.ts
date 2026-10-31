@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { Layer, compile, outDuration, parseTimes, safeAttr, styleVal, viaKinetra } from "./layer";
+import { Layer, compile, outDuration, parseTimes, safeAttr, styleVal, useWebImages, viaKinetra } from "./layer";
 import type { FieldType, Fields, WireLayer } from "./protocol";
 
 function render(html: string, fields: Fields, types: Record<string, FieldType> = {}) {
@@ -86,6 +86,9 @@ describe("compile", () => {
     const html = '<a href="{{url}}">a</a>';
     expect(render(html, { url: "javascript:alert(1)" }).div.querySelector("a")!.getAttribute("href")).toBe("");
     expect(render(html, { url: " java\tscript:alert(1)" }).div.querySelector("a")!.getAttribute("href")).toBe("");
+    // Outside renderer pages (the app's thumbnails) web links stay as they are.
+    expect(render(html, { url: "https://x" }).div.querySelector("a")!.getAttribute("href")).toBe("https://x");
+    useWebImages();
     expect(render(html, { url: "https://x" }).div.querySelector("a")!.getAttribute("href")).toBe("/web-image?u=https%3A%2F%2Fx");
     expect(render(html, { url: "/rel/a.png" }).div.querySelector("a")!.getAttribute("href")).toBe("/rel/a.png");
     const img = render('<img src="{{s}}">', { s: "data:image/png;base64,AAAA" }).div.querySelector("img")!;
