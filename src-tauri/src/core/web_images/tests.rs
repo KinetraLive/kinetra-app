@@ -10,6 +10,11 @@ use super::*;
 
 const PNG: &[u8] = &[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 13];
 
+/// A downloader that may also reach this computer (the mock servers run on 127.0.0.1).
+fn local() -> WebImages {
+    WebImages::with_address_check(|ip| ip.is_loopback() || is_public(ip))
+}
+
 struct Net {
     rt: tokio::runtime::Runtime,
     base: String,
@@ -18,7 +23,8 @@ struct Net {
 
 /// A mock web server: `/logo.png` (a PNG served as text/plain, to prove the type is sniffed),
 /// `/page` (HTML), `/big` (over the limit, no length header), `/gone` (404), `/hop` (a redirect
-/// to the PNG), `/loop` (redirects forever). Every request counts in `hits`.
+/// to the PNG), `/loop` (redirects forever), `/to-private` (a redirect to the PNG on 127.0.0.2).
+/// Every request counts in `hits`.
 fn net() -> Net {
     let rt = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2)
@@ -31,7 +37,18 @@ fn net() -> Net {
         .unwrap();
     let base = format!("http://{}", listener.local_addr().unwrap());
     let h = hits.clone();
+    let private = format!(
+        "http://127.0.0.2:{}/logo.png",
+        listener.local_addr().unwrap().port()
+    );
     let app = axum::Router::new()
+        .route(
+            "/to-private",
+            get(move || {
+                let to = private.clone();
+                async move { axum::response::Redirect::temporary(&to) }
+            }),
+        )
         .route(
             "/logo.png",
             get(|| async { ([(header::CONTENT_TYPE, "text/plain")], PNG).into_response() }),
@@ -139,7 +156,7 @@ fn downloads_once_keeps_the_copy_and_refuses_what_isnt_an_image() {
     let n = net();
     let tmp = tempfile::tempdir().unwrap();
     let project = tmp.path();
-    let web = WebImages::default();
+    let web = local();
     let logo = format!("{}/logo.png", n.base);
 
     // Two requests at once: one download; the copy is a .png whatever the server's type said.
@@ -185,9 +202,7 @@ fn an_unreachable_server_fails_cleanly() {
     let free = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let url = format!("http://{}/x.png", free.local_addr().unwrap());
     drop(free);
-    let e =
-        n.rt.block_on(WebImages::default().fetch(tmp.path(), &url))
-            .unwrap_err();
+    let e = n.rt.block_on(local().fetch(tmp.path(), &url)).unwrap_err();
     assert!(e.contains("Couldn't connect"), "{e}");
     assert!(!tmp.path().join(DIR).exists());
 }
@@ -240,4 +255,116 @@ fn links_on_disk_come_from_screens_and_template_defaults() {
             "https://a/two.png".to_string()
         ])
     );
+}
+
+#[test]
+fn public_addresses_only() {
+    use std::net::{Ipv4Addr, Ipv6Addr};
+    let v4 = |s: &str| IpAddr::V4(s.parse::<Ipv4Addr>().unwrap());
+    let v6 = |s: &str| IpAddr::V6(s.parse::<Ipv6Addr>().unwrap());
+    for ok in [
+        "8.8.8.8",
+        "1.1.1.1",
+        "151.101.1.69",
+        "100.63.255.255",
+        "100.128.0.1",
+        "172.32.0.1",
+    ] {
+        assert!(is_public(v4(ok)), "{ok}");
+    }
+    for ok in [
+        "2606:4700::1111",
+        "2a00:1450:4001::200e",
+        "64:ff9b::808:808",
+    ] {
+        assert!(is_public(v6(ok)), "{ok}");
+    }
+    for bad in [
+        "127.0.0.1",
+        "127.255.0.9",
+        "10.0.0.5",
+        "172.16.0.1",
+        "172.31.255.254",
+        "192.168.1.1",
+        "169.254.169.254",
+        "100.64.0.1",
+        "100.127.255.254",
+        "0.0.0.0",
+        "0.1.2.3",
+        "255.255.255.255",
+        "224.0.0.251",
+        "192.0.0.8",
+        "192.0.2.1",
+        "198.18.0.1",
+        "198.51.100.7",
+        "203.0.113.9",
+        "240.0.0.1",
+    ] {
+        assert!(!is_public(v4(bad)), "{bad}");
+    }
+    for bad in [
+        "::1",
+        "::",
+        "fe80::1",
+        "fc00::1",
+        "fd12:3456::1",
+        "ff02::1",
+        "2001:db8::1",
+        "::ffff:192.168.1.1",
+        "::ffff:127.0.0.1",
+        "64:ff9b::a00:1",
+    ] {
+        assert!(!is_public(v6(bad)), "{bad}");
+    }
+    // The resolver's filter: what's left of a name's addresses, or a refusal.
+    let addrs = [v4("10.0.0.2"), v4("93.184.215.14"), v6("::1")].map(|ip| SocketAddr::new(ip, 80));
+    assert_eq!(
+        keep_allowed(addrs.into_iter(), is_public).unwrap(),
+        [SocketAddr::new(v4("93.184.215.14"), 80)]
+    );
+    assert!(keep_allowed(addrs[..1].iter().copied(), is_public).is_err());
+}
+
+#[test]
+fn links_to_this_computer_or_the_venue_network_are_refused() {
+    // Kinetra's own downloader (public addresses only), against servers on this computer.
+    let n = net();
+    let tmp = tempfile::tempdir().unwrap();
+    let web = WebImages::default();
+    let port = n.base.rsplit(':').next().unwrap();
+    for url in [
+        format!("http://127.0.0.1:{port}/logo.png"),
+        format!("http://localhost:{port}/logo.png"),
+        format!("http://[::1]:{port}/logo.png"),
+        format!("http://[::ffff:127.0.0.1]:{port}/logo.png"),
+        "http://192.168.1.1/logo.png".to_string(),
+        "http://169.254.169.254/latest/meta-data".to_string(),
+        "http://10.0.0.1/logo.png".to_string(),
+    ] {
+        let e = n.rt.block_on(web.fetch(tmp.path(), &url)).unwrap_err();
+        assert!(e.contains("private or local network"), "{url}: {e}");
+    }
+    assert_eq!(
+        n.hits.load(Ordering::SeqCst),
+        0,
+        "nothing reached the servers"
+    );
+    assert!(!tmp.path().join(DIR).exists());
+
+    // A redirect to a refused address stops there: the first server answers, the second is never
+    // asked (only 127.0.0.1 is allowed here).
+    let one = WebImages::with_address_check(|ip| ip == IpAddr::V4(std::net::Ipv4Addr::LOCALHOST));
+    let e =
+        n.rt.block_on(one.fetch(tmp.path(), &format!("{}/to-private", n.base)))
+            .unwrap_err();
+    assert!(e.contains("private or local network"), "{e}");
+    assert_eq!(n.hits.load(Ordering::SeqCst), 1);
+    // A name that resolves only to refused addresses never connects: `localhost` is 127.0.0.1
+    // and ::1, so allowing neither leaves nothing.
+    let none = WebImages::with_address_check(|_| false);
+    let e =
+        n.rt.block_on(none.fetch(tmp.path(), &format!("http://localhost:{port}/logo.png")))
+            .unwrap_err();
+    assert!(e.contains("private or local network"), "{e}");
+    assert_eq!(n.hits.load(Ordering::SeqCst), 1);
 }

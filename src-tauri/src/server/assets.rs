@@ -52,6 +52,18 @@ pub struct AssetDir {
 }
 
 impl AssetDir {
+    /// Web images may also come from this computer (loopback): for tests and the e2e fixture
+    /// server, whose "web" servers run on 127.0.0.1. The app uses [`Default`] (public only).
+    #[doc(hidden)]
+    pub fn allowing_loopback_web_images() -> Self {
+        Self {
+            project: Arc::default(),
+            web: Arc::new(WebImages::with_address_check(|ip| {
+                ip.is_loopback() || crate::core::web_images::is_public(ip)
+            })),
+        }
+    }
+
     /// Serves `<project>/assets/` (or nothing).
     pub fn set_project(&self, project: Option<PathBuf>) {
         *self.project.write().unwrap_or_else(PoisonError::into_inner) = project;

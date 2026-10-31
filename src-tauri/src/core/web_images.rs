@@ -14,6 +14,13 @@
 //!   most `ASSET_IMAGE_MAX_BYTES`, counted while reading; 15 s; the bytes must be a PNG, JPEG,
 //!   GIF, WebP or SVG (sniffed like imports; the server's content type is ignored). SVG is served
 //!   with scripts blocked, like assets. Logs name the host only (links may carry tokens).
+//! - **Public addresses only** (owner's decision 2026-10-31: a collaborator or a data source must
+//!   not make Kinetra probe the venue's network): every address Kinetra connects to must be
+//!   public ([`is_public`]), whoever wrote the link. Host names go through [`PublicOnly`], the
+//!   client's DNS resolver, which drops every non-public address it resolves (so a name that
+//!   later resolves elsewhere still can't reach one); IP literals are checked before the request
+//!   and on every redirect; no proxy (it would resolve for us). Tests and the e2e fixture server
+//!   allow loopback ([`WebImages::with_address_check`]).
 //! - One download per link at a time (later requests wait for it); a failed link is tried again
 //!   after 30 s at the earliest.
 //! - Copies are written atomically; the first one adds `.web-images/` to the project's
@@ -21,6 +28,7 @@
 //!   removes the copies that no layer, template default or source uses any more.
 
 use std::collections::{HashMap, HashSet};
+use std::net::{IpAddr, SocketAddr};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 use std::time::{Duration, Instant};
@@ -44,6 +52,98 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(8);
 const TOTAL_TIMEOUT: Duration = Duration::from_secs(15);
 /// A failed link isn't downloaded again sooner than this.
 const RETRY_AFTER: Duration = Duration::from_secs(30);
+const MAX_REDIRECTS: usize = 5;
+
+/// Whether an address is on the public internet: not loopback, private (10/8, 172.16/12,
+/// 192.168/16, fc00::/7), shared (100.64/10: carrier NAT, Tailscale), link-local, unspecified,
+/// broadcast, multicast, documentation, benchmarking or reserved. IPv4-mapped and NAT64
+/// (64:ff9b::/96) IPv6 addresses are judged by their IPv4 address.
+pub fn is_public(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(v4) => {
+            let [a, b, c, _] = v4.octets();
+            !(v4.is_loopback()
+                || v4.is_private()
+                || v4.is_link_local()
+                || v4.is_unspecified()
+                || v4.is_broadcast()
+                || v4.is_multicast()
+                || v4.is_documentation()
+                || a == 0
+                || (a == 100 && (64..=127).contains(&b))
+                || (a == 192 && b == 0 && c == 0)
+                || (a == 198 && (18..=19).contains(&b))
+                || a >= 240)
+        }
+        IpAddr::V6(v6) => {
+            if let Some(v4) = v6.to_ipv4_mapped() {
+                return is_public(IpAddr::V4(v4));
+            }
+            let s = v6.segments();
+            if s[..6] == [0x64, 0xff9b, 0, 0, 0, 0] {
+                let [a, b] = s[6].to_be_bytes();
+                let [c, d] = s[7].to_be_bytes();
+                return is_public(IpAddr::V4(std::net::Ipv4Addr::new(a, b, c, d)));
+            }
+            !(v6.is_loopback()
+                || v6.is_unspecified()
+                || v6.is_multicast()
+                || (s[0] & 0xfe00) == 0xfc00
+                || (s[0] & 0xffc0) == 0xfe80
+                || (s[0] == 0x2001 && s[1] == 0x0db8))
+        }
+    }
+}
+
+/// The refusal of a non-public address (found in a request error's sources).
+#[derive(Debug)]
+struct NotPublic;
+
+impl std::fmt::Display for NotPublic {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("not a public address")
+    }
+}
+
+impl std::error::Error for NotPublic {}
+
+/// The addresses of a resolved host that pass `allowed`; an error when none does.
+fn keep_allowed(
+    addrs: impl Iterator<Item = SocketAddr>,
+    allowed: fn(IpAddr) -> bool,
+) -> Result<Vec<SocketAddr>, NotPublic> {
+    let kept: Vec<SocketAddr> = addrs.filter(|a| allowed(a.ip())).collect();
+    if kept.is_empty() {
+        Err(NotPublic)
+    } else {
+        Ok(kept)
+    }
+}
+
+/// The client's DNS resolver: the system's answers, without the addresses `allowed` refuses.
+pub struct PublicOnly {
+    allowed: fn(IpAddr) -> bool,
+}
+
+impl reqwest::dns::Resolve for PublicOnly {
+    fn resolve(&self, name: reqwest::dns::Name) -> reqwest::dns::Resolving {
+        let allowed = self.allowed;
+        let host = name.as_str().to_string();
+        Box::pin(async move {
+            let addrs = tokio::net::lookup_host((host.as_str(), 0)).await?;
+            let kept = keep_allowed(addrs, allowed)?;
+            Ok(Box::new(kept.into_iter()) as reqwest::dns::Addrs)
+        })
+    }
+}
+
+/// Whether a link's host is an IP literal that `allowed` refuses (names are the resolver's job).
+fn literal_refused(url: &reqwest::Url, allowed: fn(IpAddr) -> bool) -> bool {
+    url.host_str()
+        .map(|h| h.trim_start_matches('[').trim_end_matches(']'))
+        .and_then(|h| h.parse::<IpAddr>().ok())
+        .is_some_and(|ip| !allowed(ip))
+}
 
 /// An http(s) link with a host and no user name or password, at most [`URL_MAX`] bytes, without
 /// spaces or control characters.
@@ -170,11 +270,18 @@ pub fn host_of(url: &str) -> String {
 type Running = Arc<OnceCell<Result<String, String>>>;
 
 /// The downloader (one per output server; see the module docs).
-#[derive(Default)]
 pub struct WebImages {
     client: OnceLock<Result<reqwest::Client, String>>,
     running: Mutex<HashMap<String, Running>>,
     failed: Mutex<HashMap<String, Instant>>,
+    /// Which addresses may be connected to: [`is_public`] outside tests.
+    allowed: fn(IpAddr) -> bool,
+}
+
+impl Default for WebImages {
+    fn default() -> Self {
+        Self::with_address_check(is_public)
+    }
 }
 
 fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
@@ -182,14 +289,38 @@ fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 }
 
 impl WebImages {
+    /// A downloader that connects only to addresses `allowed` accepts. Tests and the e2e fixture
+    /// server allow loopback; everything else uses [`Default`] ([`is_public`]).
+    #[doc(hidden)]
+    pub fn with_address_check(allowed: fn(IpAddr) -> bool) -> Self {
+        Self {
+            client: OnceLock::new(),
+            running: Mutex::default(),
+            failed: Mutex::default(),
+            allowed,
+        }
+    }
+
     fn client(&self) -> Result<reqwest::Client, String> {
+        let allowed = self.allowed;
         self.client
             .get_or_init(|| {
+                let redirects = reqwest::redirect::Policy::custom(move |a| {
+                    if a.previous().len() >= MAX_REDIRECTS {
+                        a.error("too many redirects")
+                    } else if literal_refused(a.url(), allowed) {
+                        a.error(NotPublic)
+                    } else {
+                        a.follow()
+                    }
+                });
                 reqwest::Client::builder()
                     .user_agent(concat!("Kinetra/", env!("CARGO_PKG_VERSION")))
                     .connect_timeout(CONNECT_TIMEOUT)
                     .timeout(TOTAL_TIMEOUT)
-                    .redirect(reqwest::redirect::Policy::limited(5))
+                    .redirect(redirects)
+                    .dns_resolver(Arc::new(PublicOnly { allowed }))
+                    .no_proxy()
                     .build()
                     .map_err(|_| "The HTTP client could not start".to_string())
             })
@@ -236,9 +367,13 @@ impl WebImages {
         if let Ok(Some(name)) = tokio::task::spawn_blocking(move || copy_name(&d, &k)).await {
             return Ok(name);
         }
+        let parsed = reqwest::Url::parse(url).map_err(|_| "The link isn't valid".to_string())?;
+        if literal_refused(&parsed, self.allowed) {
+            return Err(NOT_PUBLIC.into());
+        }
         let mut resp = self
             .client()?
-            .get(url)
+            .get(parsed)
             .send()
             .await
             .map_err(|e| request_error(&e))?;
@@ -285,7 +420,16 @@ impl WebImages {
     }
 }
 
+const NOT_PUBLIC: &str = "The link points to a private or local network address";
+
 fn request_error(e: &reqwest::Error) -> String {
+    let mut source: Option<&(dyn std::error::Error + 'static)> = Some(e);
+    while let Some(s) = source {
+        if s.is::<NotPublic>() {
+            return NOT_PUBLIC.into();
+        }
+        source = s.source();
+    }
     if e.is_timeout() {
         "The download timed out".into()
     } else if e.is_connect() {

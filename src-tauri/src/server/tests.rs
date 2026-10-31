@@ -866,7 +866,7 @@ fn web_images_download_only_links_in_use_and_keep_the_copy() {
     let listener = rt.block_on(TcpListener::bind(("127.0.0.1", 0))).unwrap();
     let port = listener.local_addr().unwrap().port();
     let (tx, rx) = oneshot::channel::<()>();
-    let assets = AssetDir::default();
+    let assets = AssetDir::allowing_loopback_web_images();
     let served = assets.clone();
     let h2 = hub.clone();
     let task = rt.spawn(async move {

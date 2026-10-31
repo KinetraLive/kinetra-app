@@ -13,7 +13,7 @@ update panel: one paragraph per line, no Markdown.
 
 ## Unreleased
 
-Images from the web now show on air: put an image link (https://…) in an image or text field, or get it from a data source, and Kinetra downloads it and keeps a copy in the project. The show then runs from that copy, even offline, and the copies nothing uses any more are removed. If an image field's link can't be downloaded, the field says so and Control shows the graphic as not loaded.
+Images from the web now show on air: put an image link (https://…) in an image or text field, or get it from a data source, and Kinetra downloads it and keeps a copy in the project. The show then runs from that copy, even offline, and the copies nothing uses any more are removed. Only images on the public internet are downloaded, never addresses on this computer or your local network. If an image field's link can't be downloaded, the field says so and Control shows the graphic as not loaded.
 
 API and Live data (WebSocket) sources read JSON that arrives as text: when a feed packs its data into a text field (like a game sending its match as one string), the response tree opens it and you can map the players, teams and scores inside it like any other value.
 
