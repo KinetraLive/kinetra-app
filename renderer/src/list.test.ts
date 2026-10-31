@@ -91,7 +91,7 @@ describe("list fields", () => {
     expect(a.textContent).toBe(evil);
     expect(div.querySelector("img")).toBeNull();
     expect(a.getAttribute("href")).toBe("");
-    expect(b.getAttribute("href")).toBe("https://x/y");
+    expect(b.getAttribute("href")).toBe("/web-image?u=https%3A%2F%2Fx%2Fy"); // a web link goes through Kinetra
     expect(a.getAttribute("onclick")).toBe("go({{.x}})");
     expect(warn).toHaveBeenCalled();
   });

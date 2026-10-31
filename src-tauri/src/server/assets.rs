@@ -16,6 +16,9 @@
 //! - Bodies are streamed in [`CHUNK`] pieces read on the blocking pool through one buffer per
 //!   response (reused for every chunk); a file is never held in memory whole.
 //!
+//! The same responses serve `GET /web-image?u=<link>` (`super::routes`): copies of web images in
+//! `<project>/.web-images/` (`core::web_images`).
+//!
 //! The folder comes from [`AssetDir`], which the server manager sets from the open project
 //! (`ProjectObserver`), so `core` never sees axum types.
 
@@ -35,26 +38,34 @@ use http_body::{Frame, SizeHint};
 use tokio::task::JoinHandle;
 
 use crate::core::assets::{content_type, is_asset_name, ASSETS_DIR};
+use crate::core::web_images::WebImages;
 
 /// Bytes read per streamed chunk.
 pub const CHUNK: usize = 64 * 1024;
 
-/// The open project's folder for `/assets/*` (none: every asset is a 404). Cheap to clone.
+/// The open project's folder for `/assets/*` and `/web-image` (none: every file is a 404), and
+/// the downloader of web images. Cheap to clone.
 #[derive(Clone, Default)]
-pub struct AssetDir(Arc<RwLock<Option<PathBuf>>>);
+pub struct AssetDir {
+    project: Arc<RwLock<Option<PathBuf>>>,
+    pub(super) web: Arc<WebImages>,
+}
 
 impl AssetDir {
     /// Serves `<project>/assets/` (or nothing).
     pub fn set_project(&self, project: Option<PathBuf>) {
-        *self.0.write().unwrap_or_else(PoisonError::into_inner) = project;
+        *self.project.write().unwrap_or_else(PoisonError::into_inner) = project;
+    }
+
+    pub(super) fn project(&self) -> Option<PathBuf> {
+        self.project
+            .read()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
     }
 
     fn assets(&self) -> Option<PathBuf> {
-        self.0
-            .read()
-            .unwrap_or_else(PoisonError::into_inner)
-            .as_ref()
-            .map(|p| p.join(ASSETS_DIR))
+        self.project().map(|p| p.join(ASSETS_DIR))
     }
 }
 
@@ -227,7 +238,12 @@ pub(super) async fn asset_response(dir: &AssetDir, name: &str, req: &HeaderMap) 
     let Some(root) = dir.assets() else {
         return not_found();
     };
-    let path = root.join(name);
+    file_response(root.join(name), name, req).await
+}
+
+/// A file served like an asset (see the module docs); `name` gives the content type. The caller
+/// has checked the path.
+pub(super) async fn file_response(path: PathBuf, name: &str, req: &HeaderMap) -> Response {
     let get = |h: header::HeaderName| req.get(h).and_then(|v| v.to_str().ok()).map(str::to_string);
     let (inm, ims, range, if_range) = (
         get(header::IF_NONE_MATCH),

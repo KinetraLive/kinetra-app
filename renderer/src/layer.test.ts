@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { Layer, compile, outDuration, parseTimes, safeAttr, styleVal } from "./layer";
+import { Layer, compile, outDuration, parseTimes, safeAttr, styleVal, viaKinetra } from "./layer";
 import type { FieldType, Fields, WireLayer } from "./protocol";
 
 function render(html: string, fields: Fields, types: Record<string, FieldType> = {}) {
@@ -86,13 +86,25 @@ describe("compile", () => {
     const html = '<a href="{{url}}">a</a>';
     expect(render(html, { url: "javascript:alert(1)" }).div.querySelector("a")!.getAttribute("href")).toBe("");
     expect(render(html, { url: " java\tscript:alert(1)" }).div.querySelector("a")!.getAttribute("href")).toBe("");
-    expect(render(html, { url: "https://x" }).div.querySelector("a")!.getAttribute("href")).toBe("https://x");
+    expect(render(html, { url: "https://x" }).div.querySelector("a")!.getAttribute("href")).toBe("/web-image?u=https%3A%2F%2Fx");
     expect(render(html, { url: "/rel/a.png" }).div.querySelector("a")!.getAttribute("href")).toBe("/rel/a.png");
     const img = render('<img src="{{s}}">', { s: "data:image/png;base64,AAAA" }).div.querySelector("img")!;
     expect(img.getAttribute("src")).toBe("data:image/png;base64,AAAA");
     expect(safeAttr("src", "data:text/html,<script>")).toBe("");
     expect(safeAttr("srcset", "a.png 1x, javascript:x 2x")).toBe("");
     expect(safeAttr("title", "javascript:x")).toBe("javascript:x");
+  });
+
+  it("loads bound web images through Kinetra's copy, never from the internet", () => {
+    const img = (s: string) => render('<img class="pic" src="{{s}}">', { s }).div.querySelector("img")!.getAttribute("src");
+    expect(img("https://cdn.example/a b.png?w=2&h=3")).toBe("/web-image?u=https%3A%2F%2Fcdn.example%2Fa%20b.png%3Fw%3D2%26h%3D3");
+    expect(img(" HTTP://x/y.png ")).toBe("/web-image?u=HTTP%3A%2F%2Fx%2Fy.png");
+    expect(img("/assets/logo.png")).toBe("/assets/logo.png");
+    expect(img("data:image/png;base64,AAAA")).toBe("data:image/png;base64,AAAA");
+    expect(img("javascript:alert(1)")).toBe("");
+    expect(img("file:///C:/x.png")).toBe("");
+    expect(viaKinetra("srcset", "https://a/1.png 1x, /assets/2.png 2x")).toBe("/web-image?u=https%3A%2F%2Fa%2F1.png 1x, /assets/2.png 2x");
+    expect(viaKinetra("title", "https://a")).toBe("https://a");
   });
 
   it("accepts only plain values in style attributes", () => {

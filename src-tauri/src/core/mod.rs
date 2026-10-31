@@ -64,3 +64,4 @@ pub mod template_update;
 pub mod templates;
 pub mod vars;
 pub mod watch;
+pub mod web_images;

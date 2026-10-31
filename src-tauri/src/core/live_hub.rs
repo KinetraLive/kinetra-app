@@ -111,6 +111,7 @@ use crate::core::model::{
 use crate::core::protocol::{
     FieldType, Fields, LayerState, Rect, ServerMsg, TakeTransition, WireErrorCode,
 };
+use crate::core::web_images;
 
 /// Broadcast capacity. A renderer that falls further behind gets a fresh snapshot instead.
 pub const HUB_CAPACITY: usize = 256;
@@ -1796,6 +1797,39 @@ impl LiveHub {
             .iter()
             .filter(|s| !is_reserved_screen(&s.info.id))
             .any(|s| s.layers.iter().any(|l| l.on_air))
+    }
+
+    /// Whether a layer holds `url` in a field value (Program, staged Preview content, the
+    /// editors' preview screens; list values too): the links `web_images` may download.
+    pub fn mentions(&self, url: &str) -> bool {
+        let has = |f: &Fields| f.values().any(|v| web_images::mentions(v, url));
+        self.read().screens.iter().any(|s| {
+            s.layers.iter().any(|l| has(&l.fields))
+                || s.preview
+                    .layers
+                    .values()
+                    .any(|c| c.content.as_deref().is_some_and(|c| has(&c.fields)))
+        })
+    }
+
+    /// Adds the web links in every layer's field values (as [`Self::mentions`] reads them).
+    pub fn web_urls(&self, out: &mut std::collections::HashSet<String>) {
+        let st = self.read();
+        for s in &st.screens {
+            let staged = s
+                .preview
+                .layers
+                .values()
+                .filter_map(|c| c.content.as_deref());
+            let fields = s
+                .layers
+                .iter()
+                .map(|l| &l.fields)
+                .chain(staged.map(|c| &c.fields));
+            for f in fields {
+                f.values().for_each(|v| web_images::urls_in(v, out));
+            }
+        }
     }
 
     /// Ids of the user (non-reserved) screens in the live state.
