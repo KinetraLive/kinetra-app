@@ -284,7 +284,11 @@ export class MediaLayer extends Layer {
     this.ok = undefined;
     Promise.all(
       els.map((e) => {
-        if (e instanceof HTMLImageElement) return e.decode();
+        // A web image that couldn't be downloaded says so (its copy comes through /web-image).
+        if (e instanceof HTMLImageElement)
+          return e.decode().catch(() => {
+            throw e.getAttribute("src")!.startsWith("/web-image") ? "Couldn't download the image" : 0;
+          });
         if (e.autoplay) (e.autoplay = false), this.tv!.push(e);
         if (silent) e.muted = true;
         e.preload = "auto";
@@ -297,7 +301,7 @@ export class MediaLayer extends Layer {
       }),
     ).then(
       () => this.k == k && this.ready(true),
-      () => this.k == k && this.ready(false, "Can't load the file"),
+      (why) => this.k == k && this.ready(false, typeof why == "string" ? why : "Can't load the file"),
     );
     this.drive();
   }

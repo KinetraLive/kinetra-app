@@ -6,7 +6,7 @@
 // output's capture page) is forwarded too: it counts for readiness but not as an OBS-style viewer.
 import { App } from "./app";
 import { connect } from "./connection";
-import { setPreview } from "./layer";
+import { setPreview, useWebImages } from "./layer";
 import type { ServerMsg } from "./protocol";
 import { Stage } from "./stage";
 import { isPreview, screenId, wsUrl } from "./url";
@@ -30,6 +30,7 @@ function start() {
   const id = screenId(location.pathname);
   const pv = isPreview(location.pathname);
   setPreview(pv);
+  useWebImages();
   const go = (h: (m: ServerMsg) => void) =>
     id
       ? connect(wsUrl(location, id, pv) + (q.get("mute") == "1" ? "&mute=1" : q.get("cap") == "1" ? "&cap=1" : ""), h, {

@@ -77,7 +77,7 @@ use crate::core::screens::ScreenStore;
 use crate::core::sources::SourceStore;
 use crate::core::templates::{is_id, TemplateStore};
 use crate::core::watch::ProjectWatcher;
-use crate::core::{project, recents, screen_live, templates};
+use crate::core::{project, recents, screen_live, templates, web_images};
 use crate::error::{AppError, AppResult};
 
 /// Quiet period before the flusher writes dirty stores.
@@ -1060,7 +1060,39 @@ impl AppState {
         self.panel_announce();
         // Cloud backup: a copied folder gets its own cloud ID; registers in the background.
         self.cloud_project_opened();
+        self.web_images_sweep();
         Ok(project)
+    }
+
+    /// Removes the copies of web images that nothing uses any more (`web_images::sweep`): no
+    /// layer, source, screen file or template default holds their link. On its own thread, only
+    /// when the project has copies.
+    fn web_images_sweep(&self) {
+        let Ok(dir) = self.project_dir() else {
+            return;
+        };
+        if !dir.join(web_images::DIR).is_dir() {
+            return;
+        }
+        let mut used = std::collections::HashSet::new();
+        self.live().web_urls(&mut used);
+        for doc in self.sources().docs() {
+            if let Ok(v) = serde_json::to_value(&doc) {
+                web_images::urls_in_json(&v, &mut used);
+            }
+        }
+        let spawned = std::thread::Builder::new()
+            .name("web-images-sweep".into())
+            .spawn(move || {
+                web_images::urls_on_disk(&dir, &mut used);
+                let n = web_images::sweep(&dir, &used);
+                if n > 0 {
+                    tracing::info!("web images: removed {n} unused copies");
+                }
+            });
+        if let Err(e) = spawned {
+            tracing::warn!("web images: couldn't start the cleanup: {e}");
+        }
     }
 
     /// Creates `<parent>/<slug(name)>`, initializes and opens it.

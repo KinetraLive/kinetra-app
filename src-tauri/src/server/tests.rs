@@ -10,6 +10,7 @@ use serde_json::Value;
 use super::*;
 use crate::core::live::{LiveState, TEST_LAYER_ID, TEST_SCREEN_ID};
 use crate::core::model::ProjectSettings;
+use crate::core::protocol::Fields;
 
 #[derive(Default)]
 struct Recorder(Mutex<Vec<Value>>);
@@ -831,6 +832,91 @@ fn assets_answer_range_requests_streamed() {
     // Several ranges: the whole file.
     let (status, _, _) = http_get_with(port, "/assets/clip.mp4", "Range: bytes=0-1,5-6\r\n");
     assert_eq!(status, 200);
+    let _ = tx.send(());
+    rt.block_on(task).unwrap();
+}
+
+#[test]
+fn web_images_download_only_links_in_use_and_keep_the_copy() {
+    let tmp = tempfile::tempdir().unwrap();
+    let hub = Arc::new(LiveHub::with_test_screen());
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(2)
+        .enable_all()
+        .build()
+        .unwrap();
+    // The "internet": one PNG, every request counted.
+    let png: &'static [u8] = &[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 13];
+    let hits = Arc::new(std::sync::atomic::AtomicU32::new(0));
+    let web = rt.block_on(TcpListener::bind(("127.0.0.1", 0))).unwrap();
+    let url = format!("http://{}/logo.png", web.local_addr().unwrap());
+    let h = hits.clone();
+    let site = axum::Router::new().route(
+        "/logo.png",
+        axum::routing::get(move || {
+            h.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            async move { png }
+        }),
+    );
+    rt.spawn(async move {
+        let _ = axum::serve(web, site).await;
+    });
+    let count = || hits.load(std::sync::atomic::Ordering::SeqCst);
+
+    let listener = rt.block_on(TcpListener::bind(("127.0.0.1", 0))).unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let (tx, rx) = oneshot::channel::<()>();
+    let assets = AssetDir::allowing_loopback_web_images();
+    let served = assets.clone();
+    let h2 = hub.clone();
+    let task = rt.spawn(async move {
+        serve(listener, h2, served, async move {
+            let _ = rx.await;
+        })
+        .await
+        .unwrap();
+    });
+    let path = |u: &str| format!("/web-image?u={}", u.replace(':', "%3A").replace('/', "%2F"));
+
+    // No project: nothing.
+    assert_eq!(http_get_with(port, &path(&url), "").0, 404);
+    assets.set_project(Some(tmp.path().to_path_buf()));
+    // A link no layer holds is never fetched.
+    assert_eq!(http_get_with(port, &path(&url), "").0, 404);
+    assert_eq!(count(), 0);
+    // Not web links at all.
+    for bad in [
+        "file:///C:/x.png",
+        "javascript:alert(1)",
+        "/assets/logo.png",
+        "",
+    ] {
+        assert_eq!(http_get_with(port, &path(bad), "").0, 404, "{bad}");
+    }
+
+    // A layer shows it: downloaded once, served from the copy.
+    let set = |v: &str| {
+        let mut f = Fields::new();
+        f.insert("name".into(), v.into());
+        hub.set_fields(TEST_SCREEN_ID, TEST_LAYER_ID, f).unwrap();
+    };
+    set(&url);
+    let (status, head, body) = http_get_with(port, &path(&url), "");
+    assert_eq!(status, 200, "{head}");
+    assert_eq!(body, png);
+    assert_eq!(
+        header_of(&head, "content-type").as_deref(),
+        Some("image/png")
+    );
+    assert!(header_of(&head, "etag").is_some());
+    assert_eq!(count(), 1);
+    assert_eq!(http_get_with(port, &path(&url), "").0, 200);
+    assert_eq!(count(), 1);
+    // The copy stays usable when the layer no longer holds the link (the sweep removes it later).
+    set("Ada");
+    assert_eq!(http_get_with(port, &path(&url), "").0, 200);
+    assert_eq!(count(), 1);
+
     let _ = tx.send(());
     rt.block_on(task).unwrap();
 }

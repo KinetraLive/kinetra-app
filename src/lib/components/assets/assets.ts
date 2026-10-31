@@ -28,6 +28,16 @@ export function thumbUrl(status: ServerStatus | null, v: string): string | null 
   return `${status.url.replace(/\/+$/, "")}${v}`;
 }
 
+/** True for a web image link (http/https): shown on air from the project's copy. */
+export const isWebImage = (v: string) => /^https?:\/\/\S+$/i.test(v.trim());
+
+/** The thumbnail of a web image link: its copy through the running output server (`/web-image`,
+ *  which downloads it when a layer holds the link). Null when the server isn't running. */
+export function webThumbUrl(status: ServerStatus | null, v: string, attempt = 0): string | null {
+  if (status?.state !== "running" || !isWebImage(v)) return null;
+  return `${status.url.replace(/\/+$/, "")}/web-image?u=${encodeURIComponent(v.trim())}${attempt ? `&try=${attempt}` : ""}`;
+}
+
 /** "12 KB", "1.4 MB", "2.1 GB" (binary units, one decimal from MB). */
 export function formatBytes(n: number): string {
   if (n < 1024) return `${n} B`;

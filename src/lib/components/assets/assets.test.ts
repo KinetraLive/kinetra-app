@@ -40,7 +40,7 @@ vi.mock("@tauri-apps/plugin-dialog", () => dialog);
 import FieldInputs from "$lib/components/fields/FieldInputs.svelte";
 import { server } from "$lib/stores/server.svelte";
 import { toasts } from "$lib/stores/toasts.svelte";
-import { assetName, filterAssets, formatBytes, renameIssue, thumbUrl } from "./assets";
+import { assetName, filterAssets, formatBytes, isWebImage, renameIssue, thumbUrl, webThumbUrl } from "./assets";
 import { pickAsset } from "./pick";
 
 // ---- Fixtures -----------------------------------------------------------------------------------
@@ -362,6 +362,39 @@ describe("image fields", () => {
     await settle();
     expect(screen.queryByRole("button", { name: "Choose image for Logo" })).toBeNull();
     expect(screen.getByText("Sponsors · Logo")).toBeTruthy();
+  });
+
+  it("a web image shows Kinetra's copy, and says so when it can't be downloaded", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout"] });
+    try {
+      render(FieldInputs, { defs, values: { logo: "https://cdn.test/a.png?w=2&h=3" }, onfield: vi.fn() });
+      await screen.findByRole("button", { name: "Choose image for Logo" });
+      const thumb = () => document.querySelector("img.thumb");
+      await vi.waitFor(() =>
+        expect(thumb()?.getAttribute("src")).toBe("http://127.0.0.1:7770/web-image?u=https%3A%2F%2Fcdn.test%2Fa.png%3Fw%3D2%26h%3D3"),
+      );
+      expect(screen.queryByRole("note")).toBeNull();
+      // The layer may get the link a moment after the field: two more tries, then the note.
+      for (const n of [1, 2]) {
+        await fireEvent.error(thumb()!);
+        await vi.advanceTimersByTimeAsync(1500);
+        expect(thumb()?.getAttribute("src")).toContain(`&try=${n}`);
+      }
+      await fireEvent.error(thumb()!);
+      expect(screen.getByRole("note").textContent).toBe("Couldn't download this image.");
+      expect(thumb()).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("links that never show on air still say so", async () => {
+    render(FieldInputs, { defs, values: { logo: "//cdn.test/a.png" }, onfield: vi.fn() });
+    await screen.findByRole("button", { name: "Choose image for Logo" });
+    expect(screen.getByRole("note").textContent?.trim()).toBe("Start the link with https:// to show it on air.");
+    expect(isWebImage("https://cdn.test/a.png")).toBe(true);
+    expect(isWebImage("file:///C:/a.png")).toBe(false);
+    expect(webThumbUrl({ state: "stopped" }, "https://cdn.test/a.png")).toBeNull();
   });
 });
 

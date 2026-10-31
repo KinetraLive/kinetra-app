@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "./app";
-import { Layer, compile, parseRows } from "./layer";
+import { Layer, compile, parseRows, useWebImages } from "./layer";
 import type { FieldType, Fields, ScreenInfo, WireLayer } from "./protocol";
 import { Stage } from "./stage";
 
@@ -80,6 +80,7 @@ describe("list fields", () => {
   });
 
   it("escapes cells and applies the URL and on* rules inside rows", () => {
+    useWebImages(); // as on a renderer page
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const evil = "<img src=x onerror=alert(1)>";
     const { div } = render(
@@ -91,7 +92,7 @@ describe("list fields", () => {
     expect(a.textContent).toBe(evil);
     expect(div.querySelector("img")).toBeNull();
     expect(a.getAttribute("href")).toBe("");
-    expect(b.getAttribute("href")).toBe("https://x/y");
+    expect(b.getAttribute("href")).toBe("/web-image?u=https%3A%2F%2Fx%2Fy"); // a web link goes through Kinetra
     expect(a.getAttribute("onclick")).toBe("go({{.x}})");
     expect(warn).toHaveBeenCalled();
   });

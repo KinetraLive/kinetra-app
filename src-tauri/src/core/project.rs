@@ -16,7 +16,9 @@ pub const SUBDIRS: [&str; 5] = ["screens", "templates", "sources", "chat-themes"
 /// Name of the backups folder inside a project (ignored by git).
 pub const BACKUPS_DIR: &str = ".backups";
 
-const GITIGNORE_LINE: &str = ".backups/";
+/// What a project's `.gitignore` ignores: the backups and the copies of web images
+/// (`web_images`, which also adds its line to older projects on the first download).
+const GITIGNORE_LINES: [&str; 2] = [".backups/", ".web-images/"];
 
 /// Files the OS drops into folders; they do not make a folder "non-empty".
 const OS_LITTER: [&str; 3] = ["desktop.ini", "Thumbs.db", ".DS_Store"];
@@ -139,7 +141,7 @@ pub fn classify(path: &Path) -> Result<FolderKind, ProjectError> {
 }
 
 /// Makes `path` (created if missing) a project: the five subfolders, a `.gitignore` that ignores
-/// `.backups/`, and `project.json` (written last). Refuses if `project.json` exists. Does not
+/// `.backups/` and `.web-images/`, and `project.json` (written last). Refuses if `project.json` exists. Does not
 /// check emptiness; `classify` is the guard and the opt-in decision belongs to the UI.
 pub fn init_in(path: &Path, name: &str) -> Result<ProjectFile, ProjectError> {
     let name = validate_name(name)?;
@@ -203,14 +205,21 @@ fn ensure_subdirs(path: &Path) -> Result<(), ProjectError> {
 }
 
 fn ensure_gitignore(path: &Path) -> Result<(), ProjectError> {
+    GITIGNORE_LINES
+        .iter()
+        .try_for_each(|line| ensure_ignored(path, line))
+}
+
+/// Adds `line` (a folder, `name/`) to the project's `.gitignore` unless it is there in some form
+/// (`name`, `/name/`, `/name`); creates the file if missing.
+pub fn ensure_ignored(path: &Path, line: &str) -> Result<(), ProjectError> {
     let p = path.join(".gitignore");
+    let bare = line.trim_end_matches('/');
     match fs::read_to_string(&p) {
         Ok(existing) => {
             let has = existing.lines().any(|l| {
-                matches!(
-                    l.trim(),
-                    ".backups/" | ".backups" | "/.backups/" | "/.backups"
-                )
+                let l = l.trim();
+                l.strip_prefix('/').unwrap_or(l).trim_end_matches('/') == bare
             });
             if has {
                 return Ok(());
@@ -219,13 +228,12 @@ fn ensure_gitignore(path: &Path) -> Result<(), ProjectError> {
             if !text.is_empty() && !text.ends_with('\n') {
                 text.push('\n');
             }
-            text.push_str(GITIGNORE_LINE);
+            text.push_str(line);
             text.push('\n');
             fsx::write_bytes_atomic(&p, text.as_bytes()).map_err(io_err(&p))
         }
         Err(e) if e.kind() == io::ErrorKind::NotFound => {
-            fsx::write_bytes_atomic(&p, format!("{GITIGNORE_LINE}\n").as_bytes())
-                .map_err(io_err(&p))
+            fsx::write_bytes_atomic(&p, format!("{line}\n").as_bytes()).map_err(io_err(&p))
         }
         Err(e) => Err(io_err(&p)(e)),
     }
@@ -345,7 +353,7 @@ mod tests {
         }
         assert_eq!(
             fs::read_to_string(dir.path().join(".gitignore")).unwrap(),
-            ".backups/\n"
+            ".backups/\n.web-images/\n"
         );
         let text = fs::read_to_string(dir.path().join("project.json")).unwrap();
         assert!(text.contains("\"schemaVersion\": 1"));
@@ -370,15 +378,19 @@ mod tests {
         init_in(dir.path(), "A").unwrap();
         assert_eq!(
             fs::read_to_string(dir.path().join(".gitignore")).unwrap(),
-            "node_modules\n.backups/\n"
+            "node_modules\n.backups/\n.web-images/\n"
         );
 
         let dir2 = tempfile::tempdir().unwrap();
-        fs::write(dir2.path().join(".gitignore"), "x\n.backups/\n").unwrap();
+        fs::write(
+            dir2.path().join(".gitignore"),
+            "x\n/.backups\n.web-images\n",
+        )
+        .unwrap();
         init_in(dir2.path(), "A").unwrap();
         assert_eq!(
             fs::read_to_string(dir2.path().join(".gitignore")).unwrap(),
-            "x\n.backups/\n"
+            "x\n/.backups\n.web-images\n"
         );
     }
 

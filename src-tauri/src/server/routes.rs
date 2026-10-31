@@ -24,6 +24,7 @@ use tokio::time::{interval_at, Instant, MissedTickBehavior};
 use super::assets::AssetDir;
 use crate::core::live_hub::LiveHub;
 use crate::core::protocol::{ClientMsg, ServerMsg, WireErrorCode, PROTOCOL_VERSION};
+use crate::core::web_images;
 
 /// WebSocket keepalive: the only periodic work per connection.
 pub const PING_INTERVAL: Duration = Duration::from_secs(20);
@@ -101,6 +102,7 @@ fn router(ctx: Ctx) -> Router {
         .route("/renderer/{*path}", get(renderer_asset))
         .route("/fonts/{*path}", get(font_asset))
         .route("/assets/{name}", get(project_asset))
+        .route("/web-image", get(web_image))
         .route("/ws", get(ws_upgrade))
         .route("/health", get(health))
         .fallback(not_found)
@@ -127,6 +129,43 @@ async fn project_asset(
     State(ctx): State<Ctx>,
 ) -> Response {
     super::assets::asset_response(&ctx.assets, &name, &headers).await
+}
+
+#[derive(Deserialize)]
+struct WebImageQuery {
+    u: String,
+}
+
+/// A web image from its copy in the project (`core::web_images`): the copy if there is one, else
+/// the link is downloaded first, but only while a layer uses it. 404 for anything else, 502 when
+/// the download fails (the renderer reports the image as not loaded).
+async fn web_image(
+    Query(q): Query<WebImageQuery>,
+    headers: HeaderMap,
+    State(ctx): State<Ctx>,
+) -> Response {
+    let Some(project) = ctx.assets.project() else {
+        return not_found().await;
+    };
+    if !web_images::is_web_url(&q.u) {
+        return not_found().await;
+    }
+    let dir = project.join(web_images::DIR);
+    let key = web_images::key(&q.u);
+    let d = dir.clone();
+    let copy = tokio::task::spawn_blocking(move || web_images::copy_name(&d, &key))
+        .await
+        .ok()
+        .flatten();
+    let name = match copy {
+        Some(name) => name,
+        None if !ctx.hub.mentions(&q.u) => return not_found().await,
+        None => match ctx.assets.web.fetch(&project, &q.u).await {
+            Ok(name) => name,
+            Err(e) => return (StatusCode::BAD_GATEWAY, e).into_response(),
+        },
+    };
+    super::assets::file_response(dir.join(&name), &name, &headers).await
 }
 
 async fn health() -> Response {

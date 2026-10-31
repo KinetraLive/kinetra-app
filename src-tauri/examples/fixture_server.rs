@@ -1956,7 +1956,8 @@ fn main() {
         .expect("fixture project");
     let hub = state.live().clone();
     // `/assets/*` from the fixture project, like the app's server manager does.
-    let assets = AssetDir::default();
+    // Web images may come from 127.0.0.1 here: the e2e "web" servers run on this computer.
+    let assets = AssetDir::allowing_loopback_web_images();
     assets.set_project(state.project_dir().ok());
     // Commands run on this (non-runtime) thread; auto-out and remove timers run on the fixture's
     // runtime.
