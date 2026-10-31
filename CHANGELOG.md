@@ -13,11 +13,11 @@ update panel: one paragraph per line, no Markdown.
 
 ## Unreleased
 
+## Next stable release
+
 Images from the web now show on air: put an image link (https://…) in an image or text field, or get it from a data source, and Kinetra downloads it and keeps a copy in the project. The show then runs from that copy, even offline, and the copies nothing uses any more are removed. Only images on the public internet are downloaded, never addresses on this computer or your local network. If an image field's link can't be downloaded, the field says so and Control shows the graphic as not loaded.
 
 API and Live data (WebSocket) sources read JSON that arrives as text: when a feed packs its data into a text field (like a game sending its match as one string), the response tree opens it and you can map the players, teams and scores inside it like any other value.
-
-## Next stable release
 
 New template fits on any screen: pick a look and its name is ready to type, with Create always in view, so Enter makes it. Double-click a look to create it straight away. Long rules keep Save in view too, and scrollbars are easier to spot in the dark theme.
 
