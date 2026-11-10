@@ -13,6 +13,10 @@ update panel: one paragraph per line, no Markdown.
 
 ## Unreleased
 
+Studio mode lets you check a graphic before it goes on air. Play in and Play out run its animation in Preview only, so you can see how it enters and leaves without touching Program. When you edit a graphic that is on air, Control says your changes wait in Preview, and Update on air sends just that graphic's fix straight to air (Kinetra asks the first time). The Preview tells you what a take will do ("1 in · 1 updated"), and TAKE stays off until there is something to take.
+
+Taking in Studio mode is now Ctrl+Enter, and Ctrl+Shift+Enter cuts. Space and Enter no longer take, so a stray key press can't put anything on air. The transitions are called Cut, Auto and Crossfade.
+
 ## Next stable release
 
 Images from the web now show on air: put an image link (https://…) in an image or text field, or get it from a data source, and Kinetra downloads it and keeps a copy in the project. The show then runs from that copy, even offline, and the copies nothing uses any more are removed. Only images on the public internet are downloaded, never addresses on this computer or your local network. If an image field's link can't be downloaded, the field says so and Control shows the graphic as not loaded.
