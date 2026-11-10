@@ -160,7 +160,7 @@ export class MediaLayer extends Layer {
     this.drive();
   }
 
-  protected show() {
+  show() {
     super.show();
     this.drive();
   }

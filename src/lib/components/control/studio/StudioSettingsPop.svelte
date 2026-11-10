@@ -1,7 +1,7 @@
 <!--
   StudioSettingsPop: Studio mode's settings popover in the Control toolbar (lazy studio chunk).
     Preview after take   Keep (Preview shows the new Program) / Clear (a blank Preview)
-    Default transition   Cut / Crossfade / Play out & in, and the crossfade duration (ms, mono)
+    Default transition   Cut / Auto / Crossfade, and the crossfade duration (ms, mono)
   Every change calls `onchange` at once (saved through set_studio). Esc closes and refocuses the
   opener (the parent does that from `onclose`); a press outside closes it.
 
@@ -92,7 +92,7 @@
       onchange={(ms) => onchange({ transition: { ...settings.transition, ms: clampMs(ms) } })}
     />
   </div>
-  <p class="hint">Used by TAKE, Space / Enter, the palette and flows.</p>
+  <p class="hint">Used by TAKE, Ctrl+Enter, the palette and flows.</p>
 </div>
 
 <style>

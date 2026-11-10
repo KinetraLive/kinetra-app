@@ -1,7 +1,7 @@
 // Control page state and actions: the operator view's single controller. Components read from it
 // and call its methods; the page wires its lifecycle.
 //
-//   const ctl = new ControlCtl(isTyping);
+//   const ctl = new ControlCtl();
 //   $effect(() => ctl.connect());               // live + server mirrors, events, lists
 //   $effect(() => void ctl.loadDoc(ctl.selectedId)); // bindings and template ids of the selection
 //
@@ -20,9 +20,9 @@
 // linear flow editor is a lazy chunk opened through `flowEditor`. Automation off is
 // `ui.automationOff`, written through uiState (the backend reacts to the saved value).
 //
-// Studio mode (Preview / Program): `studio` (./studio/studio.svelte.ts). While it is on, Space /
-// Enter take the selected screen's Preview (not while typing or on a control that uses the key)
-// and a layer's F-key cues it in or out of Preview instead of taking it.
+// Studio mode (Preview / Program): `studio` (./studio/studio.svelte.ts). While it is on, Ctrl+Enter
+// takes the selected screen's Preview (Ctrl+Shift+Enter as a cut; registry commands, never while
+// typing) and a layer's F-key cues it in or out of Preview instead of taking it.
 
 import { untrack } from "svelte";
 import { on, toAppError } from "$lib/api";
@@ -61,7 +61,7 @@ import { FlowEditorLauncher } from "$lib/components/flows/launcher.svelte";
 import { LayerEdits } from "./edits";
 import { StudioCtl } from "./studio/studio.svelte";
 import { commandOfProjectKey, setKeys } from "$lib/commands/bindings.svelte";
-import { captureAction, hotkeyKey, isStudioTake, splitHotkeyKey, toggleDecision } from "./hotkeys";
+import { captureAction, hotkeyKey, splitHotkeyKey, toggleDecision } from "./hotkeys";
 
 /** What "Auto" turns on with when a source has no settings yet. */
 export const DEFAULT_AUTO: AutoAdvance = { everyMs: 5000, loop: true, transition: "update" };
@@ -92,15 +92,6 @@ export function onAirCount(view: LiveScreenView): number {
   return n;
 }
 
-type Typing = (target: EventTarget | null) => boolean;
-
-/** Elements that use Space / Enter themselves (and dialogs): Studio's TAKE key leaves them alone. */
-const OWN_KEYS =
-  "button,a[href],input,select,textarea,summary,[contenteditable],[role=button],[role=switch],[role=slider],[role=radio],[role=checkbox],[role=tab],[role^=menuitem],[role=option],[role=combobox],[role=listbox],[role=textbox],dialog,[role=dialog]";
-
-export function keysTaken(target: EventTarget | null): boolean {
-  return target instanceof Element && target.closest(OWN_KEYS) !== null;
-}
 
 export class ControlCtl {
   /** The saved Control layout (defaults until the project's ui-state loaded). */
@@ -153,12 +144,7 @@ export class ControlCtl {
 
   #focused: { key: string; field: string } | null = null;
   #docGen = 0;
-  readonly #typing: Typing;
   readonly #edits = new LayerEdits(EDIT_DEBOUNCE_MS, (key, fields) => this.#sendFields(key, fields));
-
-  constructor(typing: Typing = () => false) {
-    this.#typing = typing;
-  }
 
   // ---- Lifecycle ---------------------------------------------------------------------------------
 
@@ -584,8 +570,8 @@ export class ControlCtl {
   };
 
   /**
-   * The page's window keydown (after the shell's, which runs the hotkey commands): "Set hotkey"
-   * capture, and Studio mode's Space / Enter take. Cheap.
+   * The page's window keydown (after the shell's, which runs the hotkey commands and Studio's
+   * take keys): "Set hotkey" capture. Cheap.
    */
   keydown = (e: KeyboardEvent): void => {
     if (this.capturing) {
@@ -598,11 +584,6 @@ export class ControlCtl {
         else this.setHotkey(key, c.combo);
         return;
       }
-    }
-    const typing = this.#typing(e.target);
-    if (this.studio.on && this.selectedId && isStudioTake(e, typing || keysTaken(e.target))) {
-      e.preventDefault();
-      void this.studio.take(this.selectedId);
     }
   };
 }

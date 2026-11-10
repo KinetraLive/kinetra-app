@@ -338,10 +338,15 @@ impl AppState {
             }
             ControlCommand::Update { screen, layer } => {
                 if studio {
-                    // Staged content reaches Program only with a take of the Preview.
-                    self.live().layer_view(screen, layer)?;
-                    self.apply_studio_op(screen, StudioOp::Take { transition: None })
-                        .map(drop)
+                    // Update on air: only this layer's staged content, settled (the rest of the
+                    // Preview waits for a take).
+                    self.apply_studio_op(
+                        screen,
+                        StudioOp::Update {
+                            layer_id: layer.to_string(),
+                        },
+                    )
+                    .map(drop)
                 } else if self.live().layer_view(screen, layer)?.on_air {
                     // `show` on an on-air layer applies its staged content without replaying it.
                     self.live()

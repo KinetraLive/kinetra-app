@@ -9,8 +9,8 @@
 // `UiState.control.hotkeys`: "<screenId>/<layerId>" or "flow/<flowId>" (screen ids are 10
 // characters, so "flow" is never one); a leftover "macro/<id>" is treated as "flow/<id>". Combos are
 // F1–F12, optionally with Shift ("Shift+F3"), one target per combo. Shift+Escape is PANIC.
-// In Studio mode a layer key cues the layer in or out of Preview instead, and Space / Enter take
-// the selected screen's Preview (`isStudioTake`).
+// In Studio mode a layer key cues the layer in or out of Preview instead; taking the Preview is
+// a registry command (Ctrl+Enter, Ctrl+Shift+Enter for a cut: the studio chunk's ui.svelte.ts).
 
 export {
   FLOW_KEY_PREFIX,
@@ -97,15 +97,6 @@ export function ownerOf(
 ): { screenId: string; layerId: string } | null {
   const key = ownerKey(hotkeys, combo);
   return key === null ? null : splitHotkeyKey(key);
-}
-
-/**
- * Studio mode's TAKE key: Space or Enter, no modifiers, not on repeat, and not `blocked` (typing,
- * or focus on something that uses the key itself: a button, a slider, a dialog…).
- */
-export function isStudioTake(e: KeyLike, blocked: boolean): boolean {
-  if (e.repeat || blocked || e.shiftKey || e.ctrlKey || e.altKey || e.metaKey) return false;
-  return e.key === " " || e.key === "Enter";
 }
 
 /** A toggle takes a layer that is off air and clears one that is on air. */

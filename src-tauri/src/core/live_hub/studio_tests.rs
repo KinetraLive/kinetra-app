@@ -462,3 +462,94 @@ fn forced_automation_goes_to_program_and_rebases_the_diff() {
         "staged content equal to Program after the patch is dropped"
     );
 }
+
+#[test]
+fn update_on_air_sends_one_layer_settled_and_keeps_the_rest_of_the_preview() {
+    let h = hub(true);
+    h.show("main", "a").unwrap();
+    // Staged edits on a (on air) and b (off air, cued in).
+    h.apply_screen(edit_plan(&h, "a", "Fixed"), LiveEdit::OnTake)
+        .unwrap();
+    h.apply_screen(edit_plan(&h, "b", "Next"), LiveEdit::OnTake)
+        .unwrap();
+    h.studio_op("main", cue("b", Some(true))).unwrap();
+    let (_sub, _) = h.preview_attach("main");
+    let mut rx = h.subscribe();
+
+    h.studio_op("main", StudioAction::Update { layer_id: "a" })
+        .unwrap();
+    let program: Vec<Value> = drain(&mut rx)
+        .into_iter()
+        .filter(|(p, _)| !p)
+        .map(|(_, v)| v)
+        .collect();
+    assert_eq!(
+        program,
+        [json!({"t": "fields", "layerId": "a", "fields": {"name": "Fixed"}})],
+        "only a's change, no take, no state change"
+    );
+    let v = h.preview_view("main").unwrap();
+    assert_eq!(v.cues.len(), 1, "b's cue and staged edit stay");
+    assert_eq!(v.cues[0].layer_id, "b");
+    assert!(v.cues[0].staged && v.cues[0].visible == Some(true));
+
+    // Off air: nothing goes to Program and the staged edit stays.
+    h.studio_op("main", StudioAction::Update { layer_id: "b" })
+        .unwrap();
+    assert!(drain(&mut rx).iter().all(|(p, _)| *p), "Program untouched");
+    assert!(h.preview_view("main").unwrap().cues[0].staged);
+    assert!(h
+        .studio_op("main", StudioAction::Update { layer_id: "x" })
+        .is_err());
+}
+
+#[test]
+fn discard_drops_one_layers_staged_edit_and_keeps_its_cue() {
+    let h = hub(true);
+    h.apply_screen(edit_plan(&h, "b", "Next"), LiveEdit::OnTake)
+        .unwrap();
+    h.studio_op("main", cue("b", Some(true))).unwrap();
+    let mut rx = h.subscribe();
+    h.studio_op("main", StudioAction::Discard { layer_id: "b" })
+        .unwrap();
+    assert!(drain(&mut rx).is_empty(), "nothing sent to Program");
+    let v = h.preview_view("main").unwrap();
+    assert!(!v.cues[0].staged);
+    assert_eq!(v.cues[0].visible, Some(true));
+}
+
+#[test]
+fn rehearse_reaches_only_the_preview_bus_and_changes_nothing() {
+    let h = hub(true);
+    h.show("main", "a").unwrap();
+    let mut rx = h.subscribe();
+    let ids = vec!["a".to_string()];
+    h.rehearse("main", &ids, RehearseKind::In).unwrap();
+    assert!(drain(&mut rx).is_empty(), "no preview subscriber: nothing");
+
+    let (_sub, _) = h.preview_attach("main");
+    drain(&mut rx);
+    let rev = h.preview_view("main").unwrap().rev;
+    h.rehearse("main", &ids, RehearseKind::Out).unwrap();
+    assert_eq!(
+        drain(&mut rx),
+        [(
+            true,
+            json!({"t": "rehearse", "layerIds": ["a"], "kind": "out"})
+        )]
+    );
+    assert_eq!(
+        h.preview_view("main").unwrap().rev,
+        rev,
+        "the diff is unchanged"
+    );
+    assert!(h.is_on_air("main", "a"));
+    assert!(matches!(
+        h.rehearse("main", &["nope".to_string()], RehearseKind::In),
+        Err(LiveError::UnknownLayer(_))
+    ));
+    assert!(matches!(
+        h.rehearse("gone", &ids, RehearseKind::In),
+        Err(LiveError::UnknownScreen(_))
+    ));
+}

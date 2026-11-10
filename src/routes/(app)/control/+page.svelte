@@ -52,7 +52,6 @@
   import { loadAutomation } from "$lib/components/control/strips";
   import { cueLabel } from "$lib/components/flows/flows.svelte";
   import { NewScreenLauncher } from "$lib/components/screens/new/launcher.svelte";
-  import { isTyping } from "$lib/components/shell/nav";
   import { provideContext, registerCommands } from "$lib/commands/registry.svelte";
   import { live } from "$lib/stores/live.svelte";
   import { prefs } from "$lib/stores/prefs.svelte";
@@ -61,7 +60,7 @@
   // The panel divider is its own chunk (requested at once; a plain line shows until it arrives).
   const dividerChunk = import("$lib/components/control/PanelDivider.svelte");
 
-  const ctl = new ControlCtl(isTyping);
+  const ctl = new ControlCtl();
   const newScreen = new NewScreenLauncher();
 
   $effect(() => ctl.connect());

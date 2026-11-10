@@ -1,6 +1,7 @@
 // The lazy studio chunk, loaded once Studio mode is on: takes and cues (./ops.ts), the single
 // view's studio stage, the layer rows' studio parts, the toolbar's settings menu, the exit question
-// and the palette commands "Take preview", "Take preview (<screen>)" and "Transition: …".
+// and the commands "Take preview" (Ctrl+Enter), "Cut to Program" (Ctrl+Shift+Enter), "Take preview
+// (<screen>)" and "Transition: …". Both keys are live commands: never while typing, never on repeat.
 
 import { untrack } from "svelte";
 import { registerCommands, type Command } from "$lib/commands/registry.svelte";
@@ -52,6 +53,20 @@ function commands(ctl: ControlCtl, screens: { id: string; name: string }[]): Com
       run: () => {
         if (ctl.selectedId) void s.take(ctl.selectedId);
       },
+      defaultKeys: ["Ctrl+Enter"],
+      when: () => s.on,
+      disabled: () => (ctl.selectedId !== null ? null : t("Select a screen first")),
+    },
+    {
+      id: "studio.cut",
+      title: "Cut preview to Program",
+      ...BASE,
+      section: "live",
+      live: true,
+      run: () => {
+        if (ctl.selectedId) void s.take(ctl.selectedId, { kind: "cut", ms: s.transition.ms });
+      },
+      defaultKeys: ["Ctrl+Shift+Enter"],
       when: () => s.on,
       disabled: () => (ctl.selectedId !== null ? null : t("Select a screen first")),
     },

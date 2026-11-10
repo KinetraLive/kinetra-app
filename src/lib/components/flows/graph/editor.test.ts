@@ -604,7 +604,7 @@ describe("Inspector", () => {
     const scr = (await screen.findByRole("combobox", { name: "Screen" })) as HTMLSelectElement;
     expect(scr.value).toBe("s1");
     const tr = screen.getByRole("combobox", { name: "Transition" }) as HTMLSelectElement;
-    expect([...tr.options].map((o) => o.textContent)).toEqual(["Project default", "Cut", "Crossfade", "Play out & in"]);
+    expect([...tr.options].map((o) => o.textContent)).toEqual(["Project default", "Cut", "Auto", "Crossfade"]);
     expect(tr.value).toBe("crossfade");
     const ms = screen.getByLabelText("Crossfade duration") as HTMLInputElement;
     expect(ms.value).toBe("800");

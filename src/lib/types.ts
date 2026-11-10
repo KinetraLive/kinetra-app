@@ -1379,7 +1379,16 @@ export type StudioOp =
   | { op: "tbarBegin"; transition?: TakeTransition | null }
   | { op: "tbarSet"; p: number }
   | { op: "tbarEnd"; commit: boolean }
-  | { op: "clear" };
+  | { op: "clear" }
+  /** Update on air: one on-air layer's staged content to Program now, settled. */
+  | { op: "update"; layerId: string }
+  /** Drops one layer's staged content (its cue stays). */
+  | { op: "discard"; layerId: string }
+  /** Play in / Play out on the preview bus only. */
+  | { op: "rehearse"; layerIds: string[]; kind: RehearseKind };
+
+/** Which animation a Studio rehearsal plays (mirrors protocol.rs `RehearseKind`). */
+export type RehearseKind = "in" | "out";
 
 /** Variant limits. Ids are slugs `[a-z][a-z0-9-]{0,31}`; the first variant of a migrated
  * template is `default`. */

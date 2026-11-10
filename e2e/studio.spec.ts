@@ -1,7 +1,7 @@
 // Studio mode (Preview / Program) against the real server and renderer: every operator edit goes
 // to the Preview (its own output, /screen/<id>/preview, shows it settled) while Program stays
-// untouched; Take moves it to Program with Cut, Crossfade or Play out & in as the Program
-// renderer performs them; the T-bar sets host opacities and commits or aborts; automation goes
+// untouched; Take moves it to Program with Cut, Crossfade or Auto (play out & in) as the Program
+// renderer performs them; Play in / Play out rehearse in the Preview only; the T-bar sets host opacities and commits or aborts; automation goes
 // straight to Program (both outputs follow; the cue is marked "Program changed"); PANIC; Preview
 // after take; the Studio-off exits; a flow's Take preview. Program and Preview are two pages
 // side by side; what the renderer does is recorded in the page (studio-helpers.ts).
@@ -170,6 +170,28 @@ test("take with play out & in: the outgoing plays out, the incoming plays in", a
   // Bravo came in with its in-animation running (not settled).
   const added = r.events.find((e) => e.kind === "hosts" && e.hosts?.some((h) => h.startsWith("Bravo:in")));
   expect(added?.hosts?.find((h) => h.startsWith("Bravo"))).not.toBe("Bravo:in:0");
+});
+
+test("rehearse: Play in / Play out animate in Preview only; Program and the Preview's content stay", async ({ page, context, live }) => {
+  const { id, prog, pv } = await setup(live, page, context);
+  // The Preview in front this time: its animations are what this test watches.
+  await pv.bringToFront();
+  await startRec(prog);
+  await startRec(pv);
+  const anim = async (v: string) => (await rec(pv)).events.some((e) => e.kind === "anim" && e.v === v && e.name === "Alpha");
+
+  let view = await op(live, id, { op: "rehearse", layerIds: ["a"], kind: "in" });
+  expect(view.cues).toEqual([]);
+  await expect.poll(() => anim("lt-in")).toBe(true);
+  await settledAll(pv);
+  await op(live, id, { op: "rehearse", layerIds: ["a"], kind: "out" });
+  await expect.poll(() => anim("lt-out")).toBe(true);
+  // Shown again, settled, once the out-animation is over.
+  await expect.poll(() => shown(pv)).toEqual(["Alpha:default:in"]);
+  await settledAll(pv);
+  view = await previewOf(live, id);
+  expect(view.cues).toEqual([]);
+  expect(changes(await rec(prog))).toEqual([]);
 });
 
 // ---- T-bar --------------------------------------------------------------------------------------

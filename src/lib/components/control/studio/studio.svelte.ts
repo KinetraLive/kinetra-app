@@ -10,7 +10,7 @@
 //
 // One transition, as in OBS: the project default (`settings.transition`), shown and edited in the
 // studio column, the settings popover and the palette, all saved through `setStudio`. TAKE (button,
-// Space/Enter, palette, flows) and the T-bar send no transition, so the server uses it.
+// Ctrl+Enter, palette, flows) and the T-bar send no transition, so the server uses it.
 
 import { toAppError } from "$lib/api";
 import { setStudio } from "$lib/api/live";

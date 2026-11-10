@@ -193,6 +193,16 @@ impl TakeTransition {
     }
 }
 
+/// Which animation a Studio rehearsal plays on the preview bus (`ServerMsg::Rehearse`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum RehearseKind {
+    /// The layer's in-animation from its start; it ends settled.
+    In,
+    /// The layer's out-animation; then it shows again, settled.
+    Out,
+}
+
 /// What a media file is (`WireMedia.kind`, `MediaInfo.kind`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -421,6 +431,13 @@ pub enum ServerMsg {
     Media {
         layer_id: String,
         playback: MediaPlayback,
+    },
+    /// Preview bus only (Studio's Play in / Play out): plays the layers' animation without
+    /// changing what the Preview shows. Renderers ignore it anywhere else; layers not shown are
+    /// skipped.
+    Rehearse {
+        layer_ids: Vec<String>,
+        kind: RehearseKind,
     },
 }
 

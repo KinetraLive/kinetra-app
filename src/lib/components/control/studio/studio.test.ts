@@ -123,8 +123,6 @@ import { server } from "$lib/stores/server.svelte";
 import { toasts } from "$lib/stores/toasts.svelte";
 import { uiState } from "$lib/stores/uiState.svelte";
 import { loadSourcesStrip } from "../strips";
-import { isStudioTake } from "../hotkeys";
-import { keysTaken } from "../control.svelte";
 import { TBAR_RATE, TbarOps, Throttle } from "./tbar";
 
 // ---- Fixtures -----------------------------------------------------------------------------------
@@ -216,6 +214,7 @@ async function mount(screens: LiveScreenView[], ui: UiState) {
   await import("../commands.svelte");
   await import("./ui.svelte");
   await import("./StudioExit.svelte");
+  await import("$lib/components/ConfirmDialog.svelte");
   await settle();
   return r;
 }
@@ -386,21 +385,22 @@ describe("Studio single view", () => {
   });
 
   it("the column's transition is the saved default; TAKE uses it (no transition sent)", async () => {
+    serverPv = pv([{ layerId: "logo", visible: true }]);
     await mount([s1()], studio());
     const take = screen.getByRole("button", { name: "TAKE" });
-    expect(take.title).toBe("Preview to Program (Play out & in) · Space");
+    expect(take.title).toBe("Preview to Program (Auto) · Ctrl+Enter");
     await fireEvent.click(take);
     await settle();
     expect(api.studioOp).toHaveBeenLastCalledWith("s1", { op: "take", transition: null });
     const kinds = within(screen.getByRole("radiogroup", { name: "Transition" }));
-    expect((kinds.getByRole("radio", { name: "Play out & in" }) as HTMLElement).getAttribute("aria-checked")).toBe("true");
+    expect((kinds.getByRole("radio", { name: "Auto" }) as HTMLElement).getAttribute("aria-checked")).toBe("true");
     await fireEvent.click(kinds.getByRole("radio", { name: "Crossfade" }));
     expect(api.setStudio).toHaveBeenLastCalledWith({ ...STUDIO, transition: { kind: "crossfade", ms: 500 } }, null);
     const ms = screen.getByLabelText("Crossfade duration") as HTMLInputElement;
     await fireEvent.change(ms, { target: { value: "800" } });
     expect(api.setStudio).toHaveBeenLastCalledWith({ ...STUDIO, transition: { kind: "crossfade", ms: 800 } }, null);
     await tick();
-    expect(screen.getByRole("button", { name: "TAKE" }).title).toBe("Preview to Program (Crossfade 800 ms) · Space");
+    expect(screen.getByRole("button", { name: "TAKE" }).title).toBe("Preview to Program (Crossfade 800 ms) · Ctrl+Enter");
     await fireEvent.click(kinds.getByRole("radio", { name: "Cut" }));
     await tick();
     expect(document.body.textContent).toContain("Cut · instant");
@@ -413,7 +413,7 @@ describe("Studio single view", () => {
     serverPv = pv([{ layerId: "logo", visible: true }], { tbar: 0.45 });
     await mount([s1()], studio());
     expect(screen.getByRole("slider", { name: "T-bar" }).getAttribute("aria-valuenow")).toBe("45");
-    expect(screen.getByRole("region", { name: "Preview" }).textContent).toContain("1 change");
+    expect(screen.getByRole("region", { name: "Preview" }).textContent).toContain("1 in");
     events.handlers.get("preview-changed")!(pv([], { rev: 2, tbar: null }));
     await tick();
     expect(screen.getByRole("slider", { name: "T-bar" }).getAttribute("aria-valuenow")).toBe("0");
@@ -534,13 +534,13 @@ describe("Studio layer rows", () => {
     expect(toasts.list.at(-1)?.message).toBe("Couldn't cue Logo: Layer not found");
   });
 
-  it("markers: In preview (staged edits) and Program changed since cue", async () => {
+  it("markers: Changes in preview (staged edits) and Program changed since cue", async () => {
     serverPv = pv([
       { layerId: "lower", visible: null, staged: true },
       { layerId: "logo", visible: true, programChanged: true },
     ]);
     await mount([s1()], studio());
-    expect(row("lower").textContent).toContain("In preview");
+    expect(row("lower").textContent).toContain("Changes in preview");
     expect(row("lower").textContent).not.toContain("Program changed since cue");
     expect(row("logo").textContent).toContain("Program changed since cue");
     expect(row("logo").querySelector(".changed")).toBeTruthy();
@@ -593,40 +593,34 @@ describe("Studio grid", () => {
 // ---- Hotkeys and the palette -------------------------------------------------------------------------
 
 describe("Studio hotkeys", () => {
-  it("Space and Enter take the selected screen's Preview when nothing else uses the key", async () => {
+  it("Ctrl+Enter takes the selected screen's Preview, Ctrl+Shift+Enter cuts; Space and Enter don't", async () => {
     await mount([s1()], studio());
-    expect(await fireEvent.keyDown(document.body, { key: " " })).toBe(false);
+    await fireEvent.keyDown(window, { key: " " });
+    await fireEvent.keyDown(window, { key: "Enter" });
+    await settle();
+    expect(ops().filter((o) => o.op === "take")).toEqual([]);
+    await fireEvent.keyDown(window, { key: "Enter", ctrlKey: true });
     await settle();
     expect(api.studioOp).toHaveBeenLastCalledWith("s1", { op: "take", transition: null });
-    await fireEvent.keyDown(document.body, { key: "Enter" });
+    await fireEvent.keyDown(window, { key: "Enter", ctrlKey: true, shiftKey: true });
     await settle();
-    expect(api.studioOp).toHaveBeenCalledTimes(2);
+    expect(api.studioOp).toHaveBeenLastCalledWith("s1", { op: "take", transition: { kind: "cut", ms: 500 } });
   });
 
-  it("never while typing, on a button or slider, in a dialog, on repeat or with modifiers", async () => {
+  it("never while typing or on repeat", async () => {
     await mount([s1()], studio());
     await fireEvent.click(within(document.querySelector<HTMLElement>('[data-layer="lower"]')!).getByRole("button", { name: "Fields and hotkey of Lower third" }));
     await settle();
     api.studioOp.mockClear();
-    await fireEvent.keyDown(screen.getByLabelText("Name"), { key: " " });
-    await fireEvent.keyDown(screen.getByRole("radio", { name: "Cut" }), { key: "Enter" });
-    await fireEvent.keyDown(screen.getByRole("slider", { name: "T-bar" }), { key: "Enter" });
-    await fireEvent.keyDown(document.body, { key: " ", repeat: true });
-    await fireEvent.keyDown(document.body, { key: "Enter", ctrlKey: true });
-    const dlg = document.createElement("div");
-    dlg.setAttribute("role", "dialog");
-    const inner = document.createElement("span");
-    dlg.append(inner);
-    document.body.append(dlg);
-    await fireEvent.keyDown(inner, { key: " " });
-    dlg.remove();
+    await fireEvent.keyDown(screen.getByLabelText("Name"), { key: "Enter", ctrlKey: true });
+    await fireEvent.keyDown(window, { key: "Enter", ctrlKey: true, repeat: true });
     await settle();
     expect(ops().filter((o) => o.op === "take")).toEqual([]);
   });
 
   it("not outside Studio mode", async () => {
     await mount([s1()], control());
-    await fireEvent.keyDown(document.body, { key: " " });
+    await fireEvent.keyDown(window, { key: "Enter", ctrlKey: true });
     await settle();
     expect(api.studioOp).not.toHaveBeenCalled();
   });
@@ -642,23 +636,6 @@ describe("Studio hotkeys", () => {
     expect(api.livePanic).toHaveBeenCalled();
   });
 
-  it("isStudioTake and keysTaken", () => {
-    const k = (key: string, more: Partial<KeyboardEvent> = {}) =>
-      ({ key, shiftKey: false, ctrlKey: false, altKey: false, metaKey: false, repeat: false, ...more }) as KeyboardEvent;
-    expect(isStudioTake(k(" "), false)).toBe(true);
-    expect(isStudioTake(k("Enter"), false)).toBe(true);
-    expect(isStudioTake(k("Enter"), true)).toBe(false);
-    expect(isStudioTake(k(" ", { shiftKey: true }), false)).toBe(false);
-    expect(isStudioTake(k("a"), false)).toBe(false);
-    const b = document.createElement("button");
-    const d = document.createElement("dialog");
-    const s = document.createElement("span");
-    d.append(s);
-    expect(keysTaken(b)).toBe(true);
-    expect(keysTaken(s)).toBe(true);
-    expect(keysTaken(document.body)).toBe(false);
-    expect(keysTaken(null)).toBe(false);
-  });
 });
 
 describe("Studio palette", () => {
@@ -675,9 +652,10 @@ describe("Studio palette", () => {
         "Take preview",
         "Take preview (Screen s1)",
         "Take preview (Screen s2)",
+        "Cut preview to Program",
         "Transition: Cut",
+        "Transition: Auto",
         "Transition: Crossfade",
-        "Transition: Play out & in",
       ]),
     );
     runCommand(cmd("Take preview (Screen s2)"));
@@ -759,5 +737,74 @@ describe("Preview store", () => {
     expect(previews.pending("s1")).toBe(true);
     previews.clear();
     expect(previews.views.size).toBe(0);
+  });
+});
+
+// ---- Checking in Preview: summary, rehearsals, the on-air strip ------------------------------------
+
+describe("Studio Preview checks", () => {
+  const row = (id: string) => within(document.querySelector<HTMLElement>(`[data-layer="${id}"]`)!);
+  const open = async (id: string, name: string) => {
+    await fireEvent.click(row(id).getByRole("button", { name: `Fields and hotkey of ${name}` }));
+    await settle();
+  };
+
+  it("the Preview says what a take would do; TAKE and CUT wait for something to take", async () => {
+    await mount([s1()], studio());
+    expect(screen.getByRole("region", { name: "Preview" }).textContent).toContain("same as Program");
+    const take = screen.getByRole("button", { name: "TAKE" }) as HTMLButtonElement;
+    expect(take.disabled).toBe(true);
+    expect(take.title).toBe("Nothing to take");
+    expect((screen.getByRole("button", { name: "CUT" }) as HTMLButtonElement).disabled).toBe(true);
+    previews.put(pv([{ layerId: "logo", visible: true }, { layerId: "lower", visible: null, staged: true }]));
+    await tick();
+    expect(screen.getByRole("region", { name: "Preview" }).textContent).toContain("1 in · 1 updated");
+    expect(take.disabled).toBe(false);
+    await fireEvent.click(screen.getByRole("button", { name: "CUT" }));
+    await settle();
+    expect(api.studioOp).toHaveBeenLastCalledWith("s1", { op: "take", transition: { kind: "cut", ms: 500 } });
+  });
+
+  it("Play in / Play out rehearse in Preview only: for every layer it shows, and per row", async () => {
+    await mount([s1()], studio());
+    const group = within(screen.getByRole("group", { name: "Rehearse in Preview" }));
+    await fireEvent.click(group.getByRole("button", { name: "Play in" }));
+    await settle();
+    expect(api.studioOp).toHaveBeenLastCalledWith("s1", { op: "rehearse", layerIds: ["lower"], kind: "in" });
+    await fireEvent.click(row("lower").getByRole("button", { name: "Play out Lower third in Preview" }));
+    await settle();
+    expect(api.studioOp).toHaveBeenLastCalledWith("s1", { op: "rehearse", layerIds: ["lower"], kind: "out" });
+    expect(row("logo").queryByRole("button", { name: /Play in Logo/ })).toBeNull();
+    expect(ops().filter((o) => o.op === "take")).toEqual([]);
+  });
+
+  it("an open on-air layer says edits wait in Preview; Update on air asks once per session", async () => {
+    serverPv = pv([{ layerId: "lower", visible: null, staged: true }]);
+    await mount([s1()], studio());
+    await open("lower", "Lower third");
+    const strip = screen.getByRole("status");
+    expect(strip.textContent).toContain("On air. Your changes show in Preview until you take.");
+    await fireEvent.click(within(strip).getByRole("button", { name: "Update on air" }));
+    const dlg = await screen.findByRole("dialog", { name: "Update the on-air graphic?" });
+    await fireEvent.click(within(dlg).getByRole("button", { name: "Update on air" }));
+    await settle();
+    expect(api.studioOp).toHaveBeenLastCalledWith("s1", { op: "update", layerId: "lower" });
+    api.studioOp.mockClear();
+    await fireEvent.click(within(screen.getByRole("status")).getByRole("button", { name: "Update on air" }));
+    await settle();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(api.studioOp).toHaveBeenLastCalledWith("s1", { op: "update", layerId: "lower" });
+    await fireEvent.click(within(screen.getByRole("status")).getByRole("button", { name: "Discard changes" }));
+    await settle();
+    expect(api.studioOp).toHaveBeenLastCalledWith("s1", { op: "discard", layerId: "lower" });
+  });
+
+  it("no strip for an off-air layer; its buttons wait for changes", async () => {
+    await mount([s1(), view("s2")], studio());
+    await open("lower", "Lower third");
+    const buttons = within(screen.getByRole("status")).getAllByRole("button") as HTMLButtonElement[];
+    expect(buttons.map((b) => b.disabled)).toEqual([true, true]);
+    await open("logo", "Logo");
+    expect(screen.getAllByRole("status")).toHaveLength(1);
   });
 });
