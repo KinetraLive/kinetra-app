@@ -98,6 +98,49 @@ describe("Generate template", () => {
     await vi.waitFor(() => expect(onclose).toHaveBeenCalled());
   });
 
+  it("brand colors take hex typed by hand, kept in sync with the picker", async () => {
+    project.current = { path: "p", name: "Show", settings: { brand: { accent: "#C8102E" } } } as never;
+    ai.aiGenerate.mockResolvedValue({ id: "j1", task: "generate", status: "pending", code: null, message: null, templateId: null, label: "x" });
+    render(AiDialog, { mode: { kind: "generate" }, onclose: vi.fn() });
+    await fireEvent.input(screen.getByLabelText("Describe the graphic"), { target: { value: "Lower third" } });
+    const picker = () => screen.getByLabelText("Brand color 1") as HTMLInputElement;
+    const hex = () => screen.getByLabelText("Brand color 1 hex") as HTMLInputElement;
+    const generate = () => screen.getByRole("button", { name: "Generate" }) as HTMLButtonElement;
+    expect(hex().value).toBe("#C8102E");
+    expect(picker().value).toBe("#c8102e");
+
+    // Six digits without "#": the swatch follows as it's typed; leaving the field adds the "#".
+    await fireEvent.input(hex(), { target: { value: "E50914" } });
+    expect(picker().value).toBe("#e50914");
+    await fireEvent.blur(hex());
+    expect(hex().value).toBe("#E50914");
+
+    // Not a color yet: marked, explained, Generate waits; the swatch keeps the last valid one.
+    await fireEvent.input(hex(), { target: { value: "#E5091" } });
+    expect(hex().getAttribute("aria-invalid")).toBe("true");
+    expect(document.getElementById(hex().getAttribute("aria-describedby")!)?.textContent).toBe("Use a hex color, like #E50914 or E50914.");
+    expect(generate().disabled).toBe(true);
+    expect(picker().value).toBe("#e50914");
+    await fireEvent.blur(hex());
+    expect(hex().value).toBe("#E5091");
+
+    // Three digits: doubled.
+    await fireEvent.input(hex(), { target: { value: "#0a3" } });
+    expect(hex().getAttribute("aria-invalid")).toBeNull();
+    expect(picker().value).toBe("#00aa33");
+    expect(generate().disabled).toBe(false);
+
+    // The picker writes the hex field.
+    await fireEvent.input(picker(), { target: { value: "#123456" } });
+    expect(hex().value).toBe("#123456");
+
+    // A second color, typed.
+    await fireEvent.click(screen.getByRole("button", { name: "Add color" }));
+    await fireEvent.input(screen.getByLabelText("Brand color 2 hex"), { target: { value: "fff" } });
+    await fireEvent.click(generate());
+    expect(ai.aiGenerate).toHaveBeenCalledWith(expect.objectContaining({ brandColors: ["#123456", "#ffffff"] }));
+  });
+
   it("explains a used-up quota with its reset date and keeps a too-long text", async () => {
     project.current = null;
     ai.aiGenerate.mockRejectedValueOnce({

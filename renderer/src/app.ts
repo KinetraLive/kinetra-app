@@ -5,8 +5,8 @@ import { PROTOCOL_VERSION, type ServerMsg, type WireLayer } from "./protocol";
 import type { Stage } from "./stage";
 import type { Studio } from "./studio";
 
-/** Studio messages: handled by the lazily loaded `studio` chunk. */
-const STUDIO = /^(take|prepare|tbar|commit|abort)$/;
+/** Studio messages (`rehearse`: preview bus only): handled by the lazily loaded `studio` chunk. */
+const STUDIO = /^(take|prepare|tbar|commit|abort|rehearse)$/;
 /** Media layers and video/image fields (in a snapshot, layer, take or prepare): the `media` chunk. */
 const MEDIA = /"(media|video|image)"/;
 
@@ -106,6 +106,7 @@ export class App {
         for (const l of this.layers.values()) this.guard(l.def.id, () => l.cut());
         break;
       case "take":
+      case "rehearse":
       case "prepare":
       case "tbar":
       case "commit":

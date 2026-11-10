@@ -1,8 +1,9 @@
-// Studio mode on the Program bus: take transitions and the T-bar. A lazy chunk, loaded on the
-// first studio message (`App.load`); only opacity is set on layer hosts, never layout.
+// Studio mode on the Program bus: take transitions and the T-bar; on the preview bus also the
+// rehearsals (Play in / Play out). A lazy chunk, loaded on the first studio message (`App.load`);
+// only opacity is set on layer hosts, never layout.
 import type { App } from "./app";
 import { FONT_CAP_MS, faces, fontsReady, loadFonts } from "./fonts";
-import { Layer, preview } from "./layer";
+import { Layer, afterAnim, preview, setPreview } from "./layer";
 import type { ServerMsg, WireLayer } from "./protocol";
 
 /**
@@ -21,6 +22,29 @@ interface Run {
 
 const op = (l: Layer, v: number | string) => (l.host.style.opacity = "" + v);
 const fade = (l: Layer, a: number, ms: number) => l.host.animate?.({ opacity: [a, 1 - a] }, { duration: ms, fill: "forwards" });
+
+/**
+ * Preview bus: plays a shown layer's own animation without changing what the Preview shows. `in`:
+ * mounted again with its in-animation (the preview bus's settling is off for that one show);
+ * `out`: its out-animation, then mounted again settled. Anything that changes the layer meanwhile
+ * (a new look, cue out, PANIC) wins. Media layers are skipped (their playback lives on Program).
+ */
+function rehearse(l: Layer | undefined, kind: string) {
+  const r = l?.root;
+  if (!l || !r || l.state != "in" || l.def.media) return;
+  if (kind == "in") {
+    l.detach();
+    setPreview(false);
+    try {
+      l.show();
+    } finally {
+      setPreview(true);
+    }
+  } else if (kind == "out") {
+    r.setAttribute("data-state", "out");
+    afterAnim(r, () => l.root == r && l.state == "in" && (l.detach(), l.show()));
+  }
+}
 
 export class Studio {
   private readonly app: App;
@@ -51,6 +75,8 @@ export class Studio {
     } else if (m.t == "take") {
       this.end();
       this.take(m.layers || [], m.hide || [], preview ? "cut" : m.transition?.kind, +m.transition?.ms || 0);
+    } else if (m.t == "rehearse" && preview) {
+      for (const id of m.layerIds || []) rehearse(this.app.layers.get(id), m.kind);
     }
   }
 

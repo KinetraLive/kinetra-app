@@ -82,6 +82,16 @@ impl AppState {
                 },
             ),
             StudioOp::Clear {} => self.live().studio_op(screen_id, StudioAction::Clear),
+            StudioOp::Update { layer_id } => self
+                .live()
+                .studio_op(screen_id, StudioAction::Update { layer_id }),
+            StudioOp::Discard { layer_id } => self
+                .live()
+                .studio_op(screen_id, StudioAction::Discard { layer_id }),
+            StudioOp::Rehearse { layer_ids, kind } => {
+                self.live().rehearse(screen_id, layer_ids, *kind)?;
+                self.live().preview_view(screen_id)
+            }
         }?;
         Ok(view)
     }

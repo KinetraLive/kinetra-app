@@ -133,6 +133,71 @@ describe("preview bus", () => {
   });
 });
 
+describe("rehearse (preview bus)", () => {
+  const rehearse = (kind: "in" | "out", ids = ["a"]): ServerMsg => ({ t: "rehearse", layerIds: ids, kind });
+
+  it("play in: mounted again with its in-animation, not settled", async () => {
+    setPreview(true);
+    const a = stubAnims();
+    try {
+      const { app, stage } = setup();
+      const settled = a.fin.mock.calls.length;
+      await send(app, rehearse("in"));
+      const h = app.layers.get("a")!.host;
+      expect(hosts(stage)).toContain(h);
+      expect(root(h)!.getAttribute("data-state")).toBe("in");
+      expect(a.fin.mock.calls.length).toBe(settled);
+      // Settling is back on for everything after it.
+      app.handle({ t: "layer", layer: layer("c") });
+      expect(a.fin.mock.calls.length).toBeGreaterThan(settled);
+    } finally {
+      a.restore();
+    }
+  });
+
+  it("play out: its out-animation, then shown again settled; the Preview keeps the layer", async () => {
+    setPreview(true);
+    const { app, stage } = setup();
+    const l = app.layers.get("a")!;
+    const finish = pendingOut(l.root!);
+    await send(app, rehearse("out"));
+    expect(l.root!.getAttribute("data-state")).toBe("out");
+    expect(hosts(stage)).toContain(l.host);
+    expect(l.state).toBe("in");
+    finish();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(l.root!.getAttribute("data-state")).toBe("in");
+    expect(hosts(stage)).toContain(l.host);
+    await vi.advanceTimersByTimeAsync(3100);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("a cue out during play out wins", async () => {
+    setPreview(true);
+    const { app, stage } = setup();
+    const l = app.layers.get("a")!;
+    const finish = pendingOut(l.root!);
+    await send(app, rehearse("out"));
+    app.handle({ t: "state", layerId: "a", state: "out" });
+    finish();
+    await vi.advanceTimersByTimeAsync(3100);
+    expect(hosts(stage)).not.toContain(l.host);
+    expect(l.state).toBe(null);
+  });
+
+  it("ignored on Program, for layers not shown and for unknown ids", async () => {
+    const { app, stage } = setup([layer("a"), layer("b", { state: "out" })]);
+    const before = hosts(stage);
+    await send(app, rehearse("out", ["a", "b", "zz"]));
+    expect(app.layers.get("a")!.root!.getAttribute("data-state")).toBe("in");
+    expect(hosts(stage)).toEqual(before);
+    setPreview(true);
+    await send(app, rehearse("in", ["b", "zz"]));
+    expect(hosts(stage)).toEqual(before);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+});
+
 describe("take", () => {
   it("cut: incoming settled at once, outgoing removed, changed layers patched in place", async () => {
     const { app, stage } = setup();

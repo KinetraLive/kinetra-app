@@ -3,10 +3,11 @@
 
 import type { TakeTransition, TakeTransitionKind } from "$lib/types";
 
+/** Cut, Auto (each graphic's own out / in animations) and Crossfade. */
 export const TAKE_KINDS: readonly { value: TakeTransitionKind; label: string }[] = [
   { value: "cut", label: "Cut" },
+  { value: "outIn", label: "Auto" },
   { value: "crossfade", label: "Crossfade" },
-  { value: "outIn", label: "Play out & in" },
 ];
 
 /** Crossfade duration (ms), as the server accepts it. */
@@ -17,7 +18,7 @@ export const DEFAULT_MS = 500;
 
 export const kindLabel = (k: TakeTransitionKind): string => TAKE_KINDS.find((x) => x.value === k)?.label ?? k;
 
-/** "Cut", "Crossfade 500 ms", "Play out & in". */
+/** "Cut", "Crossfade 500 ms", "Auto". */
 export function transitionText(t: TakeTransition): string {
   return t.kind === "crossfade" ? `Crossfade ${t.ms} ms` : kindLabel(t.kind);
 }

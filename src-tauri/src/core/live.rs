@@ -1069,6 +1069,30 @@ impl LiveState {
         Ok(preview.rev != rev)
     }
 
+    /// "Update on air": an on-air layer's staged content goes to Program now, settled (the
+    /// renderer shows a new look on an on-air layer without replaying its in-animation); the
+    /// layer's cue stays. Nothing for an off-air layer or one without staged content.
+    pub fn update_on_air(
+        &mut self,
+        screen_id: &str,
+        layer_id: &str,
+    ) -> Result<Vec<ServerMsg>, LiveError> {
+        let (layer, preview) = self.layer_and_preview(screen_id, layer_id)?;
+        if !layer.on_air {
+            return Ok(Vec::new());
+        }
+        Ok(match preview.take_content(layer_id) {
+            Some(c) => apply_content(layer, c, None),
+            None => Vec::new(),
+        })
+    }
+
+    /// Drops a layer's staged content from the diff (its cue stays). `true` if there was some.
+    pub fn discard_staged(&mut self, screen_id: &str, layer_id: &str) -> Result<bool, LiveError> {
+        let (_, preview) = self.layer_and_preview(screen_id, layer_id)?;
+        Ok(preview.take_content(layer_id).is_some())
+    }
+
     /// Empties a screen's diff: Preview = Program. `true` if there was a cue.
     pub fn clear_preview(&mut self, screen_id: &str) -> Result<bool, LiveError> {
         Ok(self.screen_mut(screen_id)?.preview.clear())

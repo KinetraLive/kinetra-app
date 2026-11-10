@@ -1494,6 +1494,18 @@ pub enum StudioOp {
     TbarEnd { commit: bool },
     /// Empty the diff: Preview = Program.
     Clear {},
+    /// "Update on air": one on-air layer's staged content goes to Program now, settled (no
+    /// take, no in-animation); its cue stays. Nothing for an off-air layer or one without
+    /// staged content.
+    Update { layer_id: String },
+    /// Drops one layer's staged content from the diff (its cue stays).
+    Discard { layer_id: String },
+    /// Plays the layers' in- or out-animation on the preview bus only (Play in / Play out);
+    /// the Preview and Program don't change.
+    Rehearse {
+        layer_ids: Vec<String>,
+        kind: RehearseKind,
+    },
 }
 
 impl Default for ControlViewState {
@@ -2055,7 +2067,7 @@ pub struct VariantDoc {
 
 /// How an on-air layer changes variant (live edit `immediate`, automation).
 pub use crate::core::protocol::VariantTransition;
-pub use crate::core::protocol::{TakeTransition, TakeTransitionKind};
+pub use crate::core::protocol::{RehearseKind, TakeTransition, TakeTransitionKind};
 
 /// A whole template as the editor works with it (schemaVersion 2): the shared field schema and
 /// variable definitions, plus every variant's look. `defaultVariant` is one of `variants`.

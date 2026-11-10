@@ -444,8 +444,12 @@ fn studio_mode_cues_like_control() {
     e.run(&format!("live.take:{s}/l1")).unwrap();
     e.run(&format!("live.take:{s}/l1")).unwrap();
     assert!(e.preview_on("l1") && !e.on_air("l1"));
-    // Update in Studio mode takes the Preview.
+    // Update in Studio mode is Update on air for that layer only: off air, it stays off air
+    // and keeps its cue; the Preview reaches Program with a take.
     e.run(&format!("live.update:{s}/l1")).unwrap();
+    assert!(!e.on_air("l1") && e.preview_on("l1"));
+    e.st.apply_studio_op(&s, StudioOp::Take { transition: None })
+        .unwrap();
     assert!(e.on_air("l1"));
     assert!(e.st.preview_view(&s).unwrap().cues.is_empty());
     // On air in Program: clear cues it out of Preview only.

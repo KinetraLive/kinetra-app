@@ -845,8 +845,9 @@ export class Layer implements Ticker {
     loadFonts(f).then(run);
   }
 
-  /** On air now, in one task: in the DOM, clocks current, text fitted, then data-state="in". */
-  protected show() {
+  /** On air now, in one task: in the DOM, clocks current, text fitted, then data-state="in".
+   *  Also used by the studio chunk's rehearsals. */
+  show() {
     this.cancel();
     if (this.host.parentNode !== this.parent) this.parent.append(this.host);
     this.state = "in";

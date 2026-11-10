@@ -219,7 +219,7 @@ describe("summaries", () => {
       ({ type: "action.takePreview", config: { screenId, transition } }) as const;
     expect(stepText(tp("s1", null), k)).toBe("Take the Preview of Main");
     expect(stepText(tp("s1", { kind: "crossfade", ms: 800 }), k)).toBe("Take the Preview of Main (Crossfade 800 ms)");
-    expect(stepText(tp("s1", { kind: "outIn", ms: 500 }), k)).toBe("Take the Preview of Main (Play out & in)");
+    expect(stepText(tp("s1", { kind: "outIn", ms: 500 }), k)).toBe("Take the Preview of Main (Auto)");
     expect(stepText(tp("gone", { kind: "cut", ms: 500 }), k)).toBe("Take the Preview of a missing screen (Cut)");
     expect(stepIssue(tp("s1", null), k, null)).toBeNull();
     expect(stepIssue(tp("", null), k, null)?.message).toBe("Choose a screen.");

@@ -2,10 +2,14 @@
   StudioStage: Control's single view in Studio mode (lazy studio chunk), a multiview sized to the
   stage, with a screen picker above it (the screen list is hidden in Studio mode). Preview on the left (the
   REAL renderer at /screen/<id>/preview, green tally border), Program on the right (/screen/<id>,
-  red tally border), each labelled with a TallyDot and text. The centre column:
-    TAKE      Preview → Program with the transition below (also Space / Enter): Cut is instant,
-              Crossfade runs over its duration, Play out & in plays the layers' animations
-    transition Cut / Crossfade / Play out & in and the crossfade duration (ms, mono): the
+  red tally border), each labelled with a TallyDot and text. Under Preview: Play in / Play out for
+  every layer it shows (Preview only, nothing reaches Program); its header says what a take would
+  do ("2 in · 1 out · 1 updated", or "same as Program"). The centre column:
+    TAKE      Preview → Program with the transition below (also Ctrl+Enter): Cut is instant, Auto
+              plays each graphic's own out / in animations, Crossfade runs over its duration.
+              Disabled while the take would change nothing on air
+    CUT       the same take as a cut (also Ctrl+Shift+Enter)
+    transition Cut / Auto / Crossfade and the crossfade duration (ms, mono): the
               project's saved default (set_studio), the same one the settings popover edits
     T-bar     the same take by hand (see TBar)
   Exactly two iframes, both through LivePreview (its visibility rules apply to each).
@@ -15,18 +19,21 @@
     view: LiveScreenView    the selected screen
 -->
 <script lang="ts">
+  import Button from "$lib/components/Button.svelte";
   import NumberInput from "$lib/components/NumberInput.svelte";
   import Select from "$lib/components/Select.svelte";
   import LivePreview from "$lib/components/LivePreview.svelte";
   import TallyDot from "$lib/components/TallyDot.svelte";
   import { toAppError } from "$lib/api";
   import { studioOp } from "$lib/api/live";
+  import { keysFor } from "$lib/commands/bindings.svelte";
   import { previews } from "$lib/stores/preview.svelte";
   import { screenUrl, server } from "$lib/stores/server.svelte";
   import { toasts } from "$lib/stores/toasts.svelte";
   import type { LiveScreenView } from "$lib/types";
   import type { ControlCtl } from "../control.svelte";
   import Segmented from "../Segmented.svelte";
+  import { rehearse, summaryText, takeSummary } from "./ops";
   import TBar from "./TBar.svelte";
   import { TbarOps } from "./tbar";
   import { TAKE_KINDS, TAKE_MS, clampMs, transitionText } from "./transitions";
@@ -37,6 +44,12 @@
   const id = $derived(view.screen.id);
   const pv = $derived(previews.views.get(id));
   const changes = $derived(pv?.cues.length ?? 0);
+  /** What a take would do on air ("" = nothing). */
+  const summary = $derived(summaryText(takeSummary(pv, view.layers)));
+  /** The layers Preview shows (Play in / Play out play them all); media layers have no animation to rehearse. */
+  const shown = $derived((pv?.layers ?? view.layers).filter((l) => l.onAir && !l.media).map((l) => l.id));
+  const takeKey = $derived(keysFor("studio.take")[0] ?? "");
+  const cutKey = $derived(keysFor("studio.cut")[0] ?? "");
   const running = $derived(server.status?.state === "running");
   const program = $derived(screenUrl(server.status, id));
   const preview = $derived(program && `${program}/preview`);
@@ -59,10 +72,10 @@
     return () => o.dispose();
   });
 
-  async function take() {
+  async function take(cut = false) {
     if (busy) return;
     busy = true;
-    await studio.take(id);
+    await studio.take(id, cut ? { kind: "cut", ms: t.ms } : null);
     busy = false;
   }
   const how = $derived(t.kind === "cut" ? "Cut · instant" : transitionText(t));
@@ -86,7 +99,7 @@
       <header class="label">
         <TallyDot state="preview" />
         <span class="name">Preview</span>
-        <span class="meta">{changes === 0 ? "same as Program" : `${changes} ${changes === 1 ? "change" : "changes"}`}</span>
+        <span class="meta">{changes === 0 ? "same as Program" : summary || "no change on air"}</span>
       </header>
       <LivePreview
         src={preview}
@@ -95,6 +108,11 @@
         height={view.screen.height}
         children={running ? undefined : stopped}
       />
+      <div class="rehearse" role="group" aria-label="Rehearse in Preview">
+        <Button size="sm" disabled={!running || shown.length === 0} onclick={() => rehearse(id, shown, "in")}>Play in</Button>
+        <Button size="sm" disabled={!running || shown.length === 0} onclick={() => rehearse(id, shown, "out")}>Play out</Button>
+        <span class="hint">Preview only</span>
+      </div>
     </section>
 
     <div class="centre" role="group" aria-label="Take">
@@ -102,14 +120,22 @@
         <button
           type="button"
           class="take vf"
-          disabled={busy}
-          aria-keyshortcuts="Space Enter"
-          title="Preview to Program ({how}) · Space"
-          onclick={take}
+          disabled={busy || !summary}
+          aria-keyshortcuts={takeKey ? takeKey.replace("Ctrl", "Control") : undefined}
+          title={summary ? `Preview to Program (${how})${takeKey ? ` · ${takeKey}` : ""}` : "Nothing to take"}
+          onclick={() => take()}
         >
           TAKE
         </button>
         <span class="caption">{how}</span>
+        <Button
+          size="sm"
+          disabled={busy || !summary}
+          title={summary ? `Preview to Program as a cut${cutKey ? ` · ${cutKey}` : ""}` : "Nothing to take"}
+          onclick={() => take(true)}
+        >
+          CUT
+        </Button>
         <div class="kinds">
           <Segmented
             label="Transition"
@@ -262,6 +288,16 @@
   }
   .take:disabled {
     opacity: 0.6;
+  }
+  .rehearse {
+    display: flex;
+    align-items: center;
+    gap: var(--s-1);
+  }
+  .hint {
+    margin-left: auto;
+    color: var(--text-muted);
+    font-size: var(--fs-xs);
   }
   .caption {
     margin-top: calc(-1 * var(--s-1));

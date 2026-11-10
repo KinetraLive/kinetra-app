@@ -5,8 +5,9 @@
   chip when a MIDI control is assigned (the source in its tooltip), TAKE / CLEAR. Right-click (or
   Shift+F10 / the menu key on the row) opens the lazy context menu (the page's side panel handles
   it, through LayerBody's chunk: midi/eager.svelte.ts sideMenu): Assign MIDI…, Remove MIDI, Set hotkey. "Changes on next take" under it while edits are staged.
-  Studio mode: the studio chunk's StudioRow parts instead (PGM / PVW tallies, Cue in / Cue out,
-  "In preview" and "Program changed since cue"); the fields show the layer as it is in Preview.
+  Studio mode: the studio chunk's StudioRow parts instead (PGM / PVW tallies, Play in / Play out,
+  Cue in / Cue out, "Changes in preview" and "Program changed since cue"; expanded and on air, the
+  on-air strip with Update on air / Discard changes); the fields show the layer as it is in Preview.
   Expanded: LayerBody (fields, variant, hotkey; a chunk of its own, requested when Control loads).
   Media layers: the file name under the name and the transport (Play / Pause, Stop, Restart, times,
   readiness) from the same chunk (MediaTransport, mounted on every row: template layers with video /
@@ -90,6 +91,9 @@
     <studio.StudioRow {ctl} {screenId} {layer} part="notes" />
   {:else if layer.pending && !ctl.studio.on}<p class="pending">Changes on next take</p>{/if}
 
+  {#if open && studio && layer.onAir}
+    <studio.StudioRow {ctl} {screenId} {layer} part="onair" />
+  {/if}
   {#if open && lazy.body}
     <lazy.body.default {ctl} {screenId} layer={edited} id="{uid}-body" />
   {/if}

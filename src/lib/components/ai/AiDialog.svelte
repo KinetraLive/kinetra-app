@@ -2,6 +2,9 @@
   "Generate template" / "Tweak with AI" (a native modal <dialog>). Generate: description (with a
   counter at the backend's limit), optional type, up to 4 brand colors and 2 fonts (prefilled from
   the project's brand kit), optional size. Tweak: an instruction. Shows the remaining quota.
+  Each brand color is a picker (its swatch is the live preview) and a hex field kept in sync:
+  `#E50914`, `E50914`, `#F00` or `F00`; a valid entry updates the swatch as it's typed and becomes
+  `#rrggbb` on leaving the field; an invalid one is marked and blocks Generate.
   Starting a job closes the dialog: the job chip shows progress and the user keeps working.
   The core gates and checks everything again; errors use the API.md messages (a too-long text is
   kept so it can be shortened).
@@ -13,6 +16,7 @@
   import { toAppError } from "$lib/api";
   import { aiGenerate, aiLimits, aiQuota, aiTweak } from "$lib/api/ai";
   import { cloudMessage } from "$lib/components/license/messages";
+  import { parseHexInput, pickerHex } from "$lib/components/variables/color";
   import { project } from "$lib/stores/project.svelte";
   import { TEMPLATE_FONTS, type AiLimits, type AiQuota, type AiTaskQuota } from "$lib/types";
   import { jobs } from "./jobs.svelte";
@@ -28,9 +32,12 @@
   let type = $state("");
   const brand = project.current?.settings.brand ?? null;
   const isHex = (c: string | null | undefined): c is string => !!c && /^#[0-9a-f]{6}$/i.test(c);
-  let colors = $state<string[]>(
-    brand ? [brand.accent, brand.secondary, brand.text, brand.plate].filter(isHex).slice(0, 4) : [],
+  /** Brand colors: `value` is the last valid color (sent, shown by the picker), `text` what the
+   *  hex field shows. */
+  let colors = $state<{ value: string; text: string }[]>(
+    (brand ? [brand.accent, brand.secondary, brand.text, brand.plate].filter(isHex).slice(0, 4) : []).map((c) => ({ value: c, text: c })),
   );
+  const badColor = $derived(colors.some((c) => parseHexInput(c.text) === null));
   let fonts = $state<string[]>(
     brand ? [brand.fontHeading, brand.fontBody].filter((f): f is string => !!f && TEMPLATE_FONTS.some((t) => t.name === f)).slice(0, 2) : [],
   );
@@ -86,7 +93,7 @@
 
   async function submit(e: SubmitEvent) {
     e.preventDefault();
-    if (busy || tooLong || !text.trim()) return;
+    if (busy || tooLong || !text.trim() || (generate && badColor)) return;
     busy = true;
     error = null;
     try {
@@ -95,7 +102,7 @@
           ? await aiGenerate({
               prompt: text,
               templateType: type || null,
-              brandColors: colors,
+              brandColors: colors.map((c) => c.value),
               fonts,
               width: width && height ? width : null,
               height: width && height ? height : null,
@@ -136,14 +143,46 @@
 
         <span class="lbl">Brand colors</span>
         <span class="row">
-          {#each colors as _, i (i)}
-            <input type="color" aria-label="Brand color {i + 1}" bind:value={colors[i]} />
-            <button type="button" class="x" aria-label="Remove brand color {i + 1}" onclick={() => colors.splice(i, 1)}>×</button>
+          {#each colors as c, i (i)}
+            {@const bad = parseHexInput(c.text) === null}
+            <span class="color">
+              <input
+                type="color"
+                aria-label="Brand color {i + 1}"
+                value={pickerHex(c.value)}
+                oninput={(e) => {
+                  c.value = e.currentTarget.value;
+                  c.text = c.value;
+                }}
+              />
+              <input
+                class="hex mono"
+                type="text"
+                aria-label="Brand color {i + 1} hex"
+                spellcheck="false"
+                autocomplete="off"
+                maxlength="9"
+                value={c.text}
+                aria-invalid={bad ? "true" : undefined}
+                aria-describedby={bad ? `${id}-hex` : undefined}
+                oninput={(e) => {
+                  c.text = e.currentTarget.value;
+                  const v = parseHexInput(c.text);
+                  if (v) c.value = v;
+                }}
+                onblur={() => {
+                  const v = parseHexInput(c.text);
+                  if (v) c.text = v;
+                }}
+              />
+              <button type="button" class="x" aria-label="Remove brand color {i + 1}" onclick={() => colors.splice(i, 1)}>×</button>
+            </span>
           {/each}
           {#if colors.length < limits.maxColors}
-            <Button size="sm" variant="ghost" onclick={() => colors.push("#ffffff")}>Add color</Button>
+            <Button size="sm" variant="ghost" onclick={() => colors.push({ value: "#ffffff", text: "#ffffff" })}>Add color</Button>
           {/if}
         </span>
+        {#if badColor}<p id="{id}-hex" class="bad hint">Use a hex color, like #E50914 or E50914.</p>{/if}
 
         <span class="lbl">Fonts</span>
         <span class="row">
@@ -173,7 +212,7 @@
     {#if error}<p class="bad" role="alert">{error}</p>{/if}
 
     <div class="acts">
-      <Button type="submit" variant="primary" loading={busy} disabled={tooLong || !text.trim() || !!off}>
+      <Button type="submit" variant="primary" loading={busy} disabled={tooLong || !text.trim() || !!off || (generate && badColor)}>
         {generate ? "Generate" : "Tweak"}
       </Button>
       <Button variant="ghost" onclick={() => { dialog?.close(); onclose(); }}>Cancel</Button>
@@ -210,7 +249,8 @@
   }
   textarea,
   select,
-  .num {
+  .num,
+  .hex {
     padding: var(--s-2);
     border: 0;
     border-radius: var(--r-control);
@@ -250,12 +290,30 @@
     align-items: center;
     gap: var(--s-1);
   }
+  .color {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--s-1);
+    margin-right: var(--s-2);
+  }
   input[type="color"] {
     width: 32px;
-    height: 24px;
+    height: 28px;
     padding: 0;
     border: 0;
     background: none;
+    cursor: pointer;
+  }
+  .hex {
+    width: calc(9ch + 2 * var(--s-2));
+    padding-block: var(--s-1);
+  }
+  .hex[aria-invalid="true"] {
+    box-shadow: inset 0 0 0 1px var(--danger);
+  }
+  .hint {
+    grid-column: 2;
+    font-size: var(--fs-sm);
   }
   .x {
     padding: 0 var(--s-1);

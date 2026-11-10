@@ -156,6 +156,9 @@ export interface WireLayer {
 
 export type WireErrorCode = "unknownScreen";
 
+/** Studio rehearsal on the preview bus: `in` plays the in-animation, `out` the out-animation (then settled again). */
+export type RehearseKind = "in" | "out";
+
 export type ServerMsg =
   /** `now`: server epoch ms, to correct clock/timer display for skew (absent from older servers). */
   | { t: "hello"; protocol: number; now?: number }
@@ -184,6 +187,8 @@ export type ServerMsg =
   | { t: "prepare"; layers: WireLayer[]; hide: string[] }
   /** T-bar position 0..1: outgoing opacity 1-p, incoming p. */
   | { t: "tbar"; p: number }
+  /** Preview bus only (Play in / Play out): the layers' animation, nothing else changes. */
+  | { t: "rehearse"; layerIds: string[]; kind: RehearseKind }
   /** T-bar released at the end (= take done) or back at the start (abort: Program unchanged). */
   | { t: "commit" }
   | { t: "abort" }

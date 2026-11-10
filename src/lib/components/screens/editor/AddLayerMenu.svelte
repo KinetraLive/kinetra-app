@@ -5,7 +5,8 @@
 
   Keyboard: Enter/Space/ArrowDown open the menu on its first item; ArrowUp/ArrowDown/Home/End move;
   Escape closes and returns focus to the button; Tab closes. A press outside closes it (the window
-  listener exists only while open).
+  listener exists only while open). The menu opens in the top layer (`floating`): the Layers
+  column scrolls, and would otherwise clip it at its edge under the canvas.
 
   Props:
     templates: TemplateSummary[]
@@ -20,6 +21,7 @@
   import Film from "lucide-svelte/icons/film";
   import Plus from "lucide-svelte/icons/plus";
   import Button from "$lib/components/Button.svelte";
+  import { floating } from "$lib/components/floating";
   import type { TemplateSummary } from "$lib/types";
 
   let {
@@ -140,6 +142,7 @@
       aria-label="Add a layer from a template"
       bind:this={menu}
       onkeydown={onMenuKey}
+      {@attach floating(() => root, { align: "end" })}
     >
       {#if templates.length > 0}
         <p class="group section-label" aria-hidden="true">Templates</p>
@@ -168,23 +171,23 @@
 </div>
 
 <style>
-  .add {
-    position: relative;
-  }
   .menu {
-    position: absolute;
+    /* Top layer (floating.ts sets left / top); fixed + z-index where popovers don't exist. */
+    position: fixed;
     z-index: 20;
-    top: calc(100% + var(--s-1));
-    left: 0;
+    inset: auto;
+    margin: 0;
+    border: 0;
     display: flex;
     flex-direction: column;
-    width: max(100%, 16rem);
+    width: 16rem;
     max-height: 22rem;
     overflow: auto;
     padding: var(--s-1);
     border-radius: var(--r-panel);
     background: var(--surface-1);
     box-shadow: inset 0 0 0 1px var(--line-strong);
+    color: var(--text);
   }
   .group {
     padding: var(--s-1) var(--s-2);

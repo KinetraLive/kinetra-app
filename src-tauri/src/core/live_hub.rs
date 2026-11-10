@@ -109,7 +109,7 @@ use crate::core::model::{
     StudioCues, StudioExit,
 };
 use crate::core::protocol::{
-    FieldType, Fields, LayerState, Rect, ServerMsg, TakeTransition, WireErrorCode,
+    FieldType, Fields, LayerState, Rect, RehearseKind, ServerMsg, TakeTransition, WireErrorCode,
 };
 use crate::core::web_images;
 
@@ -287,6 +287,14 @@ pub enum StudioAction<'a> {
         after: PreviewAfterTake,
     },
     Clear,
+    /// Update on air: one on-air layer's staged content to Program, settled.
+    Update {
+        layer_id: &'a str,
+    },
+    /// Drops one layer's staged content.
+    Discard {
+        layer_id: &'a str,
+    },
     /// A screen document applied by the live rules (save, Control edit, watcher, source).
     EditPlan {
         plan: ScreenPlan,
@@ -830,6 +838,35 @@ impl LiveHub {
         serialize(&last.snapshot())
     }
 
+    /// Studio's Play in / Play out: one `rehearse` message to the screen's preview bus (none
+    /// without preview subscribers). Nothing in the live state changes, Program gets nothing.
+    /// `UnknownScreen` / `UnknownLayer` when an id doesn't exist.
+    pub fn rehearse(
+        &self,
+        screen_id: &str,
+        layer_ids: &[String],
+        kind: RehearseKind,
+    ) -> Result<(), LiveError> {
+        let state = self.read();
+        let screen = state
+            .screen(screen_id)
+            .ok_or_else(|| LiveError::UnknownScreen(screen_id.to_string()))?;
+        if let Some(id) = layer_ids
+            .iter()
+            .find(|id| !screen.layers.iter().any(|l| l.id == **id))
+        {
+            return Err(LiveError::UnknownLayer(id.clone()));
+        }
+        if !layer_ids.is_empty() && lock(&self.notifier.bus).contains_key(screen_id) {
+            let msg = ServerMsg::Rehearse {
+                layer_ids: layer_ids.to_vec(),
+                kind,
+            };
+            send_to(&self.tx, screen_id, &[msg], true);
+        }
+        Ok(())
+    }
+
     /// Number of screens whose Preview the hub derives for preview-bus subscribers.
     pub fn preview_buses(&self) -> usize {
         lock(&self.notifier.bus).len()
@@ -877,6 +914,12 @@ impl LiveHub {
             }
             StudioAction::Clear => {
                 state.clear_preview(screen_id)?;
+            }
+            StudioAction::Update { layer_id } => {
+                msgs.extend(state.update_on_air(screen_id, layer_id)?);
+            }
+            StudioAction::Discard { layer_id } => {
+                state.discard_staged(screen_id, layer_id)?;
             }
             StudioAction::Take { transition, after } => {
                 msgs.extend(state.tbar_abort(screen_id));
