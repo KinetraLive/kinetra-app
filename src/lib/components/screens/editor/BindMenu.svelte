@@ -7,7 +7,8 @@
 
   Keyboard: Enter/Space/ArrowDown open the menu on its first item; ArrowUp/ArrowDown/Home/End move;
   Escape (or ArrowLeft in the columns step) goes back / closes and returns focus to the button;
-  Tab closes. A press outside closes it (the window listener exists only while open).
+  Tab closes. A press outside closes it (the window listener exists only while open). The menu
+  opens in the top layer (`floating`), so the scrolling Inspector never clips it.
 
   Props:
     field: string                    the field's label (for the accessible names)
@@ -22,6 +23,7 @@
   import ChevronRight from "lucide-svelte/icons/chevron-right";
   import Link from "lucide-svelte/icons/link";
   import IconButton from "$lib/components/IconButton.svelte";
+  import { floating } from "$lib/components/floating";
   import { ROW_LABEL, bindableColumns } from "$lib/components/fields/binding-label";
   import type { RowSelector, SourceBinding, SourceSummary } from "$lib/types";
 
@@ -169,6 +171,7 @@
       aria-label={chosen ? `Columns of ${chosen.name}` : `Bind ${field} to a source`}
       bind:this={menu}
       onkeydown={onMenuKey}
+      {@attach floating(() => root, { align: "end" })}
     >
       {#if sources === null}
         <p class="note" role="status">Loading sources…</p>
@@ -244,14 +247,15 @@
 
 <style>
   .bind {
-    position: relative;
     flex: none;
   }
   .menu {
-    position: absolute;
+    /* Top layer (floating.ts sets left / top); fixed + z-index where popovers don't exist. */
+    position: fixed;
     z-index: 20;
-    top: calc(100% + var(--s-1));
-    right: 0;
+    inset: auto;
+    margin: 0;
+    border: 0;
     display: flex;
     flex-direction: column;
     width: 16rem;
@@ -261,6 +265,7 @@
     border-radius: var(--r-panel);
     background: var(--surface-1);
     box-shadow: inset 0 0 0 1px var(--line-strong);
+    color: var(--text);
   }
   .group {
     padding: var(--s-1) var(--s-2);

@@ -1417,6 +1417,15 @@ export function installMockTauri(s: MockScenario): void {
       }
       return null;
     },
+    // AI templates (the Generate dialog): the backend's limits and a Pro quota.
+    ai_limits: () => ({ maxChars: 2000, maxColors: 4, maxFonts: 2, types: ["lower_third", "full_screen", "title", "bug", "ticker", "other"] }),
+    ai_quota: () => ({
+      enabled: true,
+      disabled_for_account: false,
+      plan: "pro",
+      generate_template: { used: 3, limit: 50, period: "month", day_used: 1, day_limit: 10 },
+      tweak_template: { used: 12, limit: 300, period: "month" },
+    }),
     // Validated like variable values: colours #rrggbb / #rrggbbaa / transparent; unset keys are dropped.
     save_brand_kit: (a) => {
       const brand = a.brand as BrandKit;

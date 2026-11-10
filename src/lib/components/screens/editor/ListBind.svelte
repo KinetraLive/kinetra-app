@@ -7,7 +7,8 @@
   (in the Inspector) keeps a copy of the rows as the layer's own value.
 
   Keyboard: the button opens it with focus on the source select; Escape closes and returns focus
-  to the button; a press outside closes it (the window listener exists only while open).
+  to the button; a press outside closes it (the window listener exists only while open). The
+  popover opens in the top layer (`floating`), so the scrolling Inspector never clips it.
 
   Props:
     field: string                       the field's label (accessible names)
@@ -26,6 +27,7 @@
   import NumberInput from "$lib/components/NumberInput.svelte";
   import Select from "$lib/components/Select.svelte";
   import Switch from "$lib/components/Switch.svelte";
+  import { floating } from "$lib/components/floating";
   import { bindableColumns } from "$lib/components/fields/binding-label";
   import { LIST_ROWS_MAX, type SourceBinding, type SourceColumn, type SourceSummary } from "$lib/types";
 
@@ -154,6 +156,7 @@
       tabindex="-1"
       bind:this={panel}
       onkeydown={onKey}
+      {@attach floating(() => root, { align: "end" })}
     >
       {#if sources === null}
         <p class="note" role="status">Loading sources…</p>
@@ -222,19 +225,22 @@
 
 <style>
   .bind {
-    position: relative;
     flex: none;
   }
   .panel {
-    position: absolute;
+    /* Top layer (floating.ts sets left / top, and caps the height in a short window). */
+    position: fixed;
     z-index: 20;
-    top: calc(100% + var(--s-1));
-    right: 0;
+    inset: auto;
+    margin: 0;
+    border: 0;
     width: 18rem;
+    overflow: auto;
     padding: var(--s-3);
     border-radius: var(--r-panel);
     background: var(--surface-1);
     box-shadow: inset 0 0 0 1px var(--line-strong);
+    color: var(--text);
   }
   .form {
     display: flex;

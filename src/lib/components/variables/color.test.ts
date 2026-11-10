@@ -8,7 +8,24 @@ import { valueIssue } from "$lib/components/templates/editor/model";
 import { cssValue } from "$lib/components/templates/editor/thumbs";
 import type { VariableDef } from "$lib/types";
 import VariableValuesForm from "./VariableValuesForm.svelte";
-import { alphaOf, isColor, isHex, isTransparent, normalizeColor, pickerHex } from "./color";
+import { alphaOf, isColor, isHex, isTransparent, normalizeColor, parseHexInput, pickerHex } from "./color";
+
+describe("parseHexInput", () => {
+  it("takes 6 or 3 digits, with or without #, keeping the case", () => {
+    expect(parseHexInput("#E50914")).toBe("#E50914");
+    expect(parseHexInput("E50914")).toBe("#E50914");
+    expect(parseHexInput("e50914")).toBe("#e50914");
+    expect(parseHexInput("#F00")).toBe("#FF0000");
+    expect(parseHexInput("f0a")).toBe("#ff00aa");
+    expect(parseHexInput("  #E50914 ")).toBe("#E50914");
+  });
+
+  it("refuses anything else", () => {
+    for (const bad of ["", "#", "#E5091", "E5", "#E509141", "#E50914FF", "##E50914", "#GGGGGG", "red", "transparent", "# E50914"]) {
+      expect(parseHexInput(bad), bad).toBeNull();
+    }
+  });
+});
 
 const TILE: VariableDef = { key: "tile", label: "Tiles", type: "color", default: "#ffffff" };
 
